@@ -28,6 +28,11 @@ static func item_contrib(id: String, n: int, x: Dictionary) -> Dictionary:
 	var out := empty()
 	if n <= 0 or not ItemDB.exists(id):
 		return out
+	if x.has("fm"):
+		# fuel that has been in a fire carries its own wood, charcoal and minerals
+		out["carbon"] = float(x["fm"]) + float(x.get("ch", 0.0))
+		out["nutr"] = float(x.get("nu", 0.0))
+		return out
 	match id:
 		"clay", "clay_prepared":
 			out["clay"] = n * Pottery.LUMP_L
@@ -40,7 +45,10 @@ static func item_contrib(id: String, n: int, x: Dictionary) -> Dictionary:
 			out["water"] += float(x.get("water", 0.0))
 			var cont: Dictionary = x.get("contents", {})
 			for cid in cont:
-				if cid != "porridge":
+				if cid == "porridge":
+					# grain cooked in water: the water is in the porridge pool
+					_add(out, item_contrib("seed_grain", int(cont[cid]) * WaterActions.PORRIDGE_SEEDS, {}))
+				else:
 					_add(out, item_contrib(cid, int(cont[cid]), {}))
 		"potsherds":
 			out["clay"] = n * SHERD_L
@@ -154,8 +162,8 @@ static func entity_contrib(e: Dictionary) -> Dictionary:
 			out = WorkLedger.contrib(d)
 		"site":
 			out["soil"] = float(d.get("shell_l", 0.0))
-			out["nutr"] = float(d.get("ash_nutr", 0.0))
-			out["carbon"] = float(d.get("ash_carbon", 0.0))
+			out["nutr"] = float(d.get("ash_n", 0.0))
+			out["carbon"] = float(d.get("ash_c", 0.0))
 		"structure":
 			var parts: Array = ItemDB.blueprint(String(d.get("bp", ""))).get("parts", [])
 			var used_arr: Array = d.get("used", [])

@@ -10,6 +10,7 @@ const SESSIONS := {
 	"pottery": preload("res://src/crafting/pottery_session.gd"),
 	"cordage": preload("res://src/crafting/cordage_session.gd"),
 	"haft": preload("res://src/crafting/haft_session.gd"),
+	"fire_drill": preload("res://src/crafting/fire_drill_session.gd"),
 }
 
 var session: CraftSession = null

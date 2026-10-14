@@ -70,6 +70,7 @@ func _process(delta: float) -> void:
 	if _amb_t > 0.0:
 		return
 	_amb_t = 0.5
+	Models.sweep_held()
 	var lp := local_player()
 	if lp == null:
 		return

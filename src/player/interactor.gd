@@ -56,7 +56,7 @@ func _emit() -> void:
 func _labels() -> String:
 	var s := ""
 	for k in options:
-		s += String(options[k].get("label", ""))
+		s += String(options[k].get("label", "")) + String(options[k].get("text", ""))
 	return s
 
 

@@ -13,7 +13,7 @@ const THIRST_HOURS := 24.0
 const SCRAP_NUTR := 0.003
 
 
-static func eat(pid: int, id: String, food: Dictionary) -> void:
+static func eat(pid: int, id: String, food: Dictionary, count: int = 1) -> void:
 	var st: Dictionary = World.stats.get(pid, {})
 	if st.is_empty():
 		return
@@ -28,8 +28,8 @@ static func eat(pid: int, id: String, food: Dictionary) -> void:
 		st["body_water_l"] = float(st.get("body_water_l", 0.0)) + into_body
 		World.pools["plant_water_l"] = float(World.pools.get("plant_water_l", 0.0)) - w
 		World.pools["atmo_water_l"] = float(World.pools.get("atmo_water_l", 0.0)) + (w - into_body)
-	var nutr := ItemDB.nutrients(id)
-	var mass := ItemDB.unit_mass(id)
+	var nutr := ItemDB.nutrients(id) * count
+	var mass := ItemDB.unit_mass(id) * count
 	st["waste_nutr"] = float(st.get("waste_nutr", 0.0)) + nutr
 	# carbon: respired to the air, except what leaves later as scraps
 	var scrap_mass := nutr / SCRAP_NUTR * ItemDB.unit_mass("food_scraps")

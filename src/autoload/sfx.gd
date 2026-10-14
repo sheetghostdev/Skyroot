@@ -156,15 +156,41 @@ func set_ambient(sound: String, volume: float, fade: float = 2.0) -> void:
 		p.stream = get_stream(sound, true)
 		p.volume_db = -60.0
 		add_child(p)
-		p.play()
 		_amb[sound] = p
+	if volume > 0.001 and not p.playing:
+		p.play()
 	var target := linear_to_db(maxf(volume, 0.0001))
 	p.set_meta("target", target)
 	p.set_meta("fade", maxf(fade, 0.05))
 
 
+func shutdown() -> void:
+	## Silence everything so no playback is left mid-mix when the engine stops.
+	for n in get_tree().root.find_children("*", "AudioStreamPlayer3D", true, false):
+		n.stop()
+	for n2 in get_tree().root.find_children("*", "AudioStreamPlayer", true, false):
+		n2.stop()
+
+
+func _exit_tree() -> void:
+	# let go of every stream and playback so nothing outlives the engine
+	for p in _pool3d:
+		p.stop()
+		p.stream = null
+	for p2 in _pool2d:
+		p2.stop()
+		p2.stream = null
+	for a in _amb.values():
+		a.stop()
+		a.stream = null
+	_amb.clear()
+	_streams.clear()
+
+
 func stop_all_ambient() -> void:
 	for p in _amb.values():
+		p.stop()
+		p.stream = null
 		p.queue_free()
 	_amb.clear()
 
@@ -175,9 +201,11 @@ func _process(delta: float) -> void:
 		var target: float = p.get_meta("target", -60.0)
 		var rate := 40.0 / float(p.get_meta("fade", 2.0))
 		p.volume_db = move_toward(p.volume_db, target, rate * delta)
-		if target <= -59.0 and p.volume_db <= -59.0:
-			p.queue_free()
-			_amb.erase(key)
+		if target <= -59.0 and p.volume_db <= -59.0 and p.playing:
+			# silent: pause the loop but keep the player for when it's needed again
+			p.stream_paused = true
+		elif target > -59.0 and p.stream_paused:
+			p.stream_paused = false
 
 
 func make_loop_player(sound: String, parent: Node3D, vol_db: float = 0.0, max_dist: float = 25.0) -> AudioStreamPlayer3D:
@@ -188,5 +216,8 @@ func make_loop_player(sound: String, parent: Node3D, vol_db: float = 0.0, max_di
 	p.volume_db = vol_db
 	p.max_distance = max_dist
 	p.unit_size = 3.0
+	p.tree_exiting.connect(func():
+		p.stop()
+		p.stream = null)
 	parent.add_child(p)
 	return p

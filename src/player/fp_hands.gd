@@ -105,7 +105,7 @@ func _make_arm(path: String, side: String, poses: Dictionary) -> Node3D:
 			for s in mi.mesh.get_surface_count():
 				var m := mi.mesh.surface_get_material(s)
 				if m and m.resource_name.begins_with("Cloth") and not m.resource_name.begins_with("ClothDark"):
-					mi.set_surface_override_material(s, cloth_mat)
+					Models.set_surface_unique(mi, s, cloth_mat)
 		return root
 	# procedural fallback: sleeve + forearm + hand
 	var skin := Color(0.88, 0.68, 0.53)

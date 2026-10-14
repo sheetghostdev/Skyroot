@@ -159,6 +159,7 @@ func _exit_tree() -> void:
 	Tex._cache.clear()
 	Models._scenes.clear()
 	Models._mats.clear()
+	Models._held.clear()
 	ProcMesh._cache.clear()
 	Geo._ico_cache.clear()
 	InteractionRules._lift_cache.clear()
@@ -166,6 +167,9 @@ func _exit_tree() -> void:
 	UITheme._font = null
 	UITheme._font_bold = null
 	UITheme._font_title = null
+	FireSim.reset()
+	ActionsFire._drill_t.clear()
+	preload("res://src/entities/site_view.gd").clear_cache()
 
 
 func quit() -> void:
@@ -175,4 +179,6 @@ func quit() -> void:
 	Settings.save_settings()
 	Guide.save_local()
 	Net.close()
+	Sfx.shutdown()
+	await get_tree().create_timer(0.15).timeout
 	get_tree().quit()

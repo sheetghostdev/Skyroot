@@ -22,7 +22,7 @@ extends RefCounted
 ##   [0] wood kg  [1] burn speed (firewood = 1)  [2] ignition C  [3] water kg per kg wood
 ##   [4] charcoal kg  [5] temperature C
 ##   [6] out: charcoal burned  [7] out: gases released  [8] out: water boiled off
-## An inert piece (pot, stone, food) is [mass kg, size factor, temperature C, specific heat J/kgK].
+## An inert piece (pot, stone, food) is [mass kg, size factor, temperature C, specific heat J/kgK, exposure 0..1].
 ## Outputs accumulate across calls; callers reset them.
 
 const AIR_PER_KG_GAS := 4.5        # kg air to burn 1 kg of wood gases
@@ -139,7 +139,7 @@ static func step(s: Dictionary, p: Dictionary, dt: float) -> Dictionary:
 	var shared := heat * (1.0 - SELF_HEAT)
 	var T_flame := maxf(T, T_amb + 900.0 * clampf(heat / 3000.0, 0.0, 1.0)) if heat > 200.0 else T
 	# the flames reach the finest fuel first; a bigger fire engulfs more of the pile
-	var reach := maxf(0.3, heat / FLAME_REACH_W)
+	var reach := maxf(0.3 * clampf(heat / 500.0, 0.0, 1.0), heat / FLAME_REACH_W)
 	var order: Array = range(n)
 	order.sort_custom(func(a, b): return float(pieces[a][W_RATE]) > float(pieces[b][W_RATE]))
 	var contact := PackedFloat64Array()
@@ -197,7 +197,7 @@ static func step(s: Dictionary, p: Dictionary, dt: float) -> Dictionary:
 	cool.resize(n)
 	for i in n:
 		var w: Array = pieces[i]
-		var Te := T_amb + (T - T_amb) * maxf(keep, IN_FLAME * contact[i])
+		var Te := T_amb + (T - T_amb) * maxf(keep, IN_FLAME * contact[i] * clampf(heat / 500.0, 0.0, 1.0))
 		cool[i] = COOL_K * pow(float(w[W_RATE]), 0.6) * (float(w[W_MASS]) + float(w[W_CHAR])) * (float(w[W_T]) - Te)
 		cooled += cool[i]
 	var T_env := T_amb + (T - T_amb) * keep
@@ -205,7 +205,10 @@ static func step(s: Dictionary, p: Dictionary, dt: float) -> Dictionary:
 	cooli.resize(inert.size())
 	for j in inert.size():
 		var it: Array = inert[j]
-		cooli[j] = COOL_K * float(it[1]) * float(it[0]) * (float(it[2]) - T_env)
+		# things at the edge of the fire sit in cooler air than things in it
+		var expo := float(it[4]) if it.size() > 4 else 1.0
+		var Tj := T_amb + (T - T_amb) * keep * expo
+		cooli[j] = COOL_K * float(it[1]) * float(it[0]) * (float(it[2]) - Tj)
 		cooled += cooli[j]
 	# the bed
 	var flue := air * CP_AIR * dT * 0.6

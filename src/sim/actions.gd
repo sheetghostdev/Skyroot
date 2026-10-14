@@ -181,12 +181,15 @@ func _a_pickup(pid: int, args: Dictionary) -> void:
 		return
 	if not in_reach(pid, args, ent["xf"].origin):
 		return
+	if int(ent["d"].get("site", -1)) >= 0 or ent["d"].get("x", {}).has("fm"):
+		ActionsFire.prepare_pickup(eid)
+		ent = World.get_entity(eid)
+		if ent.is_empty():
+			return
 	var d: Dictionary = ent["d"]
 	var id := String(d["i"])
 	var n := int(d["n"])
 	var x: Dictionary = d.get("x", {})
-	if int(d.get("site", -1)) >= 0:
-		ActionsFire.on_item_removed(eid)
 	var hot := float(d.get("heat", 20.0))
 	var space := inv(pid).space_for(id, x)
 	if space <= 0:
@@ -194,11 +197,8 @@ func _a_pickup(pid: int, args: Dictionary) -> void:
 		return
 	var take := mini(n, space)
 	if hot > 70.0:
-		World.request_hurt(pid, clampf((hot - 70.0) / 400.0, 0.02, 0.15), "burn")
+		Survival.damage(pid, clampf((hot - 70.0) / 400.0, 0.02, 0.15), "burn")
 		World.notify(pid, "Ouch - it's hot!", "warn")
-	if id == "pot":
-		x = x.duplicate(true)
-		x["heat"] = hot
 	inv(pid).add(id, take, x)
 	World.mark_inventory(pid)
 	if take >= n:

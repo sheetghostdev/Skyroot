@@ -44,7 +44,7 @@ static func options(p: LocalPlayer, t: Dictionary) -> Dictionary:
 
 
 static func _placeable(id: String) -> bool:
-	return ItemDB.exists(id) and id != "torch"
+	return ItemDB.exists(id)
 
 
 static func place_xf(p: LocalPlayer, pos: Vector3, normal: Vector3, id: String, d: Dictionary) -> Transform3D:
@@ -96,7 +96,8 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			if not proc.is_empty():
 				var need := String(proc.get("tool", ""))
 				if need == "hand" or tool == need or (need == "cut" and tool == "chop"):
-					out["primary"] = opt("Cut up %s" % nm.to_lower() if need != "chop" else "Chop up %s" % nm.to_lower(), "process", {"eid": eid}, "cut" if tool == "cut" else "swing", true)
+					var verb := String(proc.get("label", "Cut up %s" % nm.to_lower() if need != "chop" else "Chop up %s" % nm.to_lower()))
+					out["primary"] = opt(verb, "process", {"eid": eid}, "cut" if tool == "cut" else "swing", true)
 				else:
 					out["primary"] = disabled("Process %s" % nm.to_lower(), "You need a %s." % {"cut": "sharp blade", "chop": "stone axe"}.get(need, "tool"))
 			if ItemDB.has_tag(iid, "splittable"):
@@ -104,18 +105,31 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 					out["primary"] = opt("Split %s (aim at the end)" % nm.to_lower(), "split", {"eid": eid, "pos": t["pos"]}, "swing")
 				else:
 					out["primary"] = disabled("Split %s" % nm.to_lower(), "Splitting wood needs a stone axe.")
+			var site := int(d.get("site", -1))
+			var site_e := World.get_entity(site) if site >= 0 else {}
+			var burning := not site_e.is_empty() and bool(site_e["d"].get("lit", false))
 			if held == "torch" and ItemDB.fuel(iid).size() > 0:
 				out["primary"] = opt("Light the %s" % nm.to_lower(), "ignite", {"eid": eid}, "place")
-			if held == "earth" or held == "clay":
-				var site := int(d.get("site", -1))
+			if held == "earth":
 				if site >= 0 or ItemDB.fuel(iid).size() > 0:
-					out["primary"] = opt("Pack earth over the pile", "cover", {"eid": eid, "pos": t["pos"]}, "pack", true)
+					out["primary"] = opt("Pack earth over the %s" % ("fire" if burning else "pile"), "fire_cover", {"eid": eid, "pos": t["pos"]}, "pack", true)
+			if burning:
+				if held == "stick":
+					out["secondary"] = opt("Light the stick in the fire", "fire_torch", {"eid": site}, "place")
+				elif held != "" and (not ItemDB.fuel(held).is_empty() or not ItemDB.food(held).is_empty() or held == "pot"):
+					var verb2 := "Roast %s at the fire" if ItemDB.fuel(held).is_empty() and held != "pot" else "Put %s in the fire"
+					out["secondary"] = opt(verb2 % ItemDB.display_name(held, hd).to_lower(), "fire_add", {"eid": site}, "place")
 			if iid == "pot" and held == "" and float(d.get("x", {}).get("water", 0.0)) > 0.01:
 				out["primary"] = opt("Drink from the %s" % nm.to_lower(), "drink_entity", {"eid": eid}, "drink")
-			if held == "pot" and iid != "pot":
-				pass
-			if ItemDB.has_tag(iid, "organic") and (held == "pot"):
-				pass
+			if iid == "pot" and held == "seed_grain":
+				if String(d.get("x", {}).get("state", "")) == "fired":
+					out["primary"] = opt("Put grain in the %s" % nm.to_lower(), "pot_add", {"eid": eid}, "place")
+				else:
+					out["primary"] = disabled("Put grain in the pot", "Only fired pottery holds food and water.")
+			if iid == "hearth_board" and held == "stick":
+				out["primary"] = opt("Drill for fire", "work_start", {"kind": "fire_drill", "board": eid, "pos": ent["xf"].origin}, "place")
+			elif iid == "hearth_board" and held == "":
+				out["primary"] = disabled("Drill for fire", "Hold a straight stick to spin in the notch.")
 		"tree":
 			_tree_options(out, t, d, eid, part, tool)
 		"outcrop":
@@ -216,7 +230,7 @@ static func _work_options(out: Dictionary, p: LocalPlayer, t: Dictionary, d: Dic
 	var kind := String(d.get("kind", ""))
 	var by := int(d.get("by", 0))
 	var label: String = {"knap": "Continue knapping", "clay_prep": "Continue working the clay", "pottery": "Continue shaping",
-		"cordage": "Continue twisting", "haft": "Continue hafting", "drill": "Use the fire drill"}.get(kind, "Work")
+		"cordage": "Continue twisting", "haft": "Continue hafting", "fire_drill": "Use the fire drill"}.get(kind, "Work")
 	if kind == "pottery" and bool(d.get("done", false)):
 		out["interact"] = opt("Pick up the %s" % Pottery.display_name(d.get("pot", {})).to_lower(), "work_take", {"eid": eid}, "pick")
 		return
@@ -298,6 +312,11 @@ static func _ground_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			out["primary"] = opt("Water the soil (%.2f L)" % float(hd["water"]), "pour", {"pos": pos}, "pour")
 		if held == "torch":
 			out["primary"] = disabled("Burning stick", "Touch it to dry fuel - straw, twigs or a fire lay - to light it.")
+		if held == "hearth_board":
+			if World.my_inventory.count("stick") >= 1:
+				out["interact"] = opt("Set up a fire drill here", "work_start", {"kind": "fire_drill", "pos": pos}, "place")
+			else:
+				out["interact"] = disabled("Fire drill", "You also need a straight stick to spin.")
 		if layer == "clay" and held == "pot" and float(hd.get("water", 0.0)) <= 0.0:
 			pass
 		if held in ["clay", "clay_prepared", "fiber", "stone_head", "stone"] and not out.has("interact"):

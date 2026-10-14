@@ -284,6 +284,20 @@ func _on_target(info: Dictionary) -> void:
 		c.queue_free()
 	var opts: Dictionary = info.get("options", {})
 	var any := false
+	if opts.has("info"):
+		var inf: Dictionary = opts["info"]
+		var tl := UITheme.label(String(inf.get("title", "")), 16, UITheme.ACCENT)
+		tl.add_theme_constant_override("outline_size", 5)
+		tl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+		prompts.add_child(tl)
+		var txt := String(inf.get("text", ""))
+		if txt != "":
+			var bl := UITheme.label(txt, 13, Color(UITheme.PAPER, 0.85))
+			bl.add_theme_constant_override("outline_size", 4)
+			bl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+			bl.custom_minimum_size.x = 340
+			bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			prompts.add_child(bl)
 	for key in ["interact", "primary", "secondary"]:
 		if not opts.has(key):
 			continue

@@ -13,6 +13,7 @@ const VIEWS := {
 	"bush": preload("res://src/entities/bush_view.gd"),
 	"plant": preload("res://src/entities/plant_view.gd"),
 	"work": preload("res://src/entities/work_view.gd"),
+	"site": preload("res://src/entities/site_view.gd"),
 }
 
 var views: Dictionary = {}

@@ -6,7 +6,7 @@ extends RefCounted
 ## deterministically and replicates the result, so everyone sees the same stone
 ## chip or the same pot rise.
 
-const KINDS := ["knap", "clay_prep", "pottery", "cordage", "haft"]
+const KINDS := ["knap", "clay_prep", "pottery", "cordage", "haft", "fire_drill"]
 const OP_RATE := 40  # max ops per second accepted per workpiece
 
 
@@ -92,6 +92,9 @@ static func _work_start(pid: int, args: Dictionary, a: Actions) -> void:
 			inv.remove("fiber", 2)
 			World.mark_inventory(pid)
 			d.merge({"fibers": 2, "prog": 0.0, "even": 1.0, "kinks": 0})
+		"fire_drill":
+			if not ActionsFire.drill_start(a, pid, args, d):
+				return
 		"haft":
 			if hid != "stone_head":
 				return
@@ -177,6 +180,8 @@ static func _work_op(pid: int, args: Dictionary, a: Actions) -> void:
 			_cord_op(a, pid, e, op)
 		"haft":
 			_haft_op(a, pid, e, op)
+		"fire_drill":
+			ActionsFire.drill_op(a, pid, e, op)
 
 
 static func _world_point(e: Dictionary, local: Vector3) -> Vector3:
@@ -378,6 +383,8 @@ static func _work_finish(pid: int, args: Dictionary, a: Actions) -> void:
 			World.notify(pid, "Keep twisting until the cord is a full length.")
 		"haft":
 			_finish_haft(a, pid, e)
+		"fire_drill":
+			ActionsFire.drill_finish(a, pid, e)
 
 
 static func _result(pid: int, e: Dictionary, text: String, kind: String = "info") -> void:
@@ -522,6 +529,8 @@ static func _work_cancel(pid: int, args: Dictionary, a: Actions) -> void:
 			a.give(pid, "stone_head", 1, d["head"])
 			a.give(pid, "stick", 1)
 			a.give(pid, "cordage", 1)
+		"fire_drill":
+			ActionsFire.drill_cancel(a, pid, d)
 	World.fx("pickup", e["xf"].origin)
 
 

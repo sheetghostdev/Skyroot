@@ -4,6 +4,8 @@ extends RefCounted
 
 const HAND_SIP := 0.18
 const POUR := 0.25
+const PORRIDGE_SEEDS := 4        # grains of seed in a portion
+const PORRIDGE_WATER := 0.12     # litres of water a portion soaks up
 
 
 static func _near_pond(a: Actions, pid: int) -> bool:
@@ -98,12 +100,41 @@ static func eat_vessel(a: Actions, pid: int, args: Dictionary) -> void:
 	World.inventory_of(pid).set_data(int(args["slot"]), d)
 	World.mark_inventory(pid)
 	# a portion of porridge = grain cooked in water: food plus a little water
-	Survival.eat(pid, "seed_grain", {"hunger": 0.12})
-	var water := minf(0.12, float(World.pools.get("porridge_water_l", 0.0)))
+	Survival.eat(pid, "seed_grain", {"hunger": 0.12, "raw": false}, PORRIDGE_SEEDS)
+	var water := minf(PORRIDGE_WATER, float(World.pools.get("porridge_water_l", 0.0)))
 	World.pools["porridge_water_l"] = float(World.pools.get("porridge_water_l", 0.0)) - water
 	var drunk := Survival.drink(pid, water)
 	World.pools["atmo_water_l"] = float(World.pools.get("atmo_water_l", 0.0)) + (water - drunk)
 	World.fx("eat", a.player_pos(pid) + Vector3(0, 1.5, 0))
+
+
+static func pot_add(a: Actions, pid: int, args: Dictionary) -> void:
+	## Put grain into a fired pot that's standing somewhere.
+	var eid := int(args.get("eid", -1))
+	var ent := World.get_entity(eid)
+	if ent.is_empty() or ent["t"] != "item" or String(ent["d"].get("i", "")) != "pot":
+		return
+	if not a.in_reach(pid, args, ent["xf"].origin):
+		return
+	var s := a.held(pid, args)
+	if String(s.get("i", "")) != "seed_grain":
+		return
+	var x: Dictionary = ent["d"]["x"].duplicate(true)
+	if String(x.get("state", "")) != "fired":
+		World.notify(pid, "Only a fired pot can hold food and water.")
+		return
+	var cont: Dictionary = x.get("contents", {})
+	var have := int(cont.get("seed_grain", 0))
+	var room := int(Pottery.capacity(x) / 0.03) - have - int(cont.get("porridge", 0)) * PORRIDGE_SEEDS
+	var n := mini(mini(int(s["n"]), PORRIDGE_SEEDS), room)
+	if n <= 0:
+		World.notify(pid, "The pot is full.")
+		return
+	a.take_held(pid, args, n)
+	cont["seed_grain"] = have + n
+	x["contents"] = cont
+	World.update(eid, {"x": x})
+	World.fx("pickup", ent["xf"].origin)
 
 
 static func pour(a: Actions, pid: int, args: Dictionary) -> void:

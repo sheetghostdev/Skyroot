@@ -87,7 +87,7 @@ func _assemble_from(src: Node3D, color: Color) -> void:
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s)
 			if m and m.resource_name.begins_with("Cloth") and not m.resource_name.begins_with("ClothDark"):
-				mi.set_surface_override_material(s, cloth_mat)
+				Models.set_surface_unique(mi, s, cloth_mat)
 
 
 func _assemble_procedural(color: Color) -> void:

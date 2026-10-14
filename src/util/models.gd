@@ -32,6 +32,25 @@ const ROLE_PARAMS := {
 }
 
 
+static var _held: Array = []   # [material, WeakRef(mesh instance)]
+
+
+static func set_surface_unique(mi: MeshInstance3D, s: int, mat: Material) -> void:
+	## A surface material made just for this mesh.  Freeing a mesh together with
+	## the last reference to one of its surface materials trips the renderer, so
+	## such materials are held here until the mesh is gone (see sweep_held).
+	mi.set_surface_override_material(s, mat)
+	_held.append([mat, weakref(mi)])
+
+
+static func sweep_held() -> void:
+	var keep: Array = []
+	for h in _held:
+		if (h[1] as WeakRef).get_ref() != null:
+			keep.append(h)
+	_held = keep
+
+
 static func exists(path: String) -> bool:
 	return path != "" and ResourceLoader.exists(path)
 
@@ -113,7 +132,7 @@ static func set_role_param(root: Node, role: String, param: String, value: Varia
 			var cur := mi.get_surface_override_material(s)
 			if unique and (cur == null or cur == _mats.get(r)):
 				cur = material_for(r).duplicate()
-				mi.set_surface_override_material(s, cur)
+				set_surface_unique(mi, s, cur)
 			if cur is ShaderMaterial:
 				cur.set_shader_parameter(param, value)
 

@@ -12,11 +12,12 @@ func _build() -> void:
 
 func _refresh(keys: Array) -> void:
 	var d := data()
-	var key := "%s|%d|%s" % [d.get("i", ""), int(d.get("n", 1)), str(hash(d.get("x", {})))]
-	if key != _key:
+	var key := ItemVisual.visual_key(String(d.get("i", "")), int(d.get("n", 1)), d.get("x", {}))
+	var rebuilt := key != _key
+	if rebuilt:
 		_rebuild()
 	var heat := float(d.get("heat", 20.0))
-	if model and (keys.has("heat") or keys.has("char")):
+	if model and (keys.has("heat") or keys.has("char") or (rebuilt and (heat > 400.0 or float(d.get("char", 0.0)) > 0.0))):
 		var glow := clampf((heat - 450.0) / 400.0, 0.0, 1.0)
 		var charred := clampf(float(d.get("char", 0.0)), 0.0, 1.0)
 		for mi in Models.mesh_instances(model):
@@ -42,7 +43,7 @@ func _override_surfaces(charred: float, glow: float) -> void:
 			if m is ShaderMaterial:
 				if not mi.has_meta("unique_surf_%d" % s):
 					m = m.duplicate()
-					mi.set_surface_override_material(s, m)
+					Models.set_surface_unique(mi, s, m)
 					mi.set_meta("unique_surf_%d" % s, true)
 				m.set_shader_parameter("char_amount", charred)
 				m.set_shader_parameter("emission_strength", glow * 2.5)
@@ -50,7 +51,7 @@ func _override_surfaces(charred: float, glow: float) -> void:
 
 func _rebuild() -> void:
 	var d := data()
-	_key = "%s|%d|%s" % [d.get("i", ""), int(d.get("n", 1)), str(hash(d.get("x", {})))]
+	_key = ItemVisual.visual_key(String(d.get("i", "")), int(d.get("n", 1)), d.get("x", {}))
 	if model:
 		model.queue_free()
 	if body:

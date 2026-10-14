@@ -93,6 +93,7 @@ func reset() -> void:
 	my_inventory = Inventory.new()
 	my_stats = {}
 	terrain = TerrainData.new()
+	FireSim.reset()
 
 
 func _physics_process(delta: float) -> void:

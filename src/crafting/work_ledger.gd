@@ -18,6 +18,9 @@ static func contrib(d: Dictionary) -> Dictionary:
 		"cordage":
 			out["carbon"] = int(d.get("fibers", 2)) * ItemDB.unit_mass("fiber")
 			out["nutr"] = int(d.get("fibers", 2)) * ItemDB.nutrients("fiber")
+		"fire_drill":
+			out["carbon"] = ItemDB.unit_mass("hearth_board") + ItemDB.unit_mass("stick")
+			out["nutr"] = ItemDB.nutrients("hearth_board") + ItemDB.nutrients("stick")
 		"haft":
 			out["stone"] = float(d.get("head", {}).get("stone_kg", 0.0))
 			out["carbon"] = ItemDB.unit_mass("stick") + ItemDB.unit_mass("cordage")

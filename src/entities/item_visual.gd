@@ -5,6 +5,23 @@ extends RefCounted
 const STACK_OFFSETS := [Vector3(0, 0, 0), Vector3(0.05, 0.0, 0.04), Vector3(-0.04, 0.0, 0.05), Vector3(0.0, 0.04, -0.01)]
 
 
+const HIDDEN_KEYS := ["fm", "ch", "nu", "m0", "cook", "ft", "fpk", "sc", "boil", "heat", "mass"]
+
+
+static func visual_key(id: String, n: int, x: Dictionary) -> String:
+	## A key that changes only when the item would look different - not when a
+	## fire's bookkeeping or slow drying nudges a number.
+	var v := {}
+	for k in x:
+		if k in HIDDEN_KEYS:
+			continue
+		if k == "moist" and id != "pot":
+			v["wet"] = float(x[k]) > 0.3
+			continue
+		v[k] = snappedf(float(x[k]), 0.02) if k == "moist" else x[k]
+	return "%s|%d|%s" % [id, n, str(hash(v))]
+
+
 static func make(id: String, d: Dictionary = {}, n: int = 1) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Item_" + id
@@ -39,6 +56,20 @@ static func single(id: String, d: Dictionary = {}) -> Node3D:
 
 
 static func _proc(kind: String, id: String, d: Dictionary) -> Node3D:
+	# kinds that build their own node
+	match kind:
+		"tool":
+			return ToolVisual.make(id, d)
+		"pot":
+			if d.has("ro"):
+				return Pottery.make_instance(d)
+		"charred":
+			var from := String(d.get("from", "firewood"))
+			var inner := single(from if ItemDB.exists(from) and from != "charred_wood" else "firewood", {})
+			var fm := float(d.get("fm", 0.4))
+			var ch := float(d.get("ch", 0.2))
+			tint_char(inner, clampf(0.35 + ch / maxf(fm + ch, 0.001), 0.0, 1.0))
+			return inner
 	var mi := MeshInstance3D.new()
 	match kind:
 		"stone":
@@ -69,16 +100,28 @@ static func _proc(kind: String, id: String, d: Dictionary) -> Node3D:
 		"knapped":
 			mi.mesh = Knap.build_mesh(int(d.get("seed", 1)), d.get("cuts", []))
 			mi.material_override = Models.material_for("Stone")
-		"tool":
-			return ToolVisual.make(id, d)
 		"pot":
-			if d.has("ro"):
-				return Pottery.make_instance(d)
 			mi.mesh = ProcMesh.clay_lump(0.05, 5)
 			mi.material_override = Models.material_for("Clay")
 		_:
+			mi.free()
 			return _fallback(id)
 	return mi
+
+
+static func tint_char(node: Node, amount: float) -> void:
+	for mi in Models.mesh_instances(node):
+		var m := mi.material_override
+		if m is ShaderMaterial:
+			m = m.duplicate()
+			m.set_shader_parameter("char_amount", amount)
+			mi.material_override = m
+		for si in (mi.mesh.get_surface_count() if mi.mesh else 0):
+			var sm := mi.get_surface_override_material(si)
+			if sm is ShaderMaterial:
+				sm = sm.duplicate()
+				sm.set_shader_parameter("char_amount", amount)
+				Models.set_surface_unique(mi, si, sm)
 
 
 static func _fallback(id: String) -> Node3D:
