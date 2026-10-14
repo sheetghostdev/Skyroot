@@ -211,6 +211,8 @@ func _host() -> void:
 	check(Game.save() == OK, "the host saves the island")
 	_say("DONE")
 	await _frames(30)
+	World.delete_save(World.world_name)   # a test island shouldn't linger in the list
+	await _frames(30)
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +353,8 @@ func _crowd_host() -> void:
 	await get_tree().create_timer(22.0).timeout
 	check(Net.players.size() == 4, "a fifth player was turned away; still four here")
 	_say("DONE")
+	await _frames(30)
+	World.delete_save(World.world_name)
 	await _frames(30)
 
 

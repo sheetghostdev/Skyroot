@@ -650,6 +650,14 @@ func _migrate(data: Dictionary) -> Dictionary:
 	return data
 
 
+static func delete_save(name: String) -> void:
+	## Remove an island's save (and its listing) from disk.
+	var path := save_path(name)
+	for f in [path, path + ".meta", path + ".tmp"]:
+		if FileAccess.file_exists(f):
+			DirAccess.remove_absolute(f)
+
+
 static func list_saves() -> Array:
 	var out: Array = []
 	var dir := DirAccess.open(SAVE_DIR)

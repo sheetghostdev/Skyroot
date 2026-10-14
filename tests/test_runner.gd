@@ -32,6 +32,8 @@ func _ready() -> void:
 	print("\nRESULT: %d passed, %d failed" % [passes, failures])
 	for l in _log:
 		print(l)
+	# leave no test islands behind in the player's list
+	World.delete_save(World.world_name)
 	Sfx.shutdown()
 	await get_tree().create_timer(0.3).timeout
 	get_tree().quit(1 if failures > 0 else 0)
