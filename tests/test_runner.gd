@@ -1729,6 +1729,16 @@ func suite_drift() -> void:
 		print_parts_diff(P0, ledger_parts())
 
 
+func suite_start() -> void:
+	## Debug: what a brand-new island offers in its first minutes.
+	for e in World.entities_of("plant"):
+		print("     %-6s g=%.2f wild=%s at %s" % [e["d"]["sp"], float(e["d"]["g"]), str(e["d"].get("wild", false)), str(e["xf"].origin)])
+	for e in World.entities_of("bush"):
+		print("     bush berries=%.2f" % float(e["d"].get("berries", 0.0)))
+	for e in World.entities_of("mushrooms"):
+		print("     mushrooms caps=%s" % str(e["d"].get("caps", [])))
+
+
 func suite_pond() -> void:
 	var t := World.terrain
 	print("pond capacity %.1f L, pond_l %.1f L, level %.3f, bed at centre %.3f" % [t.pond_capacity(), float(World.env.get("pond_l", -1)), Game.game_world.island.water_level(), t.height(TerrainData.POND_CENTER.x, TerrainData.POND_CENTER.y)])

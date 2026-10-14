@@ -32,9 +32,11 @@ static func initial_entities(t: TerrainData) -> Array:
 	out.append({"t": "bush", "xf": ground_xf(t, Vector2(-5.9, -2.7), 1.3, -0.03), "d": {"berries": 1.0, "biomass": 6.0}})
 	out.append({"t": "plant", "xf": ground_xf(t, Vector2(5.35, 0.15), 0.0, -0.02),
 		"d": {"sp": "grain", "g": 1.0, "wild": true, "perennial": true, "protected": true, "nutr": 0.012, "bio": 1.0}})
-	for p in WILD_FIBER:
-		out.append({"t": "plant", "xf": ground_xf(t, p, rng.randf() * TAU, -0.02),
-			"d": {"sp": "fiber", "g": rng.randf_range(0.82, 1.0), "wild": true, "perennial": true, "nutr": 0.008, "bio": 0.6}})
+	for i in WILD_FIBER.size():
+		# two clumps are ripe on the first morning (fiber is the first tinder and cord); the rest nearly so
+		var g := 1.0 if i < 2 else rng.randf_range(0.85, 0.97)
+		out.append({"t": "plant", "xf": ground_xf(t, WILD_FIBER[i], rng.randf() * TAU, -0.02),
+			"d": {"sp": "fiber", "g": g, "wild": true, "perennial": true, "nutr": 0.008, "bio": 0.6}})
 	for p in WILD_TUBER:
 		out.append({"t": "plant", "xf": ground_xf(t, p, rng.randf() * TAU, -0.02),
 			"d": {"sp": "tuber", "g": 1.0, "wild": true, "perennial": true, "nutr": 0.016, "bio": 1.6}})
