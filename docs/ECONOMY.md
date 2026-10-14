@@ -11,7 +11,7 @@ edge.  Six quantities are conserved and audited by `Ledger.compute()`
 | nutrients | abstract units | soil cells, the tree (`tree_nutr`), grass (`grass_nutr`), crops, organic items, ash, compost, fire-site ash, bodies, losses |
 | clay | litres | the clay layer, clay items, pots and potsherds, clay in walls, spilled crumbs, losses |
 | soil | litres | the soil layer, earth items, earth on mounds and walls, losses |
-| stone | kg | loose stones in the outcrop, stones and knapped heads, knapping debris, losses |
+| stone | kg | the outcrop's rock and its loose stones, stones and knapped heads, knapping debris, losses |
 
 The grand totals never change.  The test suites assert this after every scenario —
 crafting, fires, construction, compost, crops, saving and loading, multiplayer
@@ -41,13 +41,16 @@ soil.  Burning leaves the minerals in the ash.
 covering mounds and daubing walls moves it back out.  Fired pots are clay; a cracked
 pot breaks into potsherds plus a few crumbs.
 
-**Stone.**  The outcrop holds a fixed number of loose stones.  Knapping turns part of
-a stone into a tool and the rest into debris; a worn-out tool head comes back as a
-dull shaped stone that can be knapped again.
+**Stone.**  Fifteen cobbles lie ready; after that, stone comes out of the outcrop's
+own rock — frost and sun crack one loose into an empty hollow every day and a half,
+and an islander can break one free sooner with a hammerstone or a tool.  The rock is
+large but finite, so the island never runs completely out of something to knap.
+Knapping turns part of a stone into a tool and the rest into debris; a worn-out tool
+head comes back as a dull shaped stone that can be knapped again.
 
 ## What the player experiences
 
-* There are as many stones as the outcrop holds — use them well.
+* New stone comes slowly — use every cobble well.
 * The tree, grass, crops, the bush and mushrooms regrow, but only from what the island
   can supply: dry weather and spent soil slow everything down.
 * Feeding the soil (compost, ash) keeps crops productive; farming without returning

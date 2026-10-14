@@ -157,7 +157,7 @@ static func entity_contrib(e: Dictionary) -> Dictionary:
 			var n := 0
 			for l in d.get("loose", []):
 				n += int(l)
-			out["stone"] = n * ItemDB.unit_mass("stone")
+			out["stone"] = n * ItemDB.unit_mass("stone") + float(d.get("rock", 0.0))
 		"satchel":
 			for s in d.get("items", []):
 				_add(out, item_contrib(String(s["i"]), int(s["n"]), s["d"]))

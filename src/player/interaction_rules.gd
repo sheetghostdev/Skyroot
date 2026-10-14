@@ -141,6 +141,14 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 				out["interact"] = opt("Pry loose a stone", "outcrop_take", {"eid": eid, "idx": int(part.get_slice(":", 1))}, "pick")
 			else:
 				_work_surface(out, p, t, held, hd, eid)
+				var loose: Array = d.get("loose", [])
+				if held == "stone" or tool == "chop" or tool == "dig":
+					if not loose.has(0):
+						out["primary"] = disabled("Break a stone loose", "There are loose stones here already.")
+					elif float(d.get("rock", 0.0)) < ItemDB.unit_mass("stone"):
+						out["primary"] = disabled("Break a stone loose", "The rock is worn down to its core.")
+					else:
+						out["primary"] = opt("Break a stone loose (%d%%)" % int(float(d.get("pry", 0.0)) * 100.0), "outcrop_break", {"eid": eid}, "swing" if tool != "" else "hammer", true)
 		"flat_stone", "boulder":
 			_work_surface(out, p, t, held, hd, eid)
 		"mushrooms":

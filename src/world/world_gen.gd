@@ -23,7 +23,7 @@ static func initial_entities(t: TerrainData) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261014
 	out.append({"t": "tree", "xf": ground_xf(t, TerrainData.TREE_POS, 0.4, -0.05), "d": TreeSim.new_state()})
-	out.append({"t": "outcrop", "xf": ground_xf(t, TerrainData.OUTCROP_POS, 2.6, -0.25), "d": {"loose": [1, 1, 1, 1, 1, 1, 1, 1]}})
+	out.append({"t": "outcrop", "xf": ground_xf(t, TerrainData.OUTCROP_POS, 2.6, -0.25), "d": {"loose": [1, 1, 1, 1, 1, 1, 1, 1], "rock": 360.0}})
 	out.append({"t": "flat_stone", "xf": ground_xf(t, TerrainData.FLAT_STONE_POS, 0.3, -0.06), "d": {}})
 	for b in BOULDERS:
 		out.append({"t": "boulder", "xf": ground_xf(t, b[0], b[2], -0.12), "d": {"model": b[1]}})

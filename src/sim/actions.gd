@@ -20,7 +20,7 @@ func _ready() -> void:
 	for nm in ["pickup", "drop", "place", "outcrop_take", "pick_mushroom", "pick_berries", "eat", "drink_pond",
 			"drink_vessel", "drink_entity", "fill_vessel", "eat_vessel", "hurt", "fell", "exert", "guide_state", "dig", "fill",
 			"till", "cut_grass", "tree_cut", "tree_chop_limb", "tree_fell", "process", "process_held", "harvest", "plant",
-			"fertilize", "pour", "inv_move", "inv_split", "inv_drop_slot", "respawn", "satchel_take", "split", "chat_cmd", "break_pot"]:
+			"fertilize", "pour", "inv_move", "inv_split", "inv_drop_slot", "respawn", "satchel_take", "split", "chat_cmd", "break_pot", "outcrop_break"]:
 		handlers[nm] = Callable(self, "_a_" + nm)
 	ActionsCraft.register(self)
 	ActionsFire.register(self)
@@ -328,6 +328,35 @@ func _a_outcrop_take(pid: int, args: Dictionary) -> void:
 	World.update(eid, {"loose": loose})
 	give(pid, "stone", 1)
 	World.fx("stone_break", at, {"sound": "stone_drop", "amount": 6})
+
+
+func _a_outcrop_break(pid: int, args: Dictionary) -> void:
+	## Strike the outcrop to crack a stone loose from its rock.
+	var eid := int(args.get("eid", -1))
+	var ent := World.get_entity(eid)
+	if ent.is_empty() or ent["t"] != "outcrop" or not in_reach(pid, args, ent["xf"].origin + Vector3(0, 0.5, 0), 0.8):
+		return
+	var id := held_id(pid, args)
+	var tool := ItemDB.tool_kind(id)
+	if not (id == "stone" or tool == "chop" or tool == "dig"):
+		return
+	var d: Dictionary = ent["d"]
+	if not d.get("loose", []).has(0):
+		World.notify(pid, "There are loose stones here already.")
+		return
+	if float(d.get("rock", 0.0)) < ItemDB.unit_mass("stone"):
+		World.notify(pid, "The rock is worn down to its core - nothing more will come free.")
+		return
+	var pry: float = float(d.get("pry", 0.0)) + (OutcropSim.PRY_TOOL if tool != "" else OutcropSim.PRY_STONE)
+	exert(pid, 0.03)
+	if tool != "":
+		Tools.wear(pid, args, 0.006)
+	World.fx("chips", ent["xf"].origin + Vector3(0, 0.6, 0), {"sound": "stone_break", "amount": 6})
+	if pry >= 1.0:
+		OutcropSim.shed(ent)
+		World.notify(pid, "A stone cracks free of the outcrop.")
+	else:
+		World.update(eid, {"pry": pry})
 
 
 func _a_pick_mushroom(pid: int, args: Dictionary) -> void:

@@ -6,18 +6,18 @@
     {
       "id": "mat_stone",
       "title": "Stone",
-      "summary": "Fifteen loose cobbles are all the workable stone the island has. Knapped into blades and tool heads, they slowly wear away.",
+      "summary": "Fifteen loose cobbles lie ready; after that, stone comes slowly out of the outcrop itself. Knapped into blades and tool heads, it wears away.",
       "keywords": ["stone", "rock", "cobble", "outcrop", "pry", "flint", "knap", "anvil", "boulder", "bedrock", "finite", "hammerstone"],
       "related": ["knapping", "tool_assembly", "island", "closed_island"],
       "items": ["stone", "stone_head", "blade"],
       "diagram": "knap_shapes",
       "sections": [
-        {"h": "Where it is", "text": "Seven cobbles lie in the grass, and eight more sit loose in the rocky outcrop to the east: look at one and press [key]E[/key] to pry it free. That is all there is. The outcrop, the flat stone and the boulders are part of the island and can't be taken, and the bedrock under the soil can't be dug."},
+        {"h": "Where it is", "text": "Seven cobbles lie in the grass, and eight more sit loose in the rocky outcrop to the east: look at one and press [key]E[/key] to pry it free. When the outcrop's hollows are empty, frost and sun crack a new stone loose about every day and a half. You can break one free sooner: hold a stone, an axe or a digging tool, look at the rock itself and hold [key]LMB[/key] - it takes several blows, and tools do it faster (and wear a little). The outcrop's rock is large but not endless. The flat stone and the boulders are part of the island and can't be taken, and the bedrock under the soil can't be dug."},
         {"h": "What it's for", "list": [
           "[b]Knapping[/b]: strike one stone with another to shape a cutting blade, an axe head or a digging blade. The hammerstone in your pack isn't used up; the stone you shape is.",
           "[b]Fire[/b]: stones set around a fire bed block the wind and hold some of its heat in."
         ]},
-        {"h": "How it runs out", "text": "Every blow knocks off flakes that are gone for good, and a stone that snaps leaves less to work with. A worn-out blade is gone entirely; a worn-out axe or digging tool gives back its handle and a dull, shapeless stone. Treat every cobble as precious."},
+        {"h": "How it runs out", "text": "Every blow knocks off flakes that are gone for good, and a stone that snaps leaves less to work with. A worn-out blade is gone entirely; a worn-out axe or digging tool gives back its handle and a dull, shapeless stone. Treat every cobble as precious: new ones come slowly."},
         {"tip": "Decide on the form before your first strike, rough it out with a few heavy blows, and finish with light taps. Most wasted stone comes from heavy blows struck too late."}
       ],
       "track": [

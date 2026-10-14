@@ -125,6 +125,45 @@ func suite_craft() -> void:
 	await test_clay_and_pottery()
 	var L1 := ledger()
 	ledger_same(L0, L1, "crafting")
+	await test_outcrop()
+	ledger_same(L1, ledger(), "outcrop")
+
+
+func test_outcrop() -> void:
+	print("-- the outcrop: pry stones, break more loose, let the weather crack them free")
+	var oc: Dictionary = World.entities_of("outcrop")[0]
+	var oid := int(oc["id"])
+	var v: Node = Game.game_world.entities.view(oid)
+	var taken := 0
+	for i in 8:
+		if int(World.get_entity(oid)["d"]["loose"][i]) == 0:
+			continue
+		var at: Vector3 = v.interaction_point("loose:%d" % i)
+		var away := Vector3(at.x - oc["xf"].origin.x, 0, at.z - oc["xf"].origin.z).normalized()
+		await stand_near(at + away * 1.0, Vector3.ZERO)
+		var before := inv().count("stone")
+		req("outcrop_take", {"eid": oid, "idx": i})
+		await frames(1)
+		taken += inv().count("stone") - before
+	check(not World.get_entity(oid)["d"]["loose"].has(1), "every loose stone pried free (%d)" % taken)
+	var rock0 := float(World.get_entity(oid)["d"].get("rock", 0.0))
+	await stand_near(oc["xf"].origin, Vector3(1.6, 0, 0.6))
+	var blows := 0
+	while not World.get_entity(oid)["d"]["loose"].has(1) and blows < 12:
+		req("outcrop_break", {"eid": oid, "slot": slot_of("stone")})
+		await frames(1)
+		blows += 1
+	check(World.get_entity(oid)["d"]["loose"].has(1), "a stone breaks free of the rock after %d blows" % blows)
+	check(absf(rock0 - float(World.get_entity(oid)["d"]["rock"]) - ItemDB.unit_mass("stone")) < 1e-4, "it came out of the outcrop's own rock")
+	var n_loose := 0
+	for l in World.get_entity(oid)["d"]["loose"]:
+		n_loose += int(l)
+	for i in 8:
+		OutcropSim.tick(10.0)
+	var n2 := 0
+	for l in World.get_entity(oid)["d"]["loose"]:
+		n2 += int(l)
+	check(n2 == n_loose + 2, "and frost and sun crack more loose over the days (%d -> %d)" % [n_loose, n2])
 
 
 func _work() -> Dictionary:
