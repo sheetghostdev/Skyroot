@@ -83,6 +83,24 @@ func host(port: int = DEFAULT_PORT) -> Error:
 	return OK
 
 
+func open_to_friends(port: int = DEFAULT_PORT) -> Error:
+	## Turn a solo session into a hosted one without touching the world:
+	## this machine stays peer 1, and friends can join from now on.
+	if is_online():
+		return OK
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_server(port, MAX_PLAYERS)
+	if err != OK:
+		return err
+	var keep_players := players.duplicate(true)
+	var keep_poses := poses.duplicate(true)
+	multiplayer.multiplayer_peer = peer
+	players = keep_players
+	poses = keep_poses
+	roster_changed.emit()
+	return OK
+
+
 func join(ip: String, port: int = DEFAULT_PORT) -> Error:
 	close()
 	var peer := ENetMultiplayerPeer.new()

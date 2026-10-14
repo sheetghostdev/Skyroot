@@ -41,11 +41,24 @@ func _ready() -> void:
 	info = UITheme.label(_invite_text(), 14, UITheme.TEXT_DIM)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(info)
+	if Net.is_host() and not Net.is_online():
+		var ob := UITheme.button("Open to friends now", _open, 300)
+		v.add_child(ob)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(spacer)
 	v.add_child(UITheme.button("Leave the island (main menu)", func(): Game.leave(), 300))
 	v.add_child(UITheme.button("Quit game", func(): Game.quit(), 300))
+
+
+func _open() -> void:
+	var err := Net.open_to_friends(Settings.port)
+	if err != OK:
+		Events.toast.emit("Couldn't open the island on port %d (%s). Is another game using it?" % [Settings.port, error_string(err)], "error")
+		return
+	Events.toast.emit("The island is open: friends can join now.", "info")
+	# reopen the menu so it shows the address to give them
+	hud.open_panel.call_deferred("pause")
 
 
 func _toggle_settings() -> void:
@@ -57,7 +70,7 @@ func _invite_text() -> String:
 	if not Net.is_host():
 		return "You are visiting %s's island." % Net.player_name(1)
 	if not Net.is_online():
-		return "Playing alone. To play with friends, choose 'Open to friends' when starting the island from the main menu."
+		return "Playing alone. Open the island to let friends on the same network (or over the internet, with the port forwarded) join you."
 	var addrs: PackedStringArray = []
 	for a in IP.get_local_addresses():
 		if a.count(".") == 3 and not a.begins_with("127.") and not a.begins_with("169.254"):

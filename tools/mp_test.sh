@@ -8,7 +8,12 @@ GODOT=${GODOT:-godot}
 OUT=${OUT:-/tmp/skyroot_mp}
 mkdir -p "$OUT"
 rm -f "$OUT"/*.log
-$GODOT --headless --path . -- --autostart=host --world=MPTest --new --name=Host --port=$PORT --mptest=host > "$OUT/host.log" 2>&1 &
+if [ -n "$OPEN_LATER" ]; then
+	# start alone and open the island to friends mid-session (pause menu: "Open to friends now")
+	$GODOT --headless --path . -- --autostart=solo --world=MPTest --new --name=Host --port=$PORT --mptest=host --open_later > "$OUT/host.log" 2>&1 &
+else
+	$GODOT --headless --path . -- --autostart=host --world=MPTest --new --name=Host --port=$PORT --mptest=host > "$OUT/host.log" 2>&1 &
+fi
 HOST=$!
 sleep 6
 $GODOT --headless --path . -- --autostart=join --ip=127.0.0.1 --port=$PORT --name=Ana --mptest=client > "$OUT/client.log" 2>&1

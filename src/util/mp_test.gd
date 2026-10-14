@@ -136,6 +136,10 @@ func _count_everywhere(id: String) -> int:
 
 
 func _host() -> void:
+	if Game.cli.has("open_later"):
+		# started alone: open the running island to friends, as the pause menu does
+		check(not Net.is_online(), "the island started solo")
+		check(Net.open_to_friends(int(Game.cli.get("port", str(Net.DEFAULT_PORT)))) == OK, "and was opened to friends mid-session")
 	_log("hosting, waiting for a player")
 	var joined := await _wait(func(): return Net.players.size() >= 2, 60.0)
 	check(joined, "a second player joined over the network")

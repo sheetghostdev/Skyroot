@@ -18,8 +18,9 @@ Built with **Godot 4.7** (GDScript, Forward+ renderer, Jolt physics).
 1. Open the project folder in Godot 4.7 (`project.godot`) and press **Play**, or run
    `godot --path .` from this folder.
 2. **Play** starts or continues an island; leave *Open to friends* ticked to host co-op
-   over LAN or direct IP (port 7777 by default).  Friends use **Join a friend** with
-   the host's address.
+   over LAN or direct IP (port 7777 by default) — or open a solo island later from
+   the pause menu (**Open to friends now**).  Friends use **Join a friend** with the
+   host's address, which the pause menu shows.
 
 Saves are kept per island in Godot's user folder (`user://saves/*.skyroot`); the host
 owns the save and autosaves every three minutes and on exit.
@@ -96,6 +97,7 @@ Multiplayer, as separate game instances on one machine:
 
 ```
 tools/mp_test.sh     # host + client: shared world, no duplication, leave and rejoin
+OPEN_LATER=1 tools/mp_test.sh   # the same, with a solo island opened to friends mid-session
 tools/mp_crowd.sh    # four players at once; a fifth is told the island is full
 ```
 
