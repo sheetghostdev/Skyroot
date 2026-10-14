@@ -29,6 +29,7 @@ var _glow := 0.0
 var _smoke := 0.0
 var _was_flaming := false
 var _shell_key := ""
+var _clods: Array = []
 
 
 static func soft_tex() -> Texture2D:
@@ -378,77 +379,152 @@ func _build_bed(d: Dictionary) -> void:
 
 
 func _build_dome(d: Dictionary) -> void:
-	## The earth shell: one patch per cell, as thick as the earth packed there.
-	## Vents are small dark holes with smoke curling out; uncovered gaps in an
-	## otherwise covered mound leak smoke too, so players can find them.
+	## The earth shell as one continuous mound: its thickness and colour follow
+	## how much earth is packed over each cell, smoothly blended between cells;
+	## where there is none, there is a hole.  Vents are small dark holes with
+	## smoke curling out; uncovered gaps in an otherwise covered mound leak
+	## smoke too, so players can find them.
 	for v in _vent_nodes:
 		v.queue_free()
 	_vent_nodes.clear()
 	var shell: Array = d.get("shell", [])
 	if float(d.get("shell_l", 0.0)) <= 0.0 or shell.is_empty():
 		dome.mesh = null
+		for c in _clods:
+			c.queue_free()
+		_clods.clear()
 		return
 	var rr := FireSim.dome_radii(d)
+	var covs := PackedFloat32Array()
+	covs.resize(FireSim.CELLS)
+	for k in FireSim.CELLS:
+		covs[k] = clampf(FireSim.coverage(d, k), 0.0, FireSim.SHELL_MAX)
+	var noise := FastNoiseLite.new()
+	noise.seed = entity_id
+	noise.frequency = 3.2
+	var NE := 16
+	var NA := 48
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var cov_v := PackedFloat32Array()
+	for i in NE + 1:
+		var el := lerpf(-0.06, PI * 0.5, float(i) / NE)
+		for j in NA:
+			var az := float(j) / NA * TAU
+			var c := _cov_at(covs, el, az)
+			cov_v.append(c)
+			var dir := Vector3(cos(el) * cos(az), sin(el), cos(el) * sin(az))
+			# packed by hand: broad lumps, smaller clods, a few deep finger marks
+			var lump := noise.get_noise_3dv(dir * 1.7) * 0.03 + noise.get_noise_3dv(dir * 5.0) * 0.016 + absf(noise.get_noise_3dv(dir * 13.0)) * -0.012
+			var thick := (0.012 + 0.05 * minf(c, 1.2)) * smoothstep(0.0, 0.35, c) + lump * smoothstep(0.1, 0.5, c)
+			var p := _dp(rr, maxf(el, -0.06), az, thick)
+			if i == 0:
+				p.y = -0.02
+			# packed earth: darker where it's thick and damp, paler and redder where thin
+			var shade := 0.7 + 0.45 * (noise.get_noise_3dv(dir * 9.0) * 0.5 + 0.5) * (0.85 + 0.3 * (noise.get_noise_3dv(dir * 31.0) * 0.5 + 0.5))
+			var col := Color(0.40, 0.29, 0.19).lerp(Color(0.52, 0.36, 0.24), clampf(1.0 - c, 0.0, 1.0) * 0.6) * shade
+			st.set_color(Color(col, 1.0).srgb_to_linear())
+			st.set_uv(Vector2(float(j) / NA, float(i) / NE))
+			st.add_vertex(p)
+	# the cap vertex closes the top
+	var cap_c := covs[FireSim.CELLS - 1]
+	st.set_color(Color(0.38, 0.28, 0.18).srgb_to_linear())
+	st.set_uv(Vector2(0.5, 1.0))
+	st.add_vertex(Vector3(0, rr.y + 0.012 + 0.05 * minf(cap_c, 1.2), 0))
+	var cap := (NE + 1) * NA
+	cov_v.append(cap_c)
+	# pick the winding once: front faces wind clockwise seen from outside
+	var flip := false
+	var p00 := _dp(rr, 0.3, 0.0, 0.0)
+	var p10 := _dp(rr, 0.3 + PI * 0.5 / NE, 0.0, 0.0)
+	var p01 := _dp(rr, 0.3, TAU / NA, 0.0)
+	if (p10 - p00).cross(p01 - p00).dot((p00 + p10 + p01) / 3.0) > 0.0:
+		flip = true
+	var tris: Array = []
+	for i in NE:
+		for j in NA:
+			var j2 := (j + 1) % NA
+			var a := i * NA + j
+			var b := (i + 1) * NA + j
+			var c2 := i * NA + j2
+			var e := (i + 1) * NA + j2
+			tris.append([a, b, c2])
+			tris.append([c2, b, e])
+	for j in NA:
+		tris.append([NE * NA + j, cap, NE * NA + (j + 1) % NA])
+	for t in tris:
+		# no earth there: leave the hole open
+		if (cov_v[t[0]] + cov_v[t[1]] + cov_v[t[2]]) / 3.0 < 0.22:
+			continue
+		if flip:
+			st.add_index(t[0])
+			st.add_index(t[2])
+			st.add_index(t[1])
+		else:
+			st.add_index(t[0])
+			st.add_index(t[1])
+			st.add_index(t[2])
+	st.generate_normals()
+	dome.mesh = st.commit()
+	# clods of earth pressed onto the surface break up its outline
+	for c in _clods:
+		c.queue_free()
+	_clods.clear()
 	var rng := RandomNumberGenerator.new()
-	rng.seed = entity_id
+	rng.seed = entity_id * 13 + 5
+	for n in 26:
+		var el2 := rng.randf_range(0.05, 1.35)
+		var az2 := rng.randf() * TAU
+		var cv := _cov_at(covs, el2, az2)
+		if cv < 0.5:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.mesh = ProcMesh.blob(rng.randf_range(0.025, 0.05), Color(0.36, 0.26, 0.17) * rng.randf_range(0.8, 1.1), 700 + n, 0.55)
+		mi.material_override = dome.material_override
+		mi.position = _dp(rr, el2, az2, 0.012 + 0.05 * minf(cv, 1.2) - 0.012)
+		mi.rotation = Vector3(rng.randf() * TAU, rng.randf() * TAU, 0.0)
+		add_child(mi)
+		_clods.append(mi)
+	# vents and leaks, cell by cell
 	var vents: Array = d.get("vents", [])
 	var bands: Array = FireSim.BANDS
 	var mostly := FireSim.shell_coverage(d) > 0.5
 	var leaks := 0
 	for k in FireSim.CELLS:
-		var cov := FireSim.coverage(d, k)
+		var cov := covs[k]
+		var mid_el := _cell_el(k, bands)
+		var mid_a := _cell_az(k)
 		if cov < 0.04:
 			if mostly and leaks < 6:
-				_add_leak(_dp(rr, _cell_el(k, bands), _cell_az(k), 0.0), false)
+				_add_leak(_dp(rr, mid_el, mid_a, 0.0), false)
 				leaks += 1
 			continue
-		var thick := 0.012 + 0.05 * cov
-		var col := Color(0.42, 0.31, 0.2) * (0.86 + 0.24 * rng.randf())
-		col.a = 1.0
-		if k == FireSim.CELLS - 1:
-			var top := Vector3(0, rr.y + thick, 0)
-			var e0 := deg_to_rad(80.0)
-			for jj in FireSim.AZ:
-				var a0 := float(jj) / FireSim.AZ * TAU
-				var a1 := float(jj + 1) / FireSim.AZ * TAU
-				_tri(st, top, _dp(rr, e0, a0, thick), _dp(rr, e0, a1, thick), col)
-			continue
-		var band := k / FireSim.AZ
-		var az := k % FireSim.AZ
-		var el0 := deg_to_rad(float(bands[band]))
-		var el1 := deg_to_rad(float(bands[band + 1]))
-		var a0b := float(az) / FireSim.AZ * TAU
-		var a1b := float(az + 1) / FireSim.AZ * TAU
-		# patches shrink toward their centre when only partly covered
-		var shrink := lerpf(0.55, 1.04, cov)
-		var mid_el := (el0 + el1) * 0.5
-		var mid_a := (a0b + a1b) * 0.5
-		var e0b := lerpf(mid_el, el0, shrink) if band > 0 else el0 - 0.03
-		var e1b := lerpf(mid_el, el1, shrink)
-		var b0 := lerpf(mid_a, a0b, shrink)
-		var b1 := lerpf(mid_a, a1b, shrink)
-		var subs := 2
-		for si in subs:
-			for sj in subs:
-				var ea := lerpf(e0b, e1b, float(si) / subs)
-				var eb := lerpf(e0b, e1b, float(si + 1) / subs)
-				var aa := lerpf(b0, b1, float(sj) / subs)
-				var ab := lerpf(b0, b1, float(sj + 1) / subs)
-				var q0 := _dp(rr, ea, aa, _bump(thick, ea, aa, k))
-				var q1 := _dp(rr, ea, ab, _bump(thick, ea, ab, k))
-				var q2 := _dp(rr, eb, ab, _bump(thick, eb, ab, k))
-				var q3 := _dp(rr, eb, aa, _bump(thick, eb, aa, k))
-				_tri(st, q0, q1, q2, col)
-				_tri(st, q0, q2, q3, col)
 		if k in vents:
-			_add_vent(_dp(rr, mid_el, mid_a, thick + 0.003), Vector3(cos(mid_el) * cos(mid_a), sin(mid_el), cos(mid_el) * sin(mid_a)))
+			_add_vent(_dp(rr, mid_el, mid_a, 0.012 + 0.05 * minf(cov, 1.2) + 0.003), Vector3(cos(mid_el) * cos(mid_a), sin(mid_el), cos(mid_el) * sin(mid_a)))
 		elif cov < 0.6 and mostly and leaks < 6:
-			_add_leak(_dp(rr, mid_el, mid_a, thick * 0.5), true)
+			_add_leak(_dp(rr, mid_el, mid_a, 0.02), true)
 			leaks += 1
-	st.generate_normals()
-	dome.mesh = st.commit()
+
+
+func _cov_at(covs: PackedFloat32Array, el: float, az: float) -> float:
+	## Earth coverage at a point on the dome, blended smoothly between cell centres.
+	var eld := rad_to_deg(clampf(el, 0.0, PI * 0.5))
+	var af := az / TAU * FireSim.AZ - 0.5
+	var a0 := int(floor(af))
+	var ta := af - a0
+	a0 = posmod(a0, FireSim.AZ)
+	var a1 := (a0 + 1) % FireSim.AZ
+	var bf := (eld - 10.0) / 20.0
+	if bf <= 0.0:
+		return lerpf(covs[a0], covs[a1], ta)
+	var b0 := int(floor(bf))
+	var tb := bf - b0
+	var lo := lerpf(covs[mini(b0, 3) * FireSim.AZ + a0], covs[mini(b0, 3) * FireSim.AZ + a1], ta)
+	if b0 >= 3:
+		# between the top band and the cap
+		return lerpf(lo, covs[FireSim.CELLS - 1], clampf(tb, 0.0, 1.0))
+	var hi := lerpf(covs[(b0 + 1) * FireSim.AZ + a0], covs[(b0 + 1) * FireSim.AZ + a1], ta)
+	return lerpf(lo, hi, tb)
 
 
 func _cell_el(k: int, bands: Array) -> float:
