@@ -24,7 +24,7 @@ from mathutils import Vector, Matrix, noise
 from mathutils.bvhtree import BVHTree
 
 import common as C
-from common import (pal, hexcol, lerp_col, mul_col, reset, material, new_object, select_only,
+from common import (pal, hexcol, lerp_col, mul_col, reset, material, new_object, select_only, join,
                     smooth_by_angle, flat, triangle_count, nz, bezier_points, export_glb,
                     render_preview, srgb_to_lin)
 
@@ -1255,3 +1255,28 @@ def face_attr(obj, name, default=0):
 
 def strip_plant_attrs(obj):
     strip_attrs(obj, ("part", "tint", "tw", "mossw", "clump", "tipw"))
+
+
+def plant_diamond(P, base, d, length, width, fold=0.3, droop=0.3, part=0, mat=0, tint=None, side_hint=None):
+    """Cheap 2-triangle leaf (base, two shoulders at 40%, drooping tip), folded along the midrib."""
+    base = Vector(base)
+    d = Vector(d).normalized()
+    s = Vector(side_hint) if side_hint is not None else d.cross(UP)
+    if s.length < 1e-4:
+        s = Vector((1, 0, 0))
+    s = (s - d * s.dot(d)).normalized()
+    n = s.cross(d).normalized()
+    if n.z < 0:
+        n = -n
+        s = -s
+    mid = base + d * length * 0.42
+    tip = base + d * length + Vector((0, 0, -droop * length))
+    vb = P.bm.verts.new(base)
+    vl = P.bm.verts.new(mid - s * width - n * fold * width)
+    vr = P.bm.verts.new(mid + s * width - n * fold * width)
+    vt = P.bm.verts.new(tip)
+    for v, t in ((vb, 0.0), (vl, 0.5), (vr, 0.5), (vt, 1.0)):
+        v[P.tw] = t
+    faces = [P.bm.faces.new((vb, vr, vt)), P.bm.faces.new((vb, vt, vl))]
+    P._tag(faces, part, mat, tint)
+    return faces

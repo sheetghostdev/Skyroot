@@ -127,9 +127,8 @@ def make_handle():
         f.smooth = False
     # bark left in a few facets near the thick end
     seg = 8
-    for k in range(0, 3):
-        for s in (1, 2, 5):
-            res["side"][k * seg + s].material_index = 2
+    for k, s_ in ((0, 1), (0, 2), (1, 2), (1, 5), (2, 5), (2, 6), (3, 1), (4, 6), (0, 6)):
+        res["side"][k * seg + s_].material_index = 2
     tag(bm, faces_verts(res["side"] + res["cap0"] + res["cap1"]), "len", 0.45)
     for capf in (res["cap0"], res["cap1"]):
         vs = faces_verts(capf)
@@ -181,10 +180,10 @@ def make_spindle():
 def make_hearth_board():
     bm = new_bm()
     T = 0.02
-    sx, sy = 0.055, 0.017      # burn socket (near the +Y edge)
-    xs = [-0.15, -0.115, -0.08, -0.045, -0.012, 0.018, 0.034, 0.044, 0.050, 0.055, 0.060, 0.066, 0.076,
-          0.092, 0.12, 0.15]
-    ys = [-0.035, -0.022, -0.010, 0.000, 0.009, 0.0135, 0.017, 0.0205, 0.025, 0.030, 0.035]
+    sx, sy = 0.055, 0.019      # burn socket (near the +Y edge)
+    xs = [-0.15, -0.115, -0.08, -0.045, -0.012, 0.018, 0.032, 0.043, 0.049, 0.055, 0.061, 0.067, 0.078,
+          0.094, 0.12, 0.15]
+    ys = [-0.035, -0.022, -0.010, 0.000, 0.008, 0.0135, 0.019, 0.0245, 0.029, 0.035]
 
     def notch_w(y):
         return 0.0045 + 0.0035 * clamp((y - sy) / (0.035 - sy))
@@ -192,8 +191,8 @@ def make_hearth_board():
     def ztop(x, y):
         z = T / 2 + 0.0010 * nz(V((x * 25.0, y * 25.0, 1.0)), 1.0, 2) + 0.0005 * math.sin(y * 420.0)
         d = math.hypot(x - sx, y - sy)
-        if d < 0.0095:
-            z -= 0.0068 * math.sqrt(max(0.0, 1.0 - (d / 0.0095) ** 2))
+        if d < 0.0115:
+            z -= 0.0080 * math.sqrt(max(0.0, 1.0 - (d / 0.0115) ** 2))
         if y > sy - 0.001:
             hw = notch_w(y)
             if abs(x - sx) < hw:
@@ -234,7 +233,7 @@ def make_hearth_board():
     for f in faces_top + faces_side:
         c = f.calc_center_median()
         d = math.hypot(c.x - sx, c.y - sy)
-        if d < 0.0098 or (c.y > sy and abs(c.x - sx) < notch_w(c.y) * 0.95 and c.z < T / 2 - 0.002):
+        if d < 0.0125 or (c.y > sy and abs(c.x - sx) < notch_w(c.y) * 1.1 and c.z < T / 2 - 0.0015):
             f.material_index = 2
     lay_w = tag_layer(bm, "w")
     for v in bm.verts:
@@ -248,8 +247,12 @@ def make_hearth_board():
             base = mix(col("wood"), col("wood_dark"), 0.3 + 0.35 * g)
             if c.n.z < -0.5:
                 base = sc(base, 0.85)
-            # soot halo around the socket
-            base = mix(base, col("#3B2C24"), 0.8 * smoothstep(0.03, 0.009, d))
+            # soot halo around the socket, plus a used older socket mark
+            base = mix(base, col("#3B2C24"), 0.85 * smoothstep(0.034, 0.010, d))
+            d2 = math.hypot(c.p.x + 0.045, c.p.y - sy)
+            base = mix(base, col("#5A4030"), 0.6 * smoothstep(0.016, 0.004, d2))
+            # grain lines along the board
+            base = sc(base, 0.93 + 0.07 * math.sin(c.p.y * 520.0 + 3.0 * nz(c.p * 30.0, 1.0, 1)))
             return sc(base, a)
         if c.m == "WoodEnd":
             return sc(mix(col("wood_end"), col("wood_ring"), 0.5 + 0.5 * math.sin(c.p.z * 900.0 + c.p.y * 300.0)), a)

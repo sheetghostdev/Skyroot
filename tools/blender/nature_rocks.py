@@ -194,9 +194,9 @@ def main():
         "boulder_b": dict(parts=[RockPart((0, 0, 0), (0.4, 0.36, 0.7), N.random_planes(10, random.Random(8), (0.6, 0.82)),
                                           roundness=0.045, seed=8)],
                           seed=8, moss=0.42, lean=(0.16, -0.1), squash_low=0.75, spin=1.1),
-        "boulder_c": dict(parts=[RockPart((-0.24, 0, 0), (0.58, 0.5, 0.36), N.random_planes(12, random.Random(14), (0.62, 0.86), 0.3, 1.3),
+        "boulder_c": dict(parts=[RockPart((-0.2, 0, 0), (0.49, 0.45, 0.33), N.random_planes(12, random.Random(14), (0.62, 0.86), 0.3, 1.3),
                                           roundness=0.05, seed=14),
-                                 RockPart((0.38, 0.06, -0.04), (0.42, 0.4, 0.31), N.random_planes(10, random.Random(15), (0.62, 0.86), 0.3, 1.3),
+                                 RockPart((0.31, 0.05, -0.04), (0.36, 0.35, 0.28), N.random_planes(10, random.Random(15), (0.62, 0.86), 0.3, 1.3),
                                           roundness=0.05, seed=15)],
                           seed=14, moss=0.6, spin=-0.3, squash_low=0.6, target=1400),
     }

@@ -94,12 +94,12 @@ def tuber_flower_stalk(P, base, h, lean, rng):
     nfl = 7
     for k in range(nfl):
         a = k / nfl * math.tau + rng.uniform(-0.3, 0.3)
-        r = 0.025 if k else 0.0
-        fc = top + V((math.cos(a) * r, math.sin(a) * r, 0.012 - r * 0.25))
+        r = 0.032 if k else 0.0
+        fc = top + V((math.cos(a) * r, math.sin(a) * r, 0.014 - r * 0.25))
         P.tube([top - V((0, 0, 0.005)), fc], [0.0012, 0.001], segs=3, part=STEM, mat=PLANT, tint=0.6,
                cap_start=False, cap_end=False)
         nrm = (V((math.cos(a) * r * 6, math.sin(a) * r * 6, 1.0))).normalized()
-        P.flower(fc, nrm, 0.011, petals=5, cup=0.2, part=PETAL, mat=PLANT, tint=rng.random(), rot0=rng.uniform(0, 1))
+        P.flower(fc, nrm, 0.014, petals=5, cup=0.2, part=PETAL, mat=PLANT, tint=rng.random(), rot0=rng.uniform(0, 1))
 
 
 def crop_tuber(stage, seed=1):
@@ -118,22 +118,22 @@ def crop_tuber(stage, seed=1):
         P.blade(top, d, 0.028, 0.011, bend=0.3, segs=3, fold=0.35, part=LEAF, mat=PLANT, tint=0.8, profile=ovate)
     else:
         n_leaves, L, W, h_tub, r_tub = {1: (5, 0.15, 0.055, None, 0.0), 2: (8, 0.31, 0.10, -0.012, 0.03),
-                                        3: (10, 0.42, 0.13, 0.0, 0.058)}[stage]
+                                        3: (10, 0.42, 0.13, 0.012, 0.072)}[stage]
         if r_tub:
-            tuber_body(P, V((0, 0, h_tub - r_tub * 0.35)), r_tub, 1.15, seed)
-        crown = V((0, 0, (h_tub + r_tub * 0.7) if r_tub else 0.0))
+            tuber_body(P, V((0, 0, h_tub - r_tub * 0.35)), r_tub, 1.05, seed)
+        crown = V((0, 0, (h_tub + r_tub * 0.62) if r_tub else 0.0))
         for k in range(n_leaves):
             a = k * GA * 1.0 + rng.uniform(-0.2, 0.2)
             young = k >= n_leaves - 3  # inner, younger leaves stand more upright
             elev = math.radians(rng.uniform(62, 74) if young else rng.uniform(40, 56))
             ll = L * (rng.uniform(0.6, 0.75) if young else rng.uniform(0.88, 1.08))
             ww = W * (0.75 if young else rng.uniform(0.9, 1.1))
-            base = crown + V((math.cos(a), math.sin(a), 0)) * (0.006 + r_tub * 0.25)
+            base = crown + V((math.cos(a), math.sin(a), 0)) * (0.006 + r_tub * 0.2)
             tuber_leaf(P, base, a, ll, ww, elev, droop=rng.uniform(0.6, 0.9) if not young else 0.35,
                        tint=rng.random(), pet_r=0.0035 + 0.0025 * stage)
         if stage == 3:
-            tuber_flower_stalk(P, crown, 0.43, V((0.03, -0.02, 0)), rng)
-            tuber_flower_stalk(P, crown + V((0.01, 0.01, 0)), 0.36, V((-0.05, 0.04, 0)), rng)
+            tuber_flower_stalk(P, crown, 0.39, V((0.03, -0.02, 0)), rng)
+            tuber_flower_stalk(P, crown + V((0.01, 0.01, 0)), 0.33, V((-0.05, 0.04, 0)), rng)
     return P
 
 
@@ -149,7 +149,7 @@ def grain_head(P, top, axis, length, ripe, rng):
     if side.length < 1e-3:
         side = V((1, 0, 0))
     side.normalize()
-    rmax = 0.0085
+    rmax = 0.0105
 
     def rmod(i, p, d):
         t = i / (n - 1)
@@ -195,7 +195,7 @@ def grain_stalk(P, base, height, lean_dir, lean, ripe, green_head, rng, nleaves=
         P2 = base + UP * h * 0.8 + lean_dir * lean * 0.55
         P3 = base + UP * h + lean_dir * lean
     pts = N.bezier_points(P0, P1, P2, P3, 7)
-    radii = [lerp(0.0042, 0.0026, k / 6) for k in range(7)]
+    radii = [lerp(0.0058, 0.0036, k / 6) for k in range(7)]
     P.tube(pts, radii, segs=3, part=STEM, mat=PLANT, tint=rng.random(), cap_start=False, cap_end=False)
     top = pts[-1]
     tan = (pts[-1] - pts[-2]).normalized()
@@ -203,14 +203,14 @@ def grain_stalk(P, base, height, lean_dir, lean, ripe, green_head, rng, nleaves=
         axis = (tan + lean_dir * 0.6 + V((0, 0, -1.1))).normalized()   # nodding head
     else:
         axis = (tan + V((0, 0, 0.3))).normalized()
-    grain_head(P, top - axis * 0.004, axis, rng.uniform(0.075, 0.09), ripe, rng)
+    grain_head(P, top - axis * 0.004, axis, rng.uniform(0.095, 0.11), ripe, rng)
     # stalk leaves
     for k in range(nleaves):
         t = 0.22 + 0.25 * k + rng.uniform(-0.04, 0.04)
         p, tn = N.point_at(pts, t)
         a = rng.uniform(0, math.tau)
         d = (V((math.cos(a), math.sin(a), 0)) * 0.55 + UP * 0.8).normalized()
-        P.blade(p, d, rng.uniform(0.17, 0.24), 0.0085, bend=rng.uniform(1.0, 1.5), segs=3, fold=0.3, part=LEAF,
+        P.blade(p, d, rng.uniform(0.18, 0.25), 0.011, bend=rng.uniform(1.0, 1.5), segs=3, fold=0.3, part=LEAF,
                 mat=PLANT, tint=rng.random(), profile=lanceolate)
 
 
@@ -235,18 +235,18 @@ def crop_grain(stage, seed=2):
                         segs=4, fold=0.3, part=LEAF, mat=PLANT, tint=rng.random(), profile=lanceolate)
     else:
         ripe = stage == 3
-        n = 11
-        H = 0.62 if stage == 2 else 0.7
+        n = 10
+        H = 0.66 if stage == 2 else 0.84
         for k, p in enumerate(spiral(n, 0.075, rng)):
             ang = math.atan2(p.y, p.x) if p.length > 1e-4 else 0.0
             ld = V((math.cos(ang), math.sin(ang), 0)) + V((rng.uniform(-0.3, 0.3), rng.uniform(-0.3, 0.3), 0))
-            lean = (0.04 + 0.6 * p.length) * (1.6 if ripe else 1.0) + rng.uniform(0.0, 0.03)
+            lean = (0.04 + 0.6 * p.length) * (1.4 if ripe else 1.0) + rng.uniform(0.0, 0.03)
             grain_stalk(P, p, H * rng.uniform(0.88, 1.05), ld, lean, ripe, not ripe, rng, nleaves=2)
         # a few basal leaves
-        for k in range(5):
+        for k in range(4):
             a = rng.uniform(0, math.tau)
             d = (V((math.cos(a), math.sin(a), 0)) * 0.7 + UP).normalized()
-            P.blade(V((math.cos(a) * 0.03, math.sin(a) * 0.03, 0)), d, rng.uniform(0.18, 0.26), 0.008,
+            P.blade(V((math.cos(a) * 0.03, math.sin(a) * 0.03, 0)), d, rng.uniform(0.18, 0.26), 0.011,
                     bend=1.4, segs=3, fold=0.3, part=LEAF, mat=PLANT, tint=rng.random(), profile=lanceolate)
     return P
 
@@ -259,7 +259,7 @@ def fiber_stem(P, base, height, lean_dir, lean, stage, rng):
     pts = N.bezier_points(base, base + UP * height * 0.4 + lean_dir * lean * 0.1,
                           base + UP * height * 0.75 + lean_dir * lean * 0.5, base + UP * height + lean_dir * lean, 6)
     pts = N.wobble(pts, 0.008, 6.0, rng.randint(0, 999), fix_start=1)
-    r0 = 0.0028 if stage >= 2 else 0.002
+    r0 = 0.0034 if stage >= 2 else 0.0024
     P.tube(pts, [lerp(r0, r0 * 0.55, k / 5) for k in range(6)], segs=3, part=STEM, mat=PLANT, tint=rng.random(),
            cap_start=False, cap_end=True)
     nl = 2 if stage >= 2 else 3
@@ -282,7 +282,7 @@ def fiber_stem(P, base, height, lean_dir, lean, stage, rng):
             P.blob(q + d * 0.006, 0.0065, squash=(1, 1, 1.35), freq=1, amp=0.05, part=BUD, mat=PLANT,
                    rot=d.to_track_quat("Z", "Y").to_matrix(), tint=rng.random())
     elif stage == 3:
-        nf = rng.choice((1, 2, 2, 3))
+        nf = rng.choice((2, 2, 3))
         for k in range(nf):
             a = k / nf * math.tau + rng.uniform(-0.4, 0.4)
             d = (tan + V((math.cos(a), math.sin(a), 0)) * (0.0 if nf == 1 else 0.8)).normalized()
@@ -290,8 +290,8 @@ def fiber_stem(P, base, height, lean_dir, lean, stage, rng):
             P.tube([top - tan * 0.01, q], [0.0013, 0.0011], segs=3, part=STEM, mat=PLANT, tint=0.5, cap_start=False,
                    cap_end=False)
             nrm = (d + V((math.cos(a), math.sin(a), 0)) * 0.25 + V((0, 0, 0.4))).normalized()
-            P.flower(q, nrm, rng.uniform(0.015, 0.019), petals=5, cup=0.3, part=PETAL, mat=PLANT, tint=rng.random(),
-                     notch=0.5, rot0=rng.uniform(0, 1))
+            P.flower(q, nrm, rng.uniform(0.021, 0.026), petals=5, cup=0.28, part=PETAL, mat=PLANT, tint=rng.random(),
+                     notch=0.55, rot0=rng.uniform(0, 1))
         if rng.random() < 0.6:  # a bud still to open
             a = rng.uniform(0, math.tau)
             d = (tan + V((math.cos(a), math.sin(a), 0)) * 0.7).normalized()
@@ -321,7 +321,7 @@ def crop_fiber(stage, seed=3):
         for k, p in enumerate(spiral(n, 0.085, rng)):
             ang = math.atan2(p.y, p.x) if p.length > 1e-4 else 0.0
             ld = V((math.cos(ang), math.sin(ang), 0))
-            lean = (0.02 + 0.45 * p.length) * (H / 0.9) + rng.uniform(0, 0.02)
+            lean = (0.02 + 0.9 * p.length) * (H / 0.9) + rng.uniform(0, 0.03)
             fiber_stem(P, p, H * rng.uniform(0.85, 1.05), ld, lean, stage, rng)
     return P
 
@@ -385,7 +385,8 @@ def crop_color_fn(kind, stage, ao, part, tint, tw):
             col = mix(col, soil, 0.6 * (1.0 - smoothstep(-0.03, 0.005, p.z)))
         elif pt == PETAL:
             if kind == "fiber":
-                col = mix(shift(pal("flower_p"), dv=0.12, ds=-0.2), pal("flower_p"), 0.4 + 0.6 * t)
+                fp = shift(pal("flower_p"), dh=-0.035, ds=0.15)
+                col = mix(shift(fp, dv=0.15, ds=-0.35), fp, smoothstep(0.0, 0.6, t))
                 col = shift(col, dh=0.02 * jit, dv=0.06 * jit)
             else:
                 col = mix(pal("flower_y"), pal("flower_w"), 0.35 + 0.65 * t) if t < 0.3 else pal("flower_w")
@@ -426,7 +427,10 @@ def main():
             bb = [ob.matrix_world @ V(c) for c in ob.bound_box]
             print(f"[crop_{kind}_s{stage}] height {max(v.z for v in bb):.2f} "
                   f"width {max(v.x for v in bb) - min(v.x for v in bb):.2f} zmin {min(v.z for v in bb):.2f}")
-            N.preview(f"crop_{kind}_s{stage}", [ob], views=((18, 35),), dist_mul=2.8 if stage else 3.5)
+            tall = kind in ("grain", "fiber") and stage >= 2
+            N.preview(f"crop_{kind}_s{stage}", [ob], views=((14 if tall else 22, 35),),
+                      dist_mul=3.9 if tall else (2.8 if stage else 3.5))
 
 
-main()
+if __name__ == "__main__":
+    main()

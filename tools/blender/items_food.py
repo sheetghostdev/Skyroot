@@ -64,6 +64,16 @@ def tuber_geo(bm, shrink=1.0, split=False, seed=3):
             for nb in (rings[ri][1], rings[ri][SEG - 1]):
                 nb.co.z += 0.0035 * w
                 nb[lay] = 0.5
+    # a few knobs
+    rngk = random.Random(seed * 5 + 1)
+    for kx, ka in ((-0.030, 1.2), (-0.006, -1.9), (0.016, 2.6), (0.034, -0.4), (0.002, 0.6)):
+        x = kx * shrink
+        rr = 0.028 * shrink
+        c = V((x, math.sin(ka) * rr * 0.92, math.cos(ka) * rr * 0.80))
+        if split and math.cos(ka) > 0.7:
+            continue
+        ellipsoid(bm, c, (0.0095 * shrink, 0.0078 * shrink, 0.0072 * shrink), seg=6, rings=4, mat=M["Fruit"],
+                  rot=Euler((ka, 0, rngk.uniform(0, 3.0))))
     # root tail
     t0 = V((xs[0] * shrink - 0.006, 0, -0.002))
     tail = [t0, t0 + V((-0.012, 0.002, -0.004)), t0 + V((-0.022, 0.006, -0.010)), t0 + V((-0.030, 0.012, -0.013))]
@@ -96,8 +106,8 @@ def make_tuber():
             return sc(mix(col("#7A8A45"), col("#C8C890"), 0.3 if c.n.x > 0.7 else 0.0), a)
         p = c.p
         m1 = nz(p * 40.0, 1.0, 2)
-        base = mix(col("#8A3550"), col("#5E2440"), 0.45 + 0.4 * m1)
-        base = mix(base, col("#A4485A"), 0.3 * clamp(nz(p * 18.0 + V((3, 1, 0)), 1.0, 1)))
+        base = mix(col("#6E2440"), col("#4A1630"), 0.45 + 0.4 * m1)
+        base = mix(base, col("#943A4C"), 0.35 * clamp(nz(p * 18.0 + V((3, 1, 0)), 1.0, 1)))
         eye = nz(p * 75.0 + V((7, 2, 1)), 1.0, 1)
         if eye > 0.55:
             base = mix(base, col("#3E1E28"), min(0.8, (eye - 0.55) * 3.5))

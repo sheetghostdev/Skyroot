@@ -822,14 +822,24 @@ def wood_end_color(ctx, rel_r, seed=0.0):
 
 
 def plank_color(ctx, seed=0.0, base=None):
-    """Hewn plank wood: grain streaks along tag u, knots, edge highlights."""
-    base = base or col("wood")
+    """Hewn plank wood: streaky grain along the board, per-board tint, darker edges."""
+    k = ctx.tag("k")
+    base = base or mix(col("wood"), col("#B89A78"), 0.5 * k)
+    if k > 0.7:
+        base = mix(base, col("#A89C88"), 0.35)            # a weathered, greyer board
     u = ctx.tag("u") * ctx.tag("len", 2.0)
     w = ctx.tag("w")
-    g = nz(V((u * 0.8 + seed, w * 9.0, seed * 2.0)), 1.0, 3)
-    c = mix(base, col("wood_dark"), 0.35 + 0.35 * g)
-    fine = nz(V((u * 3.0, w * 40.0 + seed, 1.7)), 1.0, 1)
-    c = sc(c, 1.0 + 0.07 * fine)
+    g = nz(V((u * 0.9 + seed + k * 7.0, w * 16.0, seed * 2.0)), 1.0, 3)
+    c = mix(base, col("wood_dark"), clamp(0.3 + 0.5 * g))
+    streak = nz(V((u * 3.5 + k * 3.0, w * 30.0, 1.7)), 1.0, 1)
+    c = mix(c, col("wood_end"), 0.25 * clamp(streak))
+    # knots
+    kn = nz(V((u * 2.2 + k * 11.0, w * 6.0, 4.4)), 1.0, 1)
+    if kn > 0.62:
+        c = mix(c, col("#6E5038"), min(0.7, (kn - 0.62) * 3.0))
+    # edges and undersides darker
+    upness = ctx.n.z
+    c = sc(c, 0.86 + 0.14 * clamp(upness))
     return c
 
 
@@ -921,9 +931,9 @@ def wood_rod(bm, pts, r0, r1=None, seg=8, seed=0, bark_mat=0, end_mat=1, noise_a
 
 def plank(bm, p0, p1, width, thick, up=(0, 0, 1), seed=0, mat=0, end_mat=None, rings=8,
           wobble=0.006, width_var=0.08, corner=0.35, m=2):
-    """Rough-hewn board from p0 to p1 (centre line), `width` across, `thick` along up."""
+    """Rough-hewn board from p0 to p1 (centre line), `width` across, `thick` along up.
+    10-point profile: chamfered corners plus a crowned centre line on both faces."""
     p0, p1 = V(p0), V(p1)
-    rng = random.Random(seed)
     pts = []
     profs = []
     d = p1 - p0
@@ -938,18 +948,30 @@ def plank(bm, p0, p1, width, thick, up=(0, 0, 1), seed=0, mat=0, end_mat=None, r
         pts.append(q)
         w = width * (1.0 + width_var * nz(V((t * 3.0, seed * 1.9, 7.1)), 1.0, 1))
         th = thick * (1.0 + 0.12 * nz(V((t * 3.0, seed * 1.9, 9.7)), 1.0, 1))
-        pr = prof_rrect(th / 2, w / 2, min(th / 2, w / 2) * corner * 2, m=m)
-        # slight skew/irregular edge
-        sk = 0.15 * th * nz(V((t * 4.0, seed, 2.2)), 1.0, 1)
-        pr = [(x + sk * (y / (w / 2)) * 0.5, y) for x, y in pr]
+        hn, hb = th / 2, w / 2
+        r = min(hn, hb) * corner * 2
+        sk = 0.15 * th * nz(V((t * 4.0, seed, 2.2)), 1.0, 1)          # slightly twisted / skewed
+        crown = 0.08 * th * (1.0 + 0.5 * nz(V((t * 3.0, seed, 5.5)), 1.0, 1))
+        off = 0.1 * hb * nz(V((t * 5.0, seed, 8.8)), 1.0, 1)           # wandering ridge line
+        pr = [(hn, hb - r), (hn - r, hb), (-hn + r, hb), (-hn, hb - r), (-hn - crown * 0.3, off),
+              (-hn, -hb + r), (-hn + r, -hb), (hn - r, -hb), (hn, -hb + r), (hn + crown, off)]
+        pr = [(x + sk * (y / hb) * 0.5, y) for x, y in pr]
         profs.append(pr)
     frames = path_frames_up(pts, upv)
     res = sweep(bm, pts, profs, frames=frames, cap0="flat", cap1="flat", mat=mat,
                 cap_mat0=end_mat, cap_mat1=end_mat, smooth=True)
     vs = faces_verts(res["side"] + res["cap0"] + res["cap1"])
     tag(bm, vs, "len", L)
-    # w: signed position across the width (for grain)
     tag(bm, vs, "w", lambda v: (v.co - p0).dot(side))
+    tag(bm, vs, "k", hash01(seed * 1.37 + 0.5))
+    for capf in (res["cap0"], res["cap1"]):
+        cvs = faces_verts(capf)
+        cc = V((0, 0, 0))
+        for v in cvs:
+            cc += v.co
+        cc /= len(cvs)
+        rmax = max((v.co - cc).length for v in cvs) or 1.0
+        tag(bm, cvs, "rr", lambda v, cc=cc, rmax=rmax: (v.co - cc).length / rmax)
     for f in res["cap0"] + res["cap1"]:
         f.smooth = False
     return res
