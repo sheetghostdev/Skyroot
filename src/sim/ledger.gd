@@ -92,13 +92,15 @@ static func compute() -> Dictionary:
 		+ float(pools.get("plant_water_l", 0.0)) + float(pools.get("porridge_water_l", 0.0)) + float(pools.get("lost_water_l", 0.0))
 	L["clay"] += t.total_clay_l() + float(pools.get("clay_spilled_l", 0.0)) + float(pools.get("lost_clay", 0.0))
 	L["soil"] += t.total_soil_l() + float(pools.get("lost_soil", 0.0))
-	L["nutr"] += t.total_nutrients() + float(pools.get("grass_nutr", 0.0)) + float(pools.get("tree_nutr", 0.0)) + float(pools.get("lost_nutr", 0.0))
+	L["nutr"] += t.total_nutrients() + float(pools.get("grass_nutr", 0.0)) + float(pools.get("tree_nutr", 0.0)) + float(pools.get("lost_nutr", 0.0)) \
+		+ float(pools.get("cut_grass_nutr", 0.0))
 	var grass_kg := 0.0
 	for k in t.grass.size():
 		if t.inside[k]:
 			grass_kg += t.grass[k]
 	L["carbon"] += float(pools.get("atmo_carbon_kg", 0.0)) + float(pools.get("soil_organic_kg", 0.0)) \
-		+ float(pools.get("soil_mineral_kg", 0.0)) + float(pools.get("lost_carbon", 0.0)) + grass_kg * PlantSim.GRASS_KG
+		+ float(pools.get("soil_mineral_kg", 0.0)) + float(pools.get("lost_carbon", 0.0)) + grass_kg * PlantSim.GRASS_KG \
+		+ float(pools.get("cut_grass_kg", 0.0))
 	L["stone"] += float(pools.get("debris_stone_kg", 0.0)) + float(pools.get("lost_stone", 0.0))
 	for e in World.entities.values():
 		_add(L, entity_contrib(e))

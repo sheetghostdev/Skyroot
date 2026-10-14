@@ -191,6 +191,10 @@ func _a_pickup(pid: int, args: Dictionary) -> void:
 	var id := String(d["i"])
 	var n := int(d["n"])
 	var x: Dictionary = d.get("x", {})
+	if x.has("cook"):
+		# (older saves kept cooking progress in the item; it only matters in the fire)
+		x = x.duplicate()
+		x.erase("cook")
 	var hot := float(d.get("heat", 20.0))
 	var space := inv(pid).space_for(id, x)
 	if space <= 0:
@@ -413,16 +417,28 @@ func _a_cut_grass(pid: int, args: Dictionary) -> void:
 		var take := minf(g, 0.6 if blade else 0.35)
 		World.terrain.grass[k] = g - take
 		removed += take
-	# grass cover is biomass: ~0.04 kg per cell of full cover
-	var kg := removed * 0.04
-	var units := int(floor(kg / ItemDB.unit_mass("grass") + _rng.randf()))
 	if removed <= 0.0:
 		World.notify(pid, "No grass left to cut here.")
 		return
-	var rest_kg := kg - units * ItemDB.unit_mass("grass")
-	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, rest_kg)
-	if units < 0 and rest_kg < 0.0:
-		pass
+	# grass cover is biomass and minerals; what's cut gathers into handfuls as
+	# soon as there is a whole one's worth (the wisps in between are counted too)
+	var kg := removed * PlantSim.GRASS_KG
+	var nu := removed * PlantSim.GRASS_NUTR
+	World.pools["grass_nutr"] = float(World.pools.get("grass_nutr", 0.0)) - nu
+	var bank_kg := float(World.pools.get("cut_grass_kg", 0.0)) + kg
+	var bank_n := float(World.pools.get("cut_grass_nutr", 0.0)) + nu
+	var um := ItemDB.unit_mass("grass")
+	var un := ItemDB.nutrients("grass")
+	var units := int(floor(minf(bank_kg / um, bank_n / un) + 1e-9))
+	bank_kg -= units * um
+	bank_n -= units * un
+	# more stalk than the minerals can make into handfuls just rots where it falls
+	var keep_kg := (bank_n / un + 1.0) * um
+	if bank_kg > keep_kg:
+		World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + (bank_kg - keep_kg)
+		bank_kg = keep_kg
+	World.pools["cut_grass_kg"] = bank_kg
+	World.pools["cut_grass_nutr"] = bank_n
 	if units > 0:
 		give(pid, "grass", units, {"moist": 0.65})
 	World.terrain_edited(Rect2i(TerrainData.cell_at(Vector2(pos.x, pos.z)) - Vector2i(3, 3), Vector2i(7, 7)))

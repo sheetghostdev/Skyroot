@@ -482,15 +482,19 @@ static func _inert_result(me: Dictionary, kind: String, Ti: float, dt: float, sm
 				x3["state"] = Pottery.moisture_state(float(x.get("moist", 0.0)))
 				World.update(int(me["id"]), {"x": x3})
 		"food":
-			var cook := float(x.get("cook", 0.0)) + dt * clampf((Ti - 90.0) / 150.0, 0.0, 1.6) / COOK_S
-			x["cook"] = cook
+			# how cooked it is lives on the thing lying in the fire, not in the item
+			# itself, so roasted food picked up stacks with the rest
+			var cook := float(md.get("ck", x.get("cook", 0.0))) + dt * clampf((Ti - 90.0) / 150.0, 0.0, 1.6) / COOK_S
+			md["ck"] = cook
 			var food := ItemDB.food(iid)
 			var n := int(md.get("n", 1))
 			if cook >= 1.0 and food.has("cooks_to"):
 				var to := String(food["cooks_to"])
 				out["atmo_c"] = n * (ItemDB.unit_mass(iid) - ItemDB.unit_mass(to))
 				out["ash_n"] = n * maxf(0.0, ItemDB.nutrients(iid) - ItemDB.nutrients(to))
-				World.update(int(me["id"]), {"i": to, "x": {"cook": cook}})
+				var xc := x.duplicate()
+				xc.erase("cook")
+				World.update(int(me["id"]), {"i": to, "x": xc, "ck": cook})
 			elif cook >= 2.6:
 				var nu := n * ItemDB.nutrients(iid)
 				var c := n * ItemDB.unit_mass(iid)

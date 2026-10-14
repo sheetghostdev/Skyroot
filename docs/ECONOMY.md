@@ -7,8 +7,8 @@ edge.  Six quantities are conserved and audited by `Ledger.compute()`
 | quantity | unit | where it lives |
 |---|---|---|
 | water | litres | soil moisture (per terrain cell), the pond, the air (`atmo_water_l`), juice in plants and berries (`plant_water_l`), water in porridge, in pots and wet clay, in compost heaps, in players' bodies, and what was spilled into the abyss (`lost_water_l`) |
-| carbon | kg of biomass-equivalent | the air's CO2 (`atmo_carbon_kg`), the tree, crops, grass, the bush, mushrooms and their log, every organic item, charcoal and ash, soil organic matter (`soil_organic_kg`, `soil_mineral_kg`), compost heaps, fire sites' ash, food scraps waiting in a body, and losses |
-| nutrients | abstract units | soil cells, the tree (`tree_nutr`), grass (`grass_nutr`), crops, organic items, ash, compost, fire-site ash, bodies, losses |
+| carbon | kg of biomass-equivalent | the air's CO2 (`atmo_carbon_kg`), the tree, crops, grass (and cut wisps not yet a handful, `cut_grass_kg`), the bush, mushrooms and their log, every organic item, charcoal and ash, soil organic matter (`soil_organic_kg`, `soil_mineral_kg`), compost heaps, fire sites' ash, food scraps waiting in a body, and losses |
+| nutrients | abstract units | soil cells, the tree (`tree_nutr`), grass (`grass_nutr`, `cut_grass_nutr`), crops, organic items, ash, compost, fire-site ash, bodies, losses |
 | clay | litres | the clay layer, clay items, pots and potsherds, clay in walls, spilled crumbs, losses |
 | soil | litres | the soil layer, earth items, earth on mounds and walls, losses |
 | stone | kg | the outcrop's rock and its loose stones, stones and knapped heads, knapping debris, losses |

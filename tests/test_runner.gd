@@ -626,6 +626,25 @@ func test_campfire() -> void:
 		req("pickup", {"eid": tub})
 		await frames(2)
 	check(inv().count("tuber_roasted") == 1, "picked the roasted tuber out of the fire")
+	# two more, roasted together: all three share one slot in the pack
+	var more := [place("tuber", 1, {}, c + Vector3(0.24, 0, 0.06)), place("tuber", 1, {}, c + Vector3(-0.24, 0, 0.04))]
+	for i in 30:
+		await run_fire(0.05)
+		var done := true
+		for m in more:
+			if World.has_entity(m) and String(World.get_entity(m)["d"]["i"]) != "tuber_roasted":
+				done = false
+		if done:
+			break
+	for m in more:
+		if World.has_entity(m):
+			req("pickup", {"eid": m})
+			await frames(2)
+	var slots_used := 0
+	for sl in inv().slots:
+		if not sl.is_empty() and String(sl["i"]) == "tuber_roasted":
+			slots_used += 1
+	check(inv().count("tuber_roasted") == 3 and slots_used == 1, "roasted food stacks (%d tubers in %d slot)" % [inv().count("tuber_roasted"), slots_used])
 	# carry fire on a stick and light a second fire with it
 	give("stick", 1)
 	req("fire_torch", {"eid": sid, "slot": slot_of("stick")})
@@ -1355,7 +1374,24 @@ func sim_hours(hours: float, step: float = 0.25, feed: bool = true) -> void:
 			await get_tree().physics_frame
 
 
+func test_grass_cutting() -> void:
+	print("-- cutting grass")
+	var spot := clear_soil_spot()
+	await stand_near(spot, Vector3(0, 0, 0.9))
+	give("blade", 1, {"seed": 9, "cuts": [], "q": 0.7, "stone_kg": 0.3, "dur": 1.0})
+	var L0 := ledger()
+	var g0 := inv().count("grass")
+	for i in 16:
+		var p := spot + Vector3((i % 4) * 0.35 - 0.5, 0, (i / 4) * 0.35 - 0.5)
+		p.y = World.terrain.height(p.x, p.z)
+		req("cut_grass", {"pos": p, "slot": slot_of("blade")})
+		await frames(1)
+	check(inv().count("grass") > g0, "a blade cuts grass into handfuls (%d)" % (inv().count("grass") - g0))
+	ledger_same(L0, ledger(), "cutting grass")
+
+
 func suite_farm() -> void:
+	await test_grass_cutting()
 	var L0 := ledger()
 	await test_compost()
 	var L1 := ledger()
