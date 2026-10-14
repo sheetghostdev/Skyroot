@@ -56,19 +56,8 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 		seep_total += l
 	# --- diffusion between neighbouring soil cells (conservative)
 	_diffuse(t, hours)
-	# --- soil wetter than it can hold against gravity seeps down and through the
-	# ground to the pond: rain on the island keeps the pond filled
-	var drained := 0.0
-	var dk := minf(1.0, DRAIN_RATE * hours)
-	for k in t.moist.size():
-		if not t.inside[k] or t.is_pond_cell(k):
-			continue
-		var m := t.moist[k]
-		if m > DRAIN_ABOVE:
-			var dm := (m - DRAIN_ABOVE) * dk
-			t.moist[k] = m - dm
-			drained += dm * cl
-	pond += drained
+	# --- soil wetter than it can hold against gravity seeps to the pond
+	pond += drain(t, hours)
 	# --- rain
 	var rain := float(World.env.get("rain", 0.0))
 	if rain > 0.0:
@@ -118,6 +107,24 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 			spill += per2 - s
 		pools["atmo_water_l"] = float(pools["atmo_water_l"]) + spill  # puddles evaporate
 	World.env["pond_l"] = pond
+
+
+static func drain(t: TerrainData, hours: float) -> float:
+	## Soil wetter than it can hold against gravity seeps down and through the
+	## ground toward the pond, so rain on the island keeps the pond filled.
+	## Returns the litres that reach it (the caller adds them to the pond).
+	var cl := cell_l()
+	var drained := 0.0
+	var dk := minf(1.0, DRAIN_RATE * hours)
+	for k in t.moist.size():
+		if not t.inside[k] or t.is_pond_cell(k):
+			continue
+		var m := t.moist[k]
+		if m > DRAIN_ABOVE:
+			var dm := (m - DRAIN_ABOVE) * dk
+			t.moist[k] = m - dm
+			drained += dm * cl
+	return drained
 
 
 static func _pond_area(t: TerrainData, litres: float) -> float:

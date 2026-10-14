@@ -1377,8 +1377,12 @@ func test_cut_regrown() -> void:
 		return
 	var d: Dictionary = _tree()["d"]
 	var si := 0
-	d["sb"][si] = 0.985                      # (set before the books are read)
-	d["store"] = maxf(float(d.get("store", 0.0)), 1.0)
+	# (set up before the books are read, moving matter rather than conjuring it)
+	d["store"] = float(d.get("store", 0.0)) + (1.0 - float(d["sb"][si])) * TreeSim.SMALL_KG - 0.015 * TreeSim.SMALL_KG
+	d["sb"][si] = 0.985
+	var top := maxf(0.0, 1.0 - float(d["store"]))
+	World.pools["atmo_carbon_kg"] = float(World.pools["atmo_carbon_kg"]) - top
+	d["store"] = float(d["store"]) + top
 	await _under("sb:%d" % si)
 	var L0 := ledger()
 	for k in 10:
@@ -1390,7 +1394,9 @@ func test_cut_regrown() -> void:
 	ledger_same(L0, ledger(), "cutting a branch the moment it's grown back (the reserve pays the rest)", TIGHT)
 	# with nothing in reserve it has to wait
 	d = _tree()["d"]
+	d["store"] = float(d["store"]) + (1.0 - float(d["sb"][1])) * TreeSim.SMALL_KG - 0.015 * TreeSim.SMALL_KG
 	d["sb"][1] = 0.985
+	World.pools["atmo_carbon_kg"] = float(World.pools["atmo_carbon_kg"]) + float(d["store"])
 	d["store"] = 0.0
 	await _under("sb:1")
 	for k in 10:
@@ -1523,6 +1529,12 @@ func test_island_renews() -> void:
 	print("-- the island renews itself")
 	# the mossy log, eaten bare, grows mushrooms again
 	var m: Dictionary = World.entities_of("mushrooms")[0]
+	# (the log's wood goes to the soil's humus and the caps' minerals into the log: nothing conjured away)
+	var caps0 := 0.0
+	for cp in m["d"]["caps"]:
+		caps0 += float(cp)
+	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + float(m["d"]["substrate"]) + caps0 * ItemDB.unit_mass("mushroom")
+	m["d"]["nutr"] = float(m["d"].get("nutr", 0.0)) + caps0 * ItemDB.nutrients("mushroom")
 	m["d"]["substrate"] = 0.0
 	m["d"]["caps"] = [0.0, 0.0, 0.0, 0.0]
 	var L0 := ledger()
@@ -1532,16 +1544,23 @@ func test_island_renews() -> void:
 		caps += float(cp)
 	check(float(World.get_entity(int(m["id"]))["d"]["substrate"]) > 0.1 and caps > 0.5, "a mossy log eaten bare grows mushrooms again (substrate %.2f kg, caps %.2f)" % [float(World.get_entity(int(m["id"]))["d"]["substrate"]), caps])
 	ledger_same(L0, ledger(), "a day and a half of mushrooms, humus and the soil breathing", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
-	# soaked ground drains to the pond
+	# soaked ground drains to the pond (soaked with water taken from the pond, not conjured)
 	var t := World.terrain
-	for k in t.moist.size():
-		if t.inside[k] and not t.is_pond_cell(k):
-			t.moist[k] = maxf(t.moist[k], 0.95)
-	var pond0 := float(World.env["pond_l"])
+	var cl := WaterSim.cell_l()
+	var wet := clear_soil_spot()
+	var moved := 0.0
+	for k in t.cells_in_radius(Vector2(wet.x, wet.z), 1.5):
+		if t.is_pond_cell(k) or moved >= 300.0:
+			continue
+		var l := maxf(0.0, 0.95 - t.moist[k]) * cl
+		t.moist[k] += l / cl
+		moved += l
+	World.env["pond_l"] = float(World.env["pond_l"]) - moved
 	var L1 := ledger()
-	await sim_hours(12.0, 0.25, false)
-	check(float(World.env["pond_l"]) > pond0 + 20.0, "soaked ground drains into the pond (%.0f L -> %.0f L)" % [pond0, float(World.env["pond_l"])])
-	ledger_same(L1, ledger(), "draining", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
+	var back := WaterSim.drain(t, 6.0)
+	World.env["pond_l"] = float(World.env["pond_l"]) + back
+	check(moved > 50.0 and back > moved * 0.05, "soaked ground drains back to the pond (%.0f L of %.0f L in 6 h)" % [back, moved])
+	ledger_same(L1, ledger(), "draining", {"water": 0.01})
 	# leaves left on the ground rot into it
 	var spot := clear_soil_spot()
 	var lv := place("leaves", 1, {}, spot)
