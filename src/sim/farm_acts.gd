@@ -34,6 +34,8 @@ func use_block(pid: int, c: Vector3i, target: int, slot: int, s: Dictionary, fac
 			return true
 	if Blocks.shape[target] == Blocks.Shape.LIQUID:
 		if id == "bowl" and String(s["d"].get("c", "")) == "":
+			if a.water.take(c, 1) < 1:
+				return true
 			if int(s["n"]) > 1:
 				inv.take_from(slot, 1)
 				a.give(pid, "bowl", 1, {"c": "water"})
@@ -43,7 +45,10 @@ func use_block(pid: int, c: Vector3i, target: int, slot: int, s: Dictionary, fac
 			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
 			return true
 		if id == "pot" and int(s["d"].get("w", 0)) < 3:
-			inv.set_data(slot, {"w": 3})
+			var got := a.water.take(c, 3 - int(s["d"].get("w", 0)))
+			if got < 1:
+				return true
+			inv.set_data(slot, {"w": int(s["d"].get("w", 0)) + got})
 			World.mark_inventory(pid)
 			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
 			return true

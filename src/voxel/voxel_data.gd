@@ -197,7 +197,10 @@ func box_free(box: AABB) -> bool:
 
 func liquid_at(p: Vector3) -> bool:
 	var c := cell_of(p)
-	return Blocks.shape[get_idv(c)] == Blocks.Shape.LIQUID
+	var id := get_idv(c)
+	if Blocks.shape[id] != Blocks.Shape.LIQUID:
+		return false
+	return p.y - c.y < ChunkMesher.liquid_h(get_m(c.x, c.y, c.z), get_id(c.x, c.y + 1, c.z) == id)
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +268,9 @@ func _test_cell(c: Vector3i, origin: Vector3, dir: Vector3, max_dist: float, ext
 			return {}
 		if Blocks.shape[id] == Blocks.Shape.LIQUID and not liquids:
 			return {}
-		box = Blocks.select.get(id, AABB())
+		box = Blocks.select_box(id, get_m(c.x, c.y, c.z))
+		if Blocks.shape[id] == Blocks.Shape.LIQUID:
+			box = AABB(Vector3.ZERO, Vector3(1, ChunkMesher.liquid_h(get_m(c.x, c.y, c.z), get_id(c.x, c.y + 1, c.z) == id), 1))
 		if not box.has_volume():
 			return {}
 	var world_box := AABB(box.position + Vector3(c), box.size)

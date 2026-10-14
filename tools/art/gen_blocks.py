@@ -356,6 +356,22 @@ def _():
     return img
 
 
+@tile("torch_head")
+def _():
+    # tow bound round the end of a stick, burning: glowing fibres between
+    # charred wraps of cord
+    n = fbm(105, ((4, 0.5), (16, 0.5)))
+    img = ramp(["#3a1408", "#7e2810", "#c24c1a", "#ee8a30", "#ffcc6a"], n ** 1.3, steps=5)
+    r = rnd(106)
+    for band in (7, 15, 23):
+        for x in range(S):
+            yy = band + (1 if (x // 5) % 2 else 0)
+            put(img, x, yy, "#2a1710")
+            if r.random() < 0.5:
+                put(img, x, yy + 1, "#3c2216")
+    return img
+
+
 @tile("planks")
 def _():
     img = blank()

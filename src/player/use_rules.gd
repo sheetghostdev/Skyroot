@@ -99,12 +99,18 @@ static func _be(be: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dicti
 				if not pot.is_empty():
 					return {"text": "Take the pot", "kind": "use"} if int(pot.get("stew", 0)) == 0 else {"text": "Stew is ready: ladle it with a bowl", "kind": "none"}
 				return {}
+			if id == "stick" and int(bd["sticks"]) >= FireActs.STICK_MAX:
+				return {"text": "No room for more sticks", "kind": "none"}
+			if ItemDB.fuel(id) == "tinder" and int(bd["tinder"]) >= FireActs.TINDER_MAX:
+				return {"text": "That's plenty of tinder", "kind": "none"}
+			if id == "firewood" and int(bd["logs"]) >= FireActs.LOG_MAX:
+				return {"text": "No room for more firewood", "kind": "none"}
 			if id == "stick":
-				return {"text": "Add a stick " + _count(int(bd["sticks"]), FireActs.STICK_MAX), "kind": "use"}
+				return {"text": "Add a stick " + _count(int(bd["sticks"]), FireActs.STICK_MAX), "kind": "use", "repeat": 0.3}
 			if ItemDB.fuel(id) == "tinder":
-				return {"text": "Tuck in tinder " + _count(int(bd["tinder"]), FireActs.TINDER_MAX), "kind": "use"}
+				return {"text": "Tuck in tinder " + _count(int(bd["tinder"]), FireActs.TINDER_MAX), "kind": "use", "repeat": 0.3}
 			if id == "firewood":
-				return {"text": "Add firewood " + _count(int(bd["logs"]), FireActs.LOG_MAX), "kind": "use"}
+				return {"text": "Add firewood " + _count(int(bd["logs"]), FireActs.LOG_MAX), "kind": "use", "repeat": 0.3}
 			if id == "firestarter" and not lit:
 				if int(bd["tinder"]) <= 0:
 					return {"text": "Needs tinder (dry grass) first", "kind": "none"}
@@ -132,11 +138,11 @@ static func _be(be: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dicti
 			if bool(bd.get("lit", false)):
 				return {}
 			if ItemDB.fuel(id) == "tinder" and int(bd["grass"]) < FireActs.KILN_GRASS:
-				return {"text": "Cover with dry grass " + _count(int(bd["grass"]), FireActs.KILN_GRASS), "kind": "use"}
+				return {"text": "Cover with dry grass " + _count(int(bd["grass"]), FireActs.KILN_GRASS), "kind": "use", "repeat": 0.3}
 			if (id == "stick" or id == "firewood") and int(bd["sticks"]) < FireActs.KILN_STICKS:
 				if int(bd["grass"]) < FireActs.KILN_GRASS:
 					return {"text": "Cover it with dry grass first", "kind": "none"}
-				return {"text": "Lay sticks over it " + _count(int(bd["sticks"]), FireActs.KILN_STICKS), "kind": "use"}
+				return {"text": "Lay sticks over it " + _count(int(bd["sticks"]), FireActs.KILN_STICKS), "kind": "use", "repeat": 0.3}
 			if id == "firestarter":
 				if int(bd["grass"]) < FireActs.KILN_GRASS or int(bd["sticks"]) < FireActs.KILN_STICKS:
 					return {"text": "Needs %d dry grass and %d sticks" % [FireActs.KILN_GRASS, FireActs.KILN_STICKS], "kind": "none"}
@@ -167,7 +173,7 @@ static func _be(be: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dicti
 				if all_raw:
 					return {"text": "Cover with dry grass: start a pit kiln", "kind": "use"}
 			if sneak:
-				return {"text": "Put it down here too", "kind": "use"}
+				return {"text": "Put it down here too", "kind": "use", "repeat": 0.3}
 			return {}
 		"jar":
 			return {"text": "Open the jar", "kind": "use"}

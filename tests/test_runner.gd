@@ -2,10 +2,10 @@ extends Node
 ## Headless test suites.  They drive the real game through the same requests
 ## the client sends, then check the world.
 ##
-##   godot --headless --path . res://tests/test_main.tscn -- --suite=core,blocks,craft,fire,kiln,survival,farm,save,longrun
+##   godot --headless --path . res://tests/test_main.tscn -- --suite=core,blocks,water,craft,fire,kiln,survival,farm,save,longrun
 ##   (--suite=all runs everything)
 
-const SUITES := ["core", "blocks", "craft", "fire", "kiln", "survival", "farm", "save", "longrun"]
+const SUITES := ["core", "blocks", "water", "craft", "fire", "kiln", "survival", "farm", "save", "longrun"]
 
 var passes := 0
 var fails := 0
@@ -303,9 +303,29 @@ func suite_blocks() -> void:
 			if Blocks.has_flag(World.block(Vector3i(tree.x, y, tree.z)), "tree"):
 				left += 1
 		check(left == 0, "the whole trunk came down (%d left)" % left)
-		var dropped := items_near(Vector3(tree), 3.0, "log_oak") + items_near(Vector3(tree), 3.0, "log_birch")
+		var dropped := items_near(Vector3(tree), 12.0, "log_oak") + items_near(Vector3(tree), 12.0, "log_birch")
 		check(dropped == logs, "every log drops (%d of %d)" % [dropped, logs])
 		check(int(inv().get_slot(0).get("d", {}).get("dur", dur0)) < dur0, "the axe wears")
+		# it topples: the logs lie out along the fallen trunk, and only turn up
+		# once it has come down
+		var stump := Vector3(tree) + Vector3(0.5, 0, 0.5)
+		var far_log := 0.0
+		var a_log := Vector3.ZERO
+		for e in World.entities_near(stump, 12.0, "item"):
+			if String(e["d"]["i"]).begins_with("log"):
+				var off: Vector3 = (e["xf"] as Transform3D).origin - stump
+				if Vector2(off.x, off.z).length() > far_log:
+					far_log = Vector2(off.x, off.z).length()
+					a_log = (e["xf"] as Transform3D).origin
+		check(far_log > 2.5, "the logs lie along the fallen trunk (%.1f out)" % far_log)
+		place_player(a_log)
+		a._pickup_t = 0.0
+		a._physics_process(0.2)
+		check(count("log_oak") + count("log_birch") == 0, "nothing to pick up while it is still falling")
+		await get_tree().create_timer(BlockActs.FALL_MS / 1000.0 + 0.1).timeout
+		a._pickup_t = 0.0
+		a._physics_process(0.2)
+		check(count("log_oak") + count("log_birch") > 0, "then the logs can be picked up")
 	# grass: nothing by hand, dry grass with a knife
 	var g := _find("tallgrass")
 	if check(g.x >= 0, "found tall grass"):
@@ -375,6 +395,116 @@ func suite_blocks() -> void:
 	clear_inv()
 	req("break", {"c": far, "slot": 0})
 	check(World.block(far) != 0, "can't break things far away")
+
+
+# ---------------------------------------------------------------------------
+# Water: finite, it flows and settles
+# ---------------------------------------------------------------------------
+
+func water_units(ctr: Vector3i, r: int) -> int:
+	var n := 0
+	var w := Blocks.id_of("water")
+	for z in range(ctr.z - r, ctr.z + r + 1):
+		for x in range(ctr.x - r, ctr.x + r + 1):
+			for y in range(maxi(0, ctr.y - r), mini(VoxelData.SY, ctr.y + r + 1)):
+				var c := Vector3i(x, y, z)
+				if World.block(c) == w:
+					n += a.water.level(c)
+	return n
+
+
+func suite_water() -> void:
+	var ws := a.water
+	var w := Blocks.id_of("water")
+	var pond := Vector3i(int(IslandGen.POND.x), IslandGen.TOP - 1, int(IslandGen.POND.y))
+	check(World.block(pond) == w, "the pond is where it should be")
+	var u0 := water_units(pond, 9)
+	# the pond as generated is at rest
+	for z in range(pond.z - 8, pond.z + 9):
+		for x in range(pond.x - 8, pond.x + 9):
+			for y in range(pond.y - 3, pond.y + 2):
+				if World.block(Vector3i(x, y, z)) == w:
+					ws._active[Vector3i(x, y, z)] = true
+	var steps := ws.settle()
+	check(water_units(pond, 9) == u0 and steps <= 2, "the pond rests as it is (%d units, %d steps)" % [u0, steps])
+	# dig beside it: water runs into the hole, and the pond goes down by as much
+	var bank := Vector3i(-1, -1, -1)
+	for z in range(pond.z - 8, pond.z + 9):
+		for x in range(pond.x - 8, pond.x + 9):
+			var c := Vector3i(x, pond.y, z)
+			if bank.x < 0 and Blocks.is_solid(World.block(c)) and World.block(c + Vector3i.UP) == 0:
+				for d in WaterSim.SIDES:
+					if World.block(c + d) == w:
+						bank = c
+	if check(bank.x >= 0, "found the bank"):
+		World.set_block(bank, 0)
+		World.set_block(bank + Vector3i.DOWN, 0)
+		ws.settle()
+		check(World.block(bank + Vector3i.DOWN) == w and ws.level(bank + Vector3i.DOWN) == 8, "water fills the hole dug beside the pond")
+		check(water_units(pond, 9) == u0, "and no water is made or lost (%d / %d)" % [water_units(pond, 9), u0])
+		check(ws.busy() == false, "then it rests")
+	# a block set into water pushes it aside
+	var u1 := water_units(pond, 9)
+	var top_w := Vector3i(-1, -1, -1)
+	for z in range(pond.z - 3, pond.z + 4):
+		for x in range(pond.x - 3, pond.x + 4):
+			var c := Vector3i(x, pond.y, z)
+			if World.block(c) == w and World.block(c + Vector3i.UP) == 0:
+				top_w = c
+	stand_near(top_w)
+	give("dirt", 1)
+	req("place", {"c": top_w, "slot": 0, "face": Vector3i.UP})
+	ws.settle()
+	check(World.block(top_w) == Blocks.id_of("dirt") and water_units(pond, 9) == u1, "a block put into the pond pushes the water aside (%d / %d)" % [water_units(pond, 9), u1])
+	# a bowl takes a little
+	var top2 := Vector3i(-1, -1, -1)
+	for z in range(pond.z - 3, pond.z + 4):
+		for x in range(pond.x - 3, pond.x + 4):
+			var c := Vector3i(x, pond.y, z)
+			if World.block(c) == w and World.block(c + Vector3i.UP) == 0 and ws.level(c) == 8:
+				top2 = c
+	stand_near(top2)
+	clear_inv()
+	give("bowl", 1)
+	use_on(top2, 0)
+	ws.settle()
+	check(String(inv().get_slot(0).get("d", {}).get("c", "")) == "water" and water_units(pond, 9) == u1 - 1, "filling a bowl takes one part of eight from the pond")
+	# poured on flat ground it spreads out thin, all of it
+	var f := flat_spot(36, 28)
+	World.set_block(f + Vector3i.UP, w, 0)
+	ws.settle()
+	var cells := 0
+	for z in range(f.z - 4, f.z + 5):
+		for x in range(f.x - 4, f.x + 5):
+			for y in range(f.y - 2, f.y + 3):
+				if World.block(Vector3i(x, y, z)) == w:
+					cells += 1
+	check(cells >= 3 and water_units(f, 6) == 8, "a block of water on open ground spreads out (%d cells, %d units)" % [cells, water_units(f, 6)])
+	# over the edge of the island it is gone
+	var edge := Vector3i(2, 50, 2)
+	check(World.vox.surface_y(2, 2) < 0, "open sky at the corner of the world")
+	World.set_block(edge, w, 0)
+	ws.settle()
+	check(water_units(edge, 3) == 0 and World.vox.ids.count(w) > 0, "water over the abyss falls away")
+	# rain pools in a hollow; a puddle dries in the sun
+	var hol := flat_spot(30, 40)
+	World.set_block(hol, 0)
+	var hc := hol
+	var walled := true
+	for d in WaterSim.SIDES:
+		if not (Blocks.is_solid(World.block(hc + d)) and Blocks.is_opaque(World.block(hc + d))):
+			walled = false
+	if walled:
+		ws.weather_at(hc.x, hc.z, 1.0, false, 0.0)
+		check(World.block(hc) == w and ws.level(hc) == 1, "rain collects in a hole")
+		ws.weather_at(hc.x, hc.z, 1.0, false, 0.0)
+		check(ws.level(hc) == 2, "and keeps filling it")
+		ws.set_level(hc, 1)
+		ws.weather_at(hc.x, hc.z, 0.0, true, 0.0)
+		check(World.block(hc) != w, "a thin puddle dries in the sun")
+	# swimming depends on how deep it is
+	World.set_block(hc, w, 7)
+	check(not World.vox.liquid_at(Vector3(hc) + Vector3(0.5, 0.4, 0.5)) and World.vox.liquid_at(Vector3(hc) + Vector3(0.5, 0.05, 0.5)), "a puddle is only ankle deep")
 
 
 func _find(nm: String) -> Vector3i:

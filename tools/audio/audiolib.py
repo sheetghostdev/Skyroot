@@ -58,7 +58,7 @@ SFX_GROUPS = {
                                            "pottery_crack", "pottery_tap"],
     "water": ["water_splash", "water_fill"] + variants("drink", 2) + ["sizzle"],
     "fire": ["fire_ignite", "ember_blow", "fire_out"],
-    "rope": variants("rope_twist", 3) + ["rope_tighten"],
+    "rope": variants("rope_twist", 3) + ["rope_tighten"] + variants("bow_drill", 3),
     "food": variants("eat", 3) + ["berry_pick"],
     "items_ui": ["pickup", "drop_item", "ui_click", "ui_hover", "ui_open", "ui_close",
                  "ui_error"] + variants("page_flip", 3)

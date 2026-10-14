@@ -1132,6 +1132,28 @@ def rope_twist(rng, v):
     return nz(creak) + 0.35 * nz(fib) + 0.12 * nz(rus)
 
 
+@sfx("bow_drill", 3)
+def bow_drill(rng, v):
+    """One push or pull of a bow drill: a soft wooden rub that swells and fades
+    with the bow's speed - short, low and dry, so it can repeat for a few
+    seconds without grating."""
+    dur = rng.uniform(0.32, 0.4)
+    n = N(dur)
+    t = tv(n)
+    speed = np.sin(np.pi * t / dur) ** 1.2
+    pul = stick_slip(rng, n, 55 + 90 * speed, speed ** 1.4, jitter=0.15, skip=0.08, lpf=2600)
+    rub = resonate(pul, [(310, 3, 0.9), (640, 4, 0.7), (1250, 3, 0.25)])
+
+    def g(tt, ff):
+        vv = np.interp(tt, t, speed)
+        return vv ** 2.0 * m_bp(ff, 500 + 500 * vv, 0.8) * m_lp(ff, 2500, 2)
+    hush = shaped_noise(rng, n, g, win=512)
+    x = rmsn(rub) + 0.35 * rmsn(hush)
+    x = lp(x, 3000)
+    x *= np.minimum(1.0, t / 0.03) * np.minimum(1.0, (dur - t) / 0.06)
+    return nz(x) * 0.55
+
+
 @sfx("rope_tighten")
 def rope_tighten(rng, v):
     """Rope hauled taut: a sliding zip, a rising creak, a taut thrum."""

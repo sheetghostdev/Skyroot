@@ -346,6 +346,8 @@ func _on_target(t: Dictionary) -> void:
 	var sh := UseRules.sneak_hint(t, p.held_stack())
 	if sh != "" and not Input.is_action_pressed("sneak"):
 		lines.append(sh)
+	if String(t.get("type", "")) == "be" and String(t["be"]["t"]) in ["knap", "clay"] and not p.sitting and lines.size() < prompt_lines.size():
+		lines.append("%s: sit down for a closer look" % Settings.key_label("sit"))
 	for i in prompt_lines.size():
 		prompt_lines[i].text = lines[i] if i < lines.size() else ""
 
@@ -390,13 +392,8 @@ func _target_name(t: Dictionary) -> String:
 					var r := String(d.get("r", ""))
 					var nm2 := ("Flint" if String(d.get("mat", "")) == "flint" else "Stone") + " for knapping"
 					if r != "":
-						var left := 0
-						var cells: PackedByteArray = d["cells"]
-						var mask: PackedByteArray = ItemDB.knapping[r]["mask"]
-						for i in 256:
-							if cells[i] == 1 and mask[i] == 0:
-								left += 1
-						nm2 = "%s: %s (%d cells to chip)" % [nm2, String(ItemDB.knapping[r]["label"]).to_lower(), left]
+						var left := CraftActs.edge_cells(d["cells"], ItemDB.knapping[r]["mask"])
+						nm2 = "%s: %s (%d red cells to chip)" % [nm2, String(ItemDB.knapping[r]["label"]).to_lower(), left]
 					return nm2
 				"clay":
 					var r2 := String(d.get("r", ""))

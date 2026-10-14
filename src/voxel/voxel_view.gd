@@ -16,6 +16,7 @@ var mat_cutout: ShaderMaterial
 var mat_water: ShaderMaterial
 var chunks: Dictionary = {}          # Vector3i -> MeshInstance3D
 var _lights: Dictionary = {}         # Vector3i -> Array[OmniLight3D]
+var _fixtures: Dictionary = {}       # Vector3i -> [key, Array[Node3D]]
 var _dirty: Dictionary = {}          # Vector3i -> true
 var _jobs: Dictionary = {}           # task id -> Vector3i
 var _results: Array = []
@@ -146,6 +147,7 @@ func _apply(k: Vector3i, r: Dictionary) -> void:
 			mi.queue_free()
 			chunks.erase(k)
 		_set_lights(k, PackedVector3Array())
+		_set_fixtures(k, [])
 		return
 	var mesh := ArrayMesh.new()
 	for key in ["solid", "cutout", "water"]:
@@ -161,6 +163,7 @@ func _apply(k: Vector3i, r: Dictionary) -> void:
 		chunks[k] = mi
 	mi.mesh = mesh
 	_set_lights(k, r.get("lights", PackedVector3Array()))
+	_set_fixtures(k, r.get("fixtures", []))
 
 
 func _set_lights(k: Vector3i, pts: PackedVector3Array) -> void:
@@ -179,6 +182,26 @@ func _set_lights(k: Vector3i, pts: PackedVector3Array) -> void:
 	for i in pts.size():
 		(have[i] as OmniLight3D).position = Vector3(k) * CS + pts[i]
 	_lights[k] = have
+
+
+func _set_fixtures(k: Vector3i, list: Array) -> void:
+	## Torches in this chunk: kept as they are unless they changed.
+	var key := str(list)
+	var have: Array = _fixtures.get(k, ["", []])
+	if have[0] == key:
+		return
+	for n in have[1]:
+		(n as Node).queue_free()
+	var nodes: Array = []
+	for f in list:
+		var t := TorchModel.make(true)
+		add_child(t)
+		t.place_block(Vector3(k) * CS + (f[0] as Vector3), int(f[2]))
+		nodes.append(t)
+	if nodes.is_empty():
+		_fixtures.erase(k)
+	else:
+		_fixtures[k] = [key, nodes]
 
 
 func _flicker(delta: float) -> void:

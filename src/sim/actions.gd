@@ -20,6 +20,7 @@ var blocks: BlockActs
 var fire: FireActs
 var craft: CraftActs
 var farm: FarmActs
+var water: WaterSim
 
 
 func _ready() -> void:
@@ -27,6 +28,7 @@ func _ready() -> void:
 	fire = FireActs.new(self)
 	craft = CraftActs.new(self)
 	farm = FarmActs.new(self)
+	water = WaterSim.new(self)
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +116,8 @@ func player_pos(pid: int) -> Vector3:
 func eye_pos(pid: int) -> Vector3:
 	var pose: Dictionary = Net.poses.get(pid, {})
 	var crouch := bool(pose.get("c", false))
+	if bool(pose.get("st", false)):
+		return player_pos(pid) + Vector3(0, 0.92, 0)
 	return player_pos(pid) + Vector3(0, 1.3 if crouch else EYE, 0)
 
 
@@ -170,9 +174,10 @@ func give_stack(pid: int, s: Dictionary, at := Vector3.INF) -> void:
 # Dropped items
 # ---------------------------------------------------------------------------
 
-func drop_item(id: String, n: int, d: Dictionary, p: Vector3, vel := Vector3.ZERO, by := 0) -> int:
+func drop_item(id: String, n: int, d: Dictionary, p: Vector3, vel := Vector3.ZERO, by := 0, wait_ms := 0) -> int:
 	## A stack lying in the world.  It lands on whatever is below; over the abyss
-	## it is gone.
+	## it is gone.  wait_ms: it only shows up (and can be picked up) after that
+	## long - for things still falling in an effect, like a toppling tree.
 	if n <= 0:
 		return -1
 	var land := p + Vector3(vel.x, 0, vel.z) * 0.35
@@ -182,7 +187,10 @@ func drop_item(id: String, n: int, d: Dictionary, p: Vector3, vel := Vector3.ZER
 		return -1
 	land.y = y
 	var t := Time.get_ticks_msec()
-	return World.spawn("item", Transform3D(Basis(Vector3.UP, randf() * TAU), land), {"i": id, "n": n, "d": d, "t": t, "by": by, "from": p})
+	var ed := {"i": id, "n": n, "d": d, "t": t + wait_ms, "by": by, "from": p}
+	if wait_ms > 0:
+		ed["w"] = wait_ms
+	return World.spawn("item", Transform3D(Basis(Vector3.UP, randf() * TAU), land), ed)
 
 
 func drop_stacks(stacks: Array, p: Vector3) -> void:
@@ -212,6 +220,7 @@ func resettle_items(c: Vector3i) -> void:
 func _physics_process(delta: float) -> void:
 	if not World.running:
 		return
+	water.step(delta)
 	_pickup_t -= delta
 	if _pickup_t > 0.0:
 		return
@@ -225,10 +234,13 @@ func _physics_process(delta: float) -> void:
 		for e in World.entities_near(p, PICKUP_R + 0.5, "item"):
 			var d: Dictionary = e["d"]
 			# what you just threw can't jump straight back into your hands
+			var age := now - int(d.get("t", 0))
+			if age < 0 and d.has("w"):
+				continue   # still falling
 			if not no_rate:
-				if int(d.get("by", 0)) == pid and now - int(d.get("t", 0)) < 1600:
+				if int(d.get("by", 0)) == pid and age < 1600:
 					continue
-				if now - int(d.get("t", 0)) < 350:
+				if age < 350:
 					continue
 			if (e["xf"].origin as Vector3).distance_to(p) > PICKUP_R:
 				continue

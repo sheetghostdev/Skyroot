@@ -114,6 +114,9 @@ func play(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 		"splash":
 			burst(pos, Color(0.7, 0.82, 0.92), 14, 0.04, 2.0, 9.0, 0.6, 0.2)
 			Sfx.play("water_fill", pos, -4.0)
+		"spill":
+			burst(pos, Color(0.7, 0.82, 0.92), 10, 0.04, 1.2, 9.0, 0.9, 0.3)
+			Sfx.play("water_splash", pos, -14.0, 1.0, 0.15)
 		"sizzle":
 			burst(pos, Color(0.8, 0.8, 0.8), 6, 0.1, 0.5, -0.8, 1.4, 0.1)
 			Sfx.play("sizzle", pos, -6.0)
@@ -121,6 +124,10 @@ func play(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 			var col := Color(0.35, 0.38, 0.44) if String(params.get("mat", "")) == "flint" else Color(0.55, 0.53, 0.5)
 			burst(pos, col, 5, 0.025, 2.4, 12.0, 0.5, 0.02)
 			Sfx.play("knap", pos, -2.0)
+		"knap_fall":
+			var colf := Color(0.35, 0.38, 0.44) if String(params.get("mat", "")) == "flint" else Color(0.55, 0.53, 0.5)
+			burst(pos, colf, clampi(int(params.get("n", 10)) / 3, 6, 30), 0.035, 1.6, 12.0, 0.7, 0.35)
+			Sfx.play("stone_drop", pos, -10.0)
 		"knap_fail":
 			burst(pos, Color(0.5, 0.48, 0.45), 16, 0.05, 2.0, 10.0, 0.8, 0.2)
 			Sfx.play("stone_break", pos, 0.0)
@@ -136,8 +143,10 @@ func play(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 			burst(pos + Vector3(0, 0.3, 0), Color(0.6, 0.6, 0.6), 16, 0.16, 0.7, -0.6, 2.6, 0.3)
 			Sfx.play("pottery_tap", pos, 0.0)
 		"tree_fall":
-			burst(pos, _block_col(b), 30, 0.09, 2.5, 4.0, 1.8, 1.5)
-			Sfx.play("tree_fall", pos, 0.0)
+			# the tree topples over (TreeFall plays the crash as it lands)
+			Sfx.play("tree_creak", pos + Vector3(0.5, 2.0, 0.5), -2.0)
+			burst(pos + Vector3(0.5, 0.4, 0.5), Color(0.55, 0.45, 0.32), 10, 0.05, 2.0, 10.0, 0.6, 0.3)
+			add_child(TreeFall.make(Vector3i(pos), params))
 		"harvest":
 			burst(pos, Color(0.3, 0.4, 0.8), 6, 0.03, 1.0, 8.0, 0.6, 0.2)
 			Sfx.play("berry_pick", pos, -4.0)

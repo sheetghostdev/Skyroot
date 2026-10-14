@@ -204,6 +204,11 @@ func knap(pid: int, args: Dictionary) -> void:
 			return
 		World.notify(pid, "That took a bit of the %s. (%d more and the stone splits.)" % [String(ItemDB.knapping[r]["label"]).to_lower(), MAX_MISS - miss + 1], "warn")
 	World.fx_except(pid, "knap", at, {"mat": d["mat"]})
+	# stone no longer attached to the shape falls away by itself: you only have
+	# to chip the cells that touch the shape
+	var fell := break_away(cells, mask)
+	if fell > 0:
+		World.fx("knap_fall", Vector3(c) + Vector3(0.5, 0.08, 0.5), {"mat": d["mat"], "n": fell})
 	# finished when nothing outside the outline is left
 	var left := 0
 	for k in N * N:
@@ -218,6 +223,56 @@ func knap(pid: int, args: Dictionary) -> void:
 		World.discover("first_knap", pid)
 		return
 	World.update(be["id"], {"cells": cells, "miss": miss})
+
+
+static func break_away(cells: PackedByteArray, mask: PackedByteArray) -> int:
+	## Remove every stone cell that is no longer joined (side by side) to what is
+	## left of the shape.  Returns how many fell away.
+	var keep := PackedByteArray()
+	keep.resize(N * N)
+	var q: Array[int] = []
+	for i in N * N:
+		if cells[i] == 1 and mask[i] == 1:
+			keep[i] = 1
+			q.append(i)
+	var head := 0
+	while head < q.size():
+		var i: int = q[head]
+		head += 1
+		var x := i % N
+		var z := i / N
+		for o in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+			var nx: int = x + o[0]
+			var nz: int = z + o[1]
+			if nx < 0 or nz < 0 or nx >= N or nz >= N:
+				continue
+			var j := nx + nz * N
+			if cells[j] == 1 and keep[j] == 0:
+				keep[j] = 1
+				q.append(j)
+	var fell := 0
+	for i in N * N:
+		if cells[i] == 1 and keep[i] == 0:
+			cells[i] = 0
+			fell += 1
+	return fell
+
+
+static func edge_cells(cells: PackedByteArray, mask: PackedByteArray) -> int:
+	## Waste cells still touching the shape: what is left to chip.
+	var n := 0
+	for i in N * N:
+		if cells[i] == 0 or mask[i] == 1:
+			continue
+		var x := i % N
+		var z := i / N
+		for o in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+			var nx: int = x + o[0]
+			var nz: int = z + o[1]
+			if nx >= 0 and nz >= 0 and nx < N and nz < N and mask[nx + nz * N] == 1 and cells[nx + nz * N] == 1:
+				n += 1
+				break
+	return n
 
 
 # ---------------------------------------------------------------------------

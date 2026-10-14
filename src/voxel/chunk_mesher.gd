@@ -247,6 +247,7 @@ static func _mesh(rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteAr
 	var cut := Surf.new()
 	var water := Surf.new()
 	var lights := PackedVector3Array()
+	var fixtures: Array = []
 	var opaque := Blocks.opaque
 	var shape := Blocks.shape
 	var face_tex := Blocks.face_tex
@@ -264,6 +265,10 @@ static func _mesh(rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteAr
 				var wy := cy * CS + ry - MARGIN
 				var wz := cz * CS + rz - MARGIN
 				var sh := shape[id]
+				if Blocks.fixture[id] == 1:
+					# a torch: its own model (and light) instead of chunk faces
+					fixtures.append([lp, id, rmeta[ci]])
+					continue
 				if Blocks.light[id] > 0:
 					lights.append(lp + Vector3(0.5, 0.75, 0.5))
 				if sh == Blocks.Shape.CUBE:
@@ -287,7 +292,7 @@ static func _mesh(rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteAr
 				elif sh == Blocks.Shape.BOXES:
 					_boxes(solid, rid, rl, ci, id, rmeta[ci], lp)
 				elif sh == Blocks.Shape.LIQUID:
-					_liquid(water, rid, rl, ci, id, lp)
+					_liquid(water, rid, rmeta, rl, ci, id, lp)
 	var out := {}
 	for k in [["solid", solid], ["cutout", cut], ["water", water]]:
 		var arr: Array = (k[1] as Surf).arrays()
@@ -295,6 +300,8 @@ static func _mesh(rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteAr
 			out[k[0]] = arr
 	if not lights.is_empty():
 		out["lights"] = lights
+	if not fixtures.is_empty():
+		out["fixtures"] = fixtures
 	return out
 
 
@@ -502,18 +509,36 @@ static func _boxes(s: Surf, rid: PackedByteArray, rl: PackedByteArray, ci: int, 
 		box_faces(s, bx["a"], bx["b"], bx["rot"], lp, bx["tex"], top_tex, col, cull)
 
 
-static func _liquid(s: Surf, rid: PackedByteArray, rl: PackedByteArray, ci: int, id: int, lp: Vector3) -> void:
+static func liquid_h(m: int, covered: bool) -> float:
+	## How high the water in a cell stands (block units): full under more water,
+	## otherwise by how many of its 8 units it holds.
+	if covered:
+		return 1.0
+	return 0.875 * float(8 - (m & 7)) / 8.0
+
+
+static func _liquid(s: Surf, rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteArray, ci: int, id: int, lp: Vector3) -> void:
 	var tex := Blocks.face_tex[id * 6]
 	var opaque := Blocks.opaque
-	var above := rid[ci + DY]
-	var h := 1.0 if above == id else 0.875
+	var h := liquid_h(rmeta[ci], rid[ci + DY] == id)
 	for f in 6:
 		var ni := ci + _face_off[f]
 		var nid := rid[ni]
-		if nid == id or opaque[nid] == 1:
-			continue
-		if f == 1 and Blocks.solid[nid] == 1:
-			continue
+		var lo := 0.0
+		if f == 0:
+			if nid == id:
+				continue
+		elif f == 1:
+			if nid == id or Blocks.solid[nid] == 1:
+				continue
+		else:
+			if opaque[nid] == 1:
+				continue
+			if nid == id:
+				# only the part that stands above the lower water next door
+				lo = liquid_h(rmeta[ni], rid[ni + DY] == id)
+				if lo >= h - 0.001:
+					continue
 		var face: Dictionary = FACES[f]
 		var corners: Array = face["c"]
 		var uvs: Array = face["uv"]
@@ -522,7 +547,8 @@ static func _liquid(s: Surf, rid: PackedByteArray, rl: PackedByteArray, ci: int,
 		var col := Color(1, 1, 1, _light_f(maxf(rl[ci], rl[ni])))
 		for k in 4:
 			var cp: Vector3 = corners[k]
-			s.v.append(lp + Vector3(cp.x, cp.y * h, cp.z))
+			var y := h if f == 0 else (0.0 if f == 1 else lerpf(lo, h, cp.y))
+			s.v.append(lp + Vector3(cp.x, y, cp.z))
 			s.n.append(n)
 			s.c.append(col)
 			s.uv.append(uvs[k])

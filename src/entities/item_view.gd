@@ -4,6 +4,7 @@ extends EntityView
 
 var pivot: Node3D
 var _t := 0.0
+var _wait := 0.0
 
 
 func _build() -> void:
@@ -24,7 +25,15 @@ func _build() -> void:
 		mi.rotation.y = i * 0.6
 		pivot.add_child(mi)
 	_t = randf() * 10.0
-	var from = d.get("from", null)
+	_wait = float(d.get("w", 0)) / 1000.0
+	if _wait > 0.0:
+		visible = false   # still part of something falling (a toppling tree)
+		return
+	_drop_in()
+
+
+func _drop_in() -> void:
+	var from = data().get("from", null)
 	if from is Vector3 and (from as Vector3).distance_to(position) > 0.05:
 		_fall_from(from)
 
@@ -45,5 +54,10 @@ func _moved(xf: Transform3D) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _wait > 0.0:
+		_wait -= delta
+		if _wait <= 0.0:
+			visible = true
+			_drop_in()
 	pivot.rotation.y = _t * 0.8
 	pivot.position.y = sin(_t * 2.0) * 0.03 + 0.03

@@ -30,6 +30,7 @@ var _chip_t := 0.0
 var _last_sub := -1
 var _cooldown := 0.0
 var _last_key := ""
+var _again := false
 
 var _outline: MeshInstance3D
 var _outline_mesh: ImmediateMesh
@@ -457,15 +458,21 @@ func _handle_rmb(delta: float) -> void:
 			return
 		_hold_t += delta
 		var kind := String(_hold_rule.get("kind", ""))
-		if kind == "ignite":
+		if kind == "ignite" and float(_hold_rule.get("hold", 0.0)) > 1.0:
+			# one soft rub per stroke of the bow
 			_repeat_t -= delta
 			if _repeat_t <= 0.0:
-				_repeat_t = 0.45
-				Sfx.play("drill_spin", target.get("point", player.global_position), -8.0)
+				_repeat_t = 0.35
+				Sfx.play("bow_drill", target.get("point", player.global_position), -12.0, 1.0, 0.1)
 		if _hold_t >= _hold_need:
 			_finish_hold()
 		return
 	var kind2 := String(rmb_rule.get("kind", ""))
+	if _again:
+		_again = false
+		if held and (kind2 == "eat" or kind2 == "drink"):
+			_start(rmb_rule)
+			return
 	if pressed:
 		_repeat_t = float(rmb_rule.get("repeat", 0.0))
 		_start(rmb_rule)
@@ -525,7 +532,6 @@ func _finish_hold() -> void:
 			Sfx.play("drink", player.global_position + Vector3(0, 1.5, 0), -4.0)
 		"ignite":
 			World.request("ignite", {"c": t["cell"], "slot": player.hotbar})
-	var again := kind == "drink" and Input.is_action_pressed("secondary")
+	# keep the button held and you keep eating / drinking, one after another
+	_again = (kind == "drink" or kind == "eat") and Input.is_action_pressed("secondary")
 	cancel()
-	if again:
-		_start(rmb_rule)

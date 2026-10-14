@@ -5,6 +5,7 @@ extends RefCounted
 
 const NATURAL := 8          # meta bit: a log that grew (felling takes the whole tree)
 const MAX_TREE := 80
+const FALL_MS := 1500      # how long a felled tree takes to come down
 
 var a: Actions
 
@@ -120,8 +121,14 @@ func remove_block(c: Vector3i) -> void:
 	# what stood on it
 	var up := c + Vector3i.UP
 	var uid := World.block(up)
-	if uid != 0 and String(Blocks.def(uid).get("attach", "")) in ["ground", "soil", "farmland"]:
+	if uid != 0 and String(Blocks.def(uid).get("attach", "")) in ["ground", "soil", "farmland"] and not Blocks.on_wall(uid, World.block_meta(up)):
 		_pop(up, uid)
+	# what hung on its sides
+	for d in Blocks.WALL_DIRS:
+		var n: Vector3i = c - d
+		var nid := World.block(n)
+		if Blocks.on_wall(nid, World.block_meta(n)) and Blocks.wall_dir(World.block_meta(n)) == d:
+			_pop(n, nid)
 	var upbe := World.be(up)
 	if not upbe.is_empty():
 		_break_be(0, upbe, true)
@@ -190,7 +197,6 @@ func _fell(pid: int, c: Vector3i, id: int, slot: int) -> void:
 			if World.block(n) == leaf_id and not _other_tree_near(n, seen):
 				leaves.append(n)
 				lq.append([n, depth + 1])
-	var base := Vector3(c) + Vector3(0.5, 0.2, 0.5)
 	var sticks := 0
 	var saplings := 0
 	for p in leaves:
@@ -203,21 +209,86 @@ func _fell(pid: int, c: Vector3i, id: int, slot: int) -> void:
 		World.set_block(p, 0)
 	for p in logs:
 		remove_block(p)
+	# it topples away from you (onto open ground if it can), and what it was
+	# made of lands along where the trunk came down
+	var dir := _fall_dir(pid, c, logs)
+	var reach := _fall_reach(c, dir)
+	var pivot := Vector3(c) + Vector3(0.5, 0.0, 0.5) + Vector3(dir) * 0.5
+	var land := func(along: float, side: float) -> Vector3:
+		var side_v := Vector3(-dir.z, 0, dir.x)
+		var spot := pivot + Vector3(dir) * minf(along, reach) + side_v * side + Vector3(0, 1.2, 0)
+		if World.vox.rest_height(spot) == -INF:
+			# not over the edge of the island: what would fall off stays by the stump
+			spot = Vector3(c) + Vector3(0.5 + randf_range(-0.6, 0.6), 1.2, 0.5 + randf_range(-0.6, 0.6))
+		return spot
 	var item := ItemDB.item_of_block(id)
-	var spread := func() -> Vector3: return base + Vector3(randf_range(-0.9, 0.9), 0.0, randf_range(-0.9, 0.9))
-	var n := logs.size()
-	while n > 0:
-		var k := mini(n, 4)
-		a.drop_item(item, k, {}, spread.call())
-		n -= k
+	var per := 1 if logs.size() <= 10 else 2
+	var top_h := 0
+	var k := 0
+	for p in logs:
+		top_h = maxi(top_h, p.y - c.y)
+	while k < logs.size():
+		var p: Vector3i = logs[k]
+		var off := Vector3(p - c)
+		var side := off.x * -dir.z + off.z * dir.x
+		var n := mini(per, logs.size() - k)
+		a.drop_item(item, n, {}, land.call(float(p.y - c.y) + 0.5, side + randf_range(-0.15, 0.15)), Vector3.ZERO, 0, FALL_MS)
+		k += n
+	var crown := float(top_h) * 0.85 + 0.5
 	if sticks > 0:
-		a.drop_item("stick", sticks, {}, spread.call())
+		a.drop_item("stick", sticks, {}, land.call(crown + randf_range(-0.8, 0.8), randf_range(-1.2, 1.2)), Vector3.ZERO, 0, FALL_MS)
 	if saplings > 0 or randf() < 0.6:
-		a.drop_item("sapling_oak" if leaf_id == Blocks.id_of("leaves_oak") else "sapling_birch", maxi(1, saplings), {}, spread.call())
+		var sap := "sapling_oak" if leaf_id == Blocks.id_of("leaves_oak") else "sapling_birch"
+		a.drop_item(sap, maxi(1, saplings), {}, land.call(crown + randf_range(-0.8, 0.8), randf_range(-1.2, 1.2)), Vector3.ZERO, 0, FALL_MS)
 	a.wear_tool(pid, slot, 1 + logs.size() / 3)
-	var top := Vector3(c) + Vector3(0.5, float(logs.size()) * 0.7, 0.5)
-	World.fx("tree_fall", top, {"b": leaf_id, "logs": logs.size()})
+	# everyone sees the same tree come down (cells relative to the stump)
+	var rl := PackedInt32Array()
+	for p in logs:
+		rl.append_array([p.x - c.x, p.y - c.y, p.z - c.z])
+	var rv := PackedInt32Array()
+	for p in leaves:
+		rv.append_array([p.x - c.x, p.y - c.y, p.z - c.z])
+	World.fx("tree_fall", Vector3(c), {"b": leaf_id, "log": id, "logs": rl, "leaves": rv, "dir": dir, "reach": reach, "ms": FALL_MS})
 	a.flag_player(pid, "felled_tree")
+
+
+func _fall_dir(pid: int, c: Vector3i, logs: Array[Vector3i]) -> Vector3i:
+	## Away from whoever felled it, unless that way is the abyss or a wall and
+	## another way is clear.
+	var away := Vector3(c) + Vector3(0.5, 0, 0.5) - a.player_pos(pid)
+	away.y = 0.0
+	var first := Vector3i(signi(roundi(away.x)) if absf(away.x) >= absf(away.z) else 0, 0, 0 if absf(away.x) >= absf(away.z) else signi(roundi(away.z)))
+	if first == Vector3i.ZERO:
+		first = Vector3i(1, 0, 0)
+	var h := 1
+	for p in logs:
+		h = maxi(h, p.y - c.y + 1)
+	var best := first
+	var best_s := -INF
+	for d in [first, Vector3i(-first.z, 0, first.x), Vector3i(first.z, 0, -first.x), -first]:
+		var s := 0.0
+		for i in range(1, h + 1):
+			var q := Vector3(c + d * i) + Vector3(0.5, 1.2, 0.5)
+			if World.vox.rest_height(q) == -INF:
+				s -= 3.0   # over the edge
+			elif i <= _fall_reach(c, d):
+				s += 1.0
+		if d == first:
+			s += 1.5
+		if s > best_s:
+			best_s = s
+			best = d
+	return best
+
+
+func _fall_reach(c: Vector3i, d: Vector3i) -> float:
+	## How far along d the trunk can lie before it meets something solid.
+	for i in range(1, 16):
+		var q := c + d * i
+		for b in [World.block(q), World.block(q + Vector3i.UP)]:
+			if Blocks.is_solid(b) and not Blocks.has_flag(b, "leaves"):
+				return float(i) - 0.5
+	return 16.0
 
 
 func _other_tree_near(p: Vector3i, mine: Dictionary) -> bool:
@@ -282,7 +353,9 @@ func place(pid: int, args: Dictionary) -> void:
 	var id := ItemDB.block_of(String(s["i"]))
 	if id < 0 or not World.cell_free(c):
 		return
-	if not can_stand(id, c):
+	# a torch put against the side of a block hangs on it
+	var on_wall := Blocks.wall[id] == 1 and face.y == 0 and face != Vector3i.ZERO and Blocks.is_solid(World.block(c - face)) and Blocks.is_opaque(World.block(c - face))
+	if not on_wall and not can_stand(id, c):
 		var at := String(Blocks.def(id).get("attach", ""))
 		if at == "soil":
 			World.notify(pid, "That needs soil to grow in.", "warn")
@@ -294,12 +367,26 @@ func place(pid: int, args: Dictionary) -> void:
 	var m := 0
 	if Blocks.axis[id] == 1:
 		m = 1 if face.x != 0 else (2 if face.z != 0 else 0)
+	if on_wall:
+		m = Blocks.wall_meta(-face)
 	World.inventory_of(pid).take_from(slot, 1)
 	World.mark_inventory(pid)
+	var displaced := a.water.level(c)
 	World.set_block(c, id, m)
+	if displaced > 0:
+		_displace(c, displaced)
 	World.fx_except(pid, "place", Vector3(c) + Vector3(0.5, 0.5, 0.5), {"b": id})
 	if Blocks.has_flag(id, "bed"):
 		a.flag_player(pid, "placed_bed")
+
+
+func _displace(c: Vector3i, n: int) -> void:
+	## A block set into water pushes that water out: up, else to the sides.
+	n = a.water.add(c + Vector3i.UP, n)
+	for d in WaterSim.SIDES:
+		if n <= 0:
+			return
+		n = a.water.add(c + d, n)
 
 
 static func can_stand(id: int, c: Vector3i) -> bool:

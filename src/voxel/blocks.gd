@@ -24,6 +24,8 @@ static var axis: PackedByteArray = []
 static var jitter: PackedByteArray = []   # cross plants placed a little off-centre
 static var hang: PackedByteArray = []     # hangs from the block above
 static var replace: PackedByteArray = []
+static var fixture: PackedByteArray = []  # drawn by a model of its own (torches), not the chunk mesh
+static var wall: PackedByteArray = []     # can hang on the side of a block (meta 1-4: which side)
 static var sway: PackedFloat32Array = []
 static var tint: PackedFloat32Array = []
 static var y_off: PackedFloat32Array = []
@@ -59,6 +61,8 @@ static func load_all() -> void:
 	light.resize(MAX)
 	axis.resize(MAX)
 	replace.resize(MAX)
+	fixture.resize(MAX)
+	wall.resize(MAX)
 	jitter.resize(MAX)
 	hang.resize(MAX)
 	sway.resize(MAX)
@@ -83,6 +87,8 @@ static func load_all() -> void:
 		cutout[id] = 1 if bool(d.get("cutout", false)) else 0
 		light[id] = int(d.get("light", 0))
 		axis[id] = 1 if bool(d.get("axis", false)) else 0
+		fixture[id] = 1 if String(d.get("fixture", "")) != "" else 0
+		wall[id] = 1 if bool(d.get("wall", false)) else 0
 		replace[id] = 1 if bool(d.get("replace", false)) or sh == "none" or sh == "liquid" else 0
 		jitter[id] = 1 if sh == "cross" and not d.has("crop") else 0
 		hang[id] = 1 if String(d.get("attach", "")) == "ceiling" else 0
@@ -152,6 +158,29 @@ static func _shapes(id: int, d: Dictionary) -> void:
 	elif sh == Shape.LIQUID:
 		select[id] = AABB(Vector3.ZERO, Vector3(1, 0.875, 1))
 	collide[id] = cols
+
+
+const WALL_DIRS := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+
+
+static func on_wall(id: int, m: int) -> bool:
+	return id >= 0 and wall[id] == 1 and (m & 7) >= 1 and (m & 7) <= 4
+
+
+static func wall_dir(m: int) -> Vector3i:
+	## From a wall-hung block toward the block it hangs on.
+	return WALL_DIRS[clampi((m & 7) - 1, 0, 3)]
+
+
+static func wall_meta(to_wall: Vector3i) -> int:
+	return WALL_DIRS.find(to_wall) + 1
+
+
+static func select_box(id: int, m: int) -> AABB:
+	if on_wall(id, m):
+		var ctr := Vector3(0.5, 0.52, 0.5) + Vector3(wall_dir(m)) * 0.3
+		return AABB(ctr - Vector3(0.17, 0.4, 0.17), Vector3(0.34, 0.8, 0.34))
+	return select.get(id, AABB())
 
 
 static func id_of(nm: String) -> int:

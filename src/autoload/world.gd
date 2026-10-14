@@ -637,6 +637,14 @@ func load_world(name: String) -> Error:
 	world_seed = data["seed"]
 	next_id = data["next_id"]
 	entities = data["entities"]
+	for k in entities:
+		var e: Dictionary = entities[k]
+		if String(e["t"]) == "item":
+			# dropped in an earlier run: settled, and free to pick up at once
+			var d: Dictionary = e["d"]
+			d.erase("from")
+			d.erase("w")
+			d["t"] = -100000
 	_reindex()
 	if not vox.from_dict(data["vox"]):
 		reset()

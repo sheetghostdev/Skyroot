@@ -39,8 +39,8 @@
 	"wild_flax": {"id": 32, "label": "Wild flax", "shape": "cross", "tex": "wild_flax", "solid": false, "opaque": false, "cutout": true, "hard": 0.2, "tool": "knife", "sound": "grass", "attach": "ground", "drops": [{"item": "plant_fiber", "n": [1, 2]}, {"item": "seeds_flax", "n": [1, 2]}], "sway": 0.7},
 	"thatch": {"id": 33, "label": "Thatch", "tex": {"top": "thatch_top", "side": "thatch", "bottom": "thatch_top"}, "hard": 1.0, "tool": "knife", "sound": "grass", "item": "thatch"},
 	"brick_block": {"id": 34, "label": "Fired bricks", "tex": "brick", "hard": 12.0, "sound": "stone", "item": "brick_block"},
-	"torch": {"id": 35, "label": "Torch", "shape": "boxes", "solid": false, "opaque": false, "hard": 0.05, "sound": "wood", "attach": "ground", "item": "torch_lit", "light": 12,
-		"boxes": [{"from": [7, 0, 7], "to": [9, 9, 9], "tex": "stick"}, {"from": [6.5, 9, 6.5], "to": [9.5, 11, 9.5], "tex": "dry_grass"}]},
+	"torch": {"id": 35, "label": "Torch", "shape": "boxes", "solid": false, "opaque": false, "hard": 0.05, "sound": "wood", "attach": "ground", "item": "torch_lit", "light": 12, "fixture": "torch", "wall": true,
+		"boxes": [{"from": [7.2, 0, 7.2], "to": [8.8, 9.6, 8.8], "tex": "stick"}, {"from": [6.6, 8.5, 6.6], "to": [9.4, 11.4, 9.4], "tex": "torch_head"}]},
 	"straw_bed": {"id": 36, "label": "Straw bed", "shape": "boxes", "solid": true, "opaque": false, "hard": 0.8, "sound": "grass", "item": "straw_bed", "bed": true,
 		"boxes": [{"from": [0, 0, 0], "to": [16, 5, 16], "tex": "straw_bed"}, {"from": [1, 5, 11], "to": [15, 7, 15], "tex": "thatch_top"}]},
 	"planks": {"id": 37, "label": "Planks", "tex": "planks", "hard": 3.0, "tool": "axe", "sound": "wood", "item": "planks"}

@@ -91,6 +91,9 @@ Regenerate with:
 | sfx/rope_twist_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/rope_twist_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/rope_tighten.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/bow_drill_1.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/bow_drill_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/bow_drill_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/eat_1.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/eat_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/eat_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |

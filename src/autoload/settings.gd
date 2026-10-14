@@ -30,6 +30,7 @@ const INPUTS := {
 	"jump": ["k:Space"],
 	"sneak": ["k:Shift"],
 	"sprint": ["k:Ctrl"],
+	"sit": ["k:C"],
 	"primary": ["m:1"],
 	"secondary": ["m:2"],
 	"pick_block": ["m:3"],

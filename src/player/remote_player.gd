@@ -16,6 +16,7 @@ const DELAY := 0.1
 
 func _ready() -> void:
 	model = CharacterModel.new()
+	model.carry_light = true
 	add_child(model)
 	model.build(Net.player_color(pid))
 	nameplate = Label3D.new()
@@ -75,5 +76,5 @@ func _physics_process(delta: float) -> void:
 	model.rotation.y = lerp_angle(model.rotation.y, facing, 1.0 - exp(-14.0 * delta))
 	var hv := Vector2(_vel.x, _vel.z).length()
 	model.animate(delta, {"speed": hv, "crouch": bool(pb.get("c", false)), "air": not bool(pb.get("g", true)),
-		"pitch": float(pb.get("x", 0.0)), "mode": _mode, "action": String(pb.get("a", ""))})
+		"pitch": float(pb.get("x", 0.0)), "mode": _mode, "action": String(pb.get("a", "")), "sit": bool(pb.get("st", false))})
 	nameplate.visible = _mode != "dead"

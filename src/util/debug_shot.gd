@@ -4,9 +4,10 @@ extends Node
 ##
 ##   --shot=out.png       screenshot path
 ##   --pos=x,y,z          put the player here       --yaw=deg --pitch=deg
-##   --hour=h             time of day               --tp  third person
+##   --hour=h             time of day               --tp  third person    --sit  sitting down
 ##   --give=id:n,id:n     items in the hotbar       --slot=n  select hotbar slot
-##   --setup=name         a staged scene (firepit, firepit_lit, knap, clay, kiln, kiln_lit, ground, inventory, handbook, chooser, night, rain)
+##   --setup=name         a staged scene (firepit, firepit_lit, knap, clay, kiln, kiln_lit, ground, fell, inventory, handbook, chooser, night, rain)
+##   --after=secs         (fell) how long after the felling to take the picture
 ##   --smoke=secs         just run for a while, then quit
 ##   --perf=secs          print frame time stats
 
@@ -14,6 +15,7 @@ var _t := 0.0
 var _phase := 0
 var _frames := 0
 var _times: Array = []
+var _fell_at := Vector3i(-1, -1, -1)
 
 
 func _ready() -> void:
@@ -105,7 +107,16 @@ func _process(delta: float) -> void:
 			if gw.voxels.pending() > 0 and _t < 30.0:
 				return
 			_frames += 1
+			if Game.cli.has("sit") and _frames > 3 and lp.body.on_ground:
+				lp.sitting = true
 			if _frames < int(_cli("frames", "40")):
+				return
+			if _fell_at != Vector3i(-1, -1, -1):
+				World.actions.blocks._fell(Net.my_id(), _fell_at, World.block(_fell_at), lp.hotbar)
+				_fell_at = Vector3i(-1, -1, -1)
+				_t = 0.0
+				return
+			if Game.cli.has("after") and _t < float(_cli("after")):
 				return
 			_phase = 2
 			_shoot()
@@ -170,6 +181,36 @@ func _setup(nm: String, lp: LocalPlayer, gw) -> void:
 		"items":
 			for i in 6:
 				a.drop_item(["stone", "stick", "flint", "berries", "log_oak", "knife"][i], 1 + i, {"mat": "flint"} if i == 5 else {}, front + Vector3(i * 0.4 - 1.0, 0.5, 0))
+		"fell":
+			# a tree a few steps ahead; it is felled once the picture has settled
+			var tc := c + Vector3i(roundi(-sin(lp.yaw) * 1.5), 0, roundi(-cos(lp.yaw) * 1.5))
+			tc.y = World.vox.surface_y(tc.x, tc.z) + 1
+			for yy in range(tc.y, tc.y + 10):
+				for dz in range(-2, 3):
+					for dx in range(-2, 3):
+						World.set_block(Vector3i(tc.x + dx, yy, tc.z + dz), 0)
+			IslandGen.grow_tree(World.vox, tc.x, tc.y, tc.z, "oak", 7, func(p: Vector3i, id: int, m: int): World.set_block(p, id, m))
+			_fell_at = tc
+		"water":
+			# a block of water poured out in front, and a trench dug off the pond
+			World.set_block(c, Blocks.id_of("water"), 0)
+			var pond := Vector3i(int(IslandGen.POND.x), IslandGen.TOP - 1, int(IslandGen.POND.y))
+			for i in range(1, 9):
+				var t := pond + Vector3i(i, 0, -i / 2)
+				if World.block(t) != Blocks.id_of("water"):
+					World.set_block(t, 0)
+					World.set_block(t + Vector3i.UP, 0)
+		"torches":
+			# one standing, two on a little wall
+			World.set_block(c, Blocks.id_of("torch"))
+			var fwd := Vector3i(roundi(-sin(lp.yaw)), 0, roundi(-cos(lp.yaw)))
+			var side := Vector3i(-fwd.z, 0, fwd.x)
+			var wc := c + fwd * 3 - side
+			for dy in 3:
+				for dx in 3:
+					World.set_block(wc + side * dx + Vector3i(0, dy, 0), Blocks.id_of("brick_block"))
+			World.set_block(wc - fwd + Vector3i(0, 1, 0), Blocks.id_of("torch"), Blocks.wall_meta(fwd))
+			World.set_block(wc + side * 2 - fwd + Vector3i(0, 1, 0), Blocks.id_of("torch"), Blocks.wall_meta(fwd))
 		"inventory":
 			gw.hud.open_panel("inventory")
 		"handbook":

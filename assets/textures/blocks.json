@@ -24,6 +24,7 @@
   "stick",
   "charred",
   "embers",
+  "torch_head",
   "planks",
   "leaves_oak",
   "leaves_birch",
@@ -185,6 +186,11 @@
    0.617,
    0.253,
    0.098
+  ],
+  "torch_head": [
+   0.549,
+   0.227,
+   0.089
   ],
   "planks": [
    0.554,

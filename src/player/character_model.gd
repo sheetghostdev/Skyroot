@@ -20,6 +20,8 @@ var _walk := 0.0
 var _swing := 0.0
 var _swing_kind := ""
 var _held_key := ""
+var _torch: TorchModel
+var carry_light := false   # a remote player's torch lights the ground for you
 var _mat: ShaderMaterial
 var _first_person := false
 
@@ -91,9 +93,13 @@ func set_first_person(on: bool) -> void:
 	for c in get_children():
 		if c is Node3D:
 			_set_shadow_only(c, on)
+	if _torch:
+		_torch.visible = not on
 
 
 func _set_shadow_only(n: Node, on: bool) -> void:
+	if n is TorchModel:
+		return
 	if n is GeometryInstance3D:
 		(n as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	for c in n.get_children():
@@ -105,8 +111,20 @@ func set_held(id: String, d: Dictionary) -> void:
 	if key == _held_key:
 		return
 	_held_key = key
+	if _torch:
+		_torch.queue_free()
+		_torch = null
 	if id == "":
 		held_mi.mesh = null
+		return
+	if id == "torch_lit":
+		held_mi.mesh = null
+		_torch = TorchModel.make(carry_light)
+		_torch.scale = Vector3.ONE * 0.7
+		_torch.position = Vector3(0, -0.12, -0.08)
+		_torch.rotation = Vector3(deg_to_rad(-70), 0, 0)
+		hand.add_child(_torch)
+		_torch.visible = not _first_person   # in first person you see the one in your hand
 		return
 	held_mi.mesh = Icons.mesh(id, d)
 	var is_block := ItemDB.block_of(id) >= 0 and Blocks.shape[ItemDB.block_of(id)] == Blocks.Shape.CUBE
@@ -147,9 +165,21 @@ func animate(delta: float, st: Dictionary) -> void:
 	# looking up and down
 	head.rotation.x = clampf(pitch, -1.2, 1.2)
 	# sneaking: lean in, bend the knees a little
-	var lean := 0.38 if crouch else 0.0
+	var sit: bool = st.get("sit", false)
+	var lean := 0.38 if crouch else (0.18 if sit else 0.0)
 	body.rotation.x = lerpf(body.rotation.x, -lean, 1.0 - exp(-12.0 * delta))
-	var drop := 0.18 if crouch else 0.0
+	var drop := 0.18 if crouch else (0.6 if sit else 0.0)
+	if sit:
+		# on the ground, legs out in front, hands near your work
+		leg_l.rotation = Vector3(PI * 0.5, 0.0, 0.12)
+		leg_r.rotation = Vector3(PI * 0.5, 0.0, -0.12)
+		arm_l.rotation.x = -0.7
+		arm_r.rotation.x = -0.7
+	else:
+		leg_l.rotation.y = 0.0
+		leg_l.rotation.z = 0.0
+		leg_r.rotation.y = 0.0
+		leg_r.rotation.z = 0.0
 	position.y = lerpf(position.y, -drop, 1.0 - exp(-12.0 * delta))
 	head.position.z = lerpf(head.position.z, -0.22 if crouch else 0.0, 1.0 - exp(-12.0 * delta))
 	# working

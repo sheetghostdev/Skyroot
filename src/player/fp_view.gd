@@ -17,6 +17,7 @@ var _sneak := 0.0
 var _held := ""
 var _change := 0.0
 var _base_rot := Vector3.ZERO
+var _torch: TorchModel
 
 
 func _ready() -> void:
@@ -54,11 +55,24 @@ func set_held(id: String, d: Dictionary) -> void:
 		return
 	_held = key
 	_change = 1.0
+	if _torch:
+		_torch.queue_free()
+		_torch = null
 	if id == "":
 		item.mesh = null
 		arm.visible = true
 		return
 	arm.visible = false
+	if id == "torch_lit":
+		# a real burning torch, not a picture of one
+		item.mesh = null
+		item.scale = Vector3.ONE
+		_base_rot = Vector3(deg_to_rad(-6), 0, deg_to_rad(-10))
+		_torch = TorchModel.make(false)
+		_torch.scale = Vector3.ONE * 0.5
+		_torch.position = Vector3(0.04, -0.3, 0.02)
+		item.add_child(_torch)
+		return
 	item.mesh = Icons.mesh(id, d)
 	var b := ItemDB.block_of(id)
 	if b >= 0 and Blocks.shape[b] == Blocks.Shape.CUBE:
@@ -85,7 +99,7 @@ func animate(delta: float, bob_t: float, bob_amt: float, sneak: bool) -> void:
 	var rot := Vector3.ZERO
 	match _action:
 		"drill":
-			off += Vector3(-0.14 + sin(_t * 18.0) * 0.07, 0.04, -0.05)
+			off += Vector3(-0.14 + sin(_t * TAU / 0.7) * 0.07, 0.04, -0.05)
 			rot += Vector3(0, 0, deg_to_rad(30))
 		"eat", "drink":
 			off += Vector3(-0.2, 0.12 + sin(_t * 14.0) * 0.015, 0.14)

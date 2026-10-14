@@ -14,6 +14,7 @@ const STAND_H := 1.8
 const SNEAK_H := 1.5
 const EYE_STAND := 1.62
 const EYE_SNEAK := 1.32
+const EYE_SIT := 0.92            # sitting on the ground, close over your work
 const ABYSS_Y := -20.0
 const TP_DIST := 3.6
 
@@ -43,6 +44,9 @@ var in_water := false
 var sleeping_at := Vector3i(-1, -1, -1)
 
 var _eye := EYE_STAND
+var sitting := false
+var _sit_told := false
+var _lean := 0.0
 var _bob_t := 0.0
 var _bob_amt := 0.0
 var _land := 0.0
@@ -166,7 +170,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if mode != "play":
 		return
-	if event.is_action_pressed("camera_toggle"):
+	if event.is_action_pressed("sit"):
+		set_sitting(not sitting)
+	elif event.is_action_pressed("camera_toggle"):
 		set_third_person(not third_person)
 	elif event.is_action_pressed("hotbar_next"):
 		select_hotbar((hotbar + 1) % Inventory.HOTBAR)
@@ -181,6 +187,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.is_action_pressed("hotbar_%d" % (i + 1)):
 				select_hotbar(i)
 				break
+
+
+func set_sitting(on: bool) -> void:
+	## Sit down on the ground for a close look at what you are working on
+	## (knapping, shaping clay); any step or a jump gets you up again.
+	if on and (not body.on_ground or in_water):
+		return
+	if on == sitting:
+		return
+	sitting = on
+	if on and not _sit_told:
+		_sit_told = true
+		Events.toast.emit("You sit down for a closer look. C, a step or Space gets you up.", "info")
+	Sfx.play("step_" + surface_kind(), global_position, -14.0)
 
 
 func select_hotbar(i: int) -> void:
@@ -208,13 +228,18 @@ func _physics_process(delta: float) -> void:
 	var playing := mode == "play"
 	if playing:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	var want_sneak := playing and Input.is_action_pressed("sneak")
+	if sitting:
+		if input.length() > 0.3 or (playing and Input.is_action_just_pressed("jump")) or not body.on_ground:
+			sitting = false
+		input = Vector2.ZERO
+	var want_sneak := playing and Input.is_action_pressed("sneak") and not sitting
 	if want_sneak:
 		sneaking = true
 	elif sneaking and body.fits(vd, global_position, STAND_H):
 		sneaking = false
 	body.height = SNEAK_H if sneaking else STAND_H
-	_eye = lerpf(_eye, EYE_SNEAK if sneaking else EYE_STAND, 1.0 - exp(-12.0 * delta))
+	_eye = lerpf(_eye, EYE_SIT if sitting else (EYE_SNEAK if sneaking else EYE_STAND), 1.0 - exp(-(7.0 if sitting else 12.0) * delta))
+	_lean = lerpf(_lean, 0.22 if sitting else 0.0, 1.0 - exp(-7.0 * delta))
 	sprinting = playing and Input.is_action_pressed("sprint") and input.y < -0.2 and not sneaking
 	var speed := SNEAK if sneaking else (SPRINT if sprinting else WALK)
 	in_water = vd.liquid_at(global_position + Vector3(0, 0.4, 0))
@@ -239,7 +264,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y -= GRAVITY * delta
 		velocity.y = maxf(velocity.y, -55.0)
-	if body.on_ground and playing and Input.is_action_just_pressed("jump") and not in_water:
+	if body.on_ground and playing and Input.is_action_just_pressed("jump") and not in_water and _eye > EYE_SIT + 0.2:
 		velocity.y = JUMP_V
 	var was_ground := body.on_ground
 	var res := body.move(vd, global_position, velocity * delta, sneaking and was_ground)
@@ -382,7 +407,7 @@ func _update_camera(delta: float, input: Vector2, hspeed: float) -> void:
 		_bob_t += delta * (6.6 if not sprinting else 8.4) * clampf(hspeed / WALK, 0.3, 1.5)
 		bob = Vector3(cos(_bob_t) * 0.012, absf(sin(_bob_t)) * 0.026 - 0.013, 0.0) * _bob_amt
 	var eye := _eye if mode != "sleep" else 0.25
-	head.position = Vector3(0, eye + _land, 0) + bob
+	head.position = Vector3(0, eye + _land, -_lean) + bob
 	var shake := Vector3.ZERO
 	if _shake > 0.0:
 		_shake = maxf(0.0, _shake - delta * 2.2)
@@ -412,11 +437,11 @@ func shake_camera(amount: float) -> void:
 func _update_model(delta: float, hv: Vector3) -> void:
 	if hv.length() > 0.3 and third_person:
 		facing_yaw = lerp_angle(facing_yaw, atan2(-hv.x, -hv.z), 1.0 - exp(-10.0 * delta))
-	if not third_person or interactor.busy():
+	if not third_person or interactor.busy() or sitting:
 		facing_yaw = lerp_angle(facing_yaw, yaw, 1.0 - exp(-14.0 * delta))
 	model.rotation.y = facing_yaw
 	model.animate(delta, {
-		"speed": hv.length(), "crouch": sneaking, "air": not body.on_ground, "pitch": pitch,
+		"speed": hv.length(), "crouch": sneaking, "air": not body.on_ground, "pitch": pitch, "sit": sitting,
 		"action": action_name, "mode": mode,
 	})
 
@@ -441,6 +466,6 @@ func _pose_tick(delta: float, hv: Vector3) -> void:
 	var held := held_stack()
 	Net.send_pose({
 		"p": global_position, "y": yaw, "x": pitch, "f": facing_yaw, "v": Vector3(hv.x, velocity.y, hv.z),
-		"c": sneaking, "a": action_name, "s": action_seq, "h": String(held.get("i", "")), "hd": held.get("d", {}),
+		"c": sneaking, "a": action_name, "s": action_seq, "h": String(held.get("i", "")), "hd": held.get("d", {}), "st": sitting,
 		"m": mode, "w": in_water, "sp": sprinting, "g": body.on_ground,
 	})
