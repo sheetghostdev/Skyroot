@@ -198,7 +198,7 @@ static func _block(t: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dic
 	if face == Vector3i.UP and Blocks.is_solid(b) and World.cell_free(c + Vector3i.UP):
 		if id == "jar":
 			return {"text": "Set the jar down", "kind": "use"}
-		if sneak and id != "":
+		if sneak and id != "" and ItemDB.block_of(id) < 0:
 			if ItemDB.def(id).has("knap"):
 				return {"text": "Lay it down to knap", "kind": "use"}
 			if id == "clay":
@@ -218,7 +218,7 @@ static func sneak_hint(t: Dictionary, s: Dictionary) -> String:
 	## A reminder of what sneak-right-click would do, when you hold something
 	## that is set down that way.
 	var id := String(s.get("i", ""))
-	if id == "" or String(t.get("type", "")) != "block":
+	if id == "" or String(t.get("type", "")) != "block" or ItemDB.block_of(id) >= 0:
 		return ""
 	var b: int = t["id"]
 	if t["normal"] != Vector3i.UP or not Blocks.is_solid(b) or not World.cell_free((t["cell"] as Vector3i) + Vector3i.UP):

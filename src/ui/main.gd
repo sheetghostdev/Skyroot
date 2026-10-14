@@ -10,7 +10,7 @@ var current_world: Node = null
 func _ready() -> void:
 	add_to_group("main")
 	get_window().title = "Skyroot"
-	if Game.cli.has("shot") or Game.cli.has("smoke") or Game.cli.has("perf"):
+	if Game.cli.has("shot") or Game.cli.has("smoke") or Game.cli.has("perf") or Game.cli.has("play") or Game.cli.has("menu"):
 		add_child(load("res://src/util/debug_shot.gd").new())
 	if Game.cli.has("mptest"):
 		add_child(load("res://src/util/mp_test.gd").new())

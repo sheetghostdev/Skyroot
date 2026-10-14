@@ -304,7 +304,8 @@ func use(pid: int, args: Dictionary) -> void:
 	# set something down on top of the block
 	if face == Vector3i.UP and Blocks.is_solid(target):
 		var above := c + Vector3i.UP
-		if World.cell_free(above) and (sneak or ItemDB.block_of(id) < 0):
+		# (blocks are always placed, sneaking or not - you sneak to build at an edge)
+		if World.cell_free(above) and ItemDB.block_of(id) < 0:
 			if craft.set_down(pid, above, slot, s, sneak):
 				return
 	# place a block

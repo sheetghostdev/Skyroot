@@ -28,7 +28,7 @@ func _ready() -> void:
 	pc.add_child(v)
 	var title := "What will you knap?" if kind == "knap" else "What will you shape?"
 	v.add_child(UITheme.label(title, 22, UITheme.PAPER, true))
-	var sub := "Chip away the tinted cells and keep the shape. Chip into the shape more than twice and the stone splits." if kind == "knap" \
+	var sub := "Chip away the dark cells and keep the bright shape. Press F for bigger flakes when you're far from the edge. Knock bits off the shape three times and the stone splits." if kind == "knap" \
 		else "Build it up one layer at a time: right click adds clay, left click removes it, F changes the brush. Each lump of clay is worth 32 cells."
 	var sl := UITheme.label(sub, 14, UITheme.TEXT_DIM)
 	sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

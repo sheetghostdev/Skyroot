@@ -160,33 +160,49 @@ func knap_choose(pid: int, args: Dictionary) -> void:
 
 
 func knap(pid: int, args: Dictionary) -> void:
+	## Chip one cell ("i"), or knock off a flake of several ("cells").  Every cell
+	## of the shape knocked off counts as a slip.
 	var c: Vector3i = args.get("c", Vector3i(-1, -1, -1))
-	var i := int(args.get("i", -1))
+	var hits := PackedInt32Array()
+	if args.has("cells"):
+		hits = args["cells"]
+	else:
+		hits.append(int(args.get("i", -1)))
 	var be := World.be(c)
-	if be.is_empty() or be["t"] != "knap" or i < 0 or i >= N * N or not a.in_reach(pid, c):
+	if be.is_empty() or be["t"] != "knap" or hits.is_empty() or hits.size() > 25 or not a.in_reach(pid, c):
 		return
 	var d: Dictionary = be["d"]
 	var r := String(d["r"])
 	if r == "":
 		World.open_chooser(pid, "knap", c)
 		return
-	var cells: PackedByteArray = (d["cells"] as PackedByteArray).duplicate()
-	if cells[i] == 0:
-		return
 	if not a._rate(pid, "knap", 40):
 		return
+	var cells: PackedByteArray = (d["cells"] as PackedByteArray).duplicate()
 	var mask: PackedByteArray = ItemDB.knapping[r]["mask"]
-	cells[i] = 0
 	var miss := int(d["miss"])
-	var at := Vector3(c) + Vector3((i % N + 0.5) / N, 0.08, (i / N + 0.5) / N)
-	if mask[i] == 1:
-		miss += 1
+	var removed := 0
+	var slipped := 0
+	var at := Vector3.ZERO
+	for i in hits:
+		if i < 0 or i >= N * N or cells[i] == 0:
+			continue
+		cells[i] = 0
+		removed += 1
+		at += Vector3(c) + Vector3((i % N + 0.5) / N, 0.08, (i / N + 0.5) / N)
+		if mask[i] == 1:
+			slipped += 1
+	if removed == 0:
+		return
+	at /= removed
+	miss += slipped
+	if slipped > 0:
 		if miss > MAX_MISS:
 			World.despawn(be["id"])
 			World.fx("knap_fail", at, {"mat": d["mat"]})
-			World.notify(pid, "Too much chipped off the shape: the stone splits. Chip only the shaded cells.", "warn")
+			World.notify(pid, "Too much chipped off the shape: the stone splits. Chip only the dark cells.", "warn")
 			return
-		World.notify(pid, "That cell was part of the %s. (%d more and the stone splits.)" % [String(ItemDB.knapping[r]["label"]).to_lower(), MAX_MISS - miss + 1], "warn")
+		World.notify(pid, "That took a bit of the %s. (%d more and the stone splits.)" % [String(ItemDB.knapping[r]["label"]).to_lower(), MAX_MISS - miss + 1], "warn")
 	World.fx_except(pid, "knap", at, {"mat": d["mat"]})
 	# finished when nothing outside the outline is left
 	var left := 0

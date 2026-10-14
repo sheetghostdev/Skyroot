@@ -341,6 +341,8 @@ func _on_target(t: Dictionary) -> void:
 		if r.get("kind", "") == "clay_add":
 			txt += "   (F: brush %s)" % Interactor.BRUSHES[p.interactor.brush]
 		lines.append(pre + txt)
+	if l.get("kind", "") == "chip":
+		lines[0] = "Left: chip off %s   (F: %s)" % ["a cell" if p.interactor.knap_brush == 0 else "a flake", Interactor.KNAP_BRUSHES[(p.interactor.knap_brush + 1) % Interactor.KNAP_BRUSHES.size()]]
 	var sh := UseRules.sneak_hint(t, p.held_stack())
 	if sh != "" and not Input.is_action_pressed("sneak"):
 		lines.append(sh)

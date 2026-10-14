@@ -8,12 +8,14 @@ extends Node
 
 const REACH := 4.6
 const BRUSHES := ["1x1", "2x2", "3x3", "copy layer below"]
+const KNAP_BRUSHES := ["single chips", "2x2 flakes", "3x3 flakes"]
 
 var player: LocalPlayer
 var target: Dictionary = {}
 var lmb_rule: Dictionary = {}
 var rmb_rule: Dictionary = {}
 var brush := 0
+var knap_brush := 0
 
 var break_cell := Vector3i(-999, 0, 0)
 var break_t := 0.0
@@ -185,6 +187,24 @@ func _sub_cell(t: Dictionary, origin: Vector3, dir: Vector3) -> int:
 	return int(p.x * 16.0) + int(p.z * 16.0) * 16
 
 
+func knap_cells(t: Dictionary) -> PackedInt32Array:
+	## The cells a chip or flake would knock off, around the one under the crosshair.
+	var out := PackedInt32Array()
+	var sub := int(t.get("sub", -1))
+	if sub < 0:
+		return out
+	var n := knap_brush + 1
+	var x0 := sub % 16
+	var z0 := sub / 16
+	for dz in n:
+		for dx in n:
+			var x := x0 + dx - (n - 1) / 2
+			var z := z0 + dz - (n - 1) / 2
+			if x >= 0 and z >= 0 and x < 16 and z < 16:
+				out.append(x + z * 16)
+	return out
+
+
 func brush_cells(t: Dictionary, add: bool) -> PackedInt32Array:
 	var out := PackedInt32Array()
 	var sub := int(t.get("sub", -1))
@@ -249,6 +269,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			brush = (brush + 1) % BRUSHES.size()
 			Events.toast.emit("Clay brush: " + BRUSHES[brush], "info")
 			_last_key = ""
+		elif not be.is_empty() and be["t"] == "knap":
+			knap_brush = (knap_brush + 1) % KNAP_BRUSHES.size()
+			Events.toast.emit("Knapping: " + KNAP_BRUSHES[knap_brush], "info")
+			_last_key = ""
 	elif event.is_action_pressed("pick_block"):
 		if target.get("type", "") == "block":
 			var item := ItemDB.item_of_block(int(target["id"]))
@@ -300,7 +324,7 @@ func _draw_cell_hover() -> void:
 		if String(be["d"]["r"]) == "":
 			return
 		y = 1.0 / 16.0 + 0.003
-		cells.append(int(target["sub"]))
+		cells = knap_cells(target)
 	elif be["t"] == "clay":
 		if String(be["d"]["r"]) == "":
 			return
@@ -370,12 +394,18 @@ func _handle_lmb(delta: float) -> void:
 			var be: Dictionary = target["be"]
 			var cells: PackedByteArray = be["d"].get("cells", PackedByteArray())
 			# chip on click, and keep chipping cells you sweep across while held
-			if sub >= 0 and sub < cells.size() and cells[sub] == 1 and _chip_t <= 0.0 and sub != _last_sub:
-				_chip_t = 0.06
-				_last_sub = sub
-				World.request("knap", {"c": target["cell"], "i": sub})
-				player.play_action("swing")
-				Sfx.play("knap", target["point"], -4.0)
+			if sub >= 0 and sub < cells.size() and _chip_t <= 0.0 and sub != _last_sub:
+				var hit := knap_cells(target)
+				var any := false
+				for i in hit:
+					if cells[i] == 1:
+						any = true
+				if any:
+					_chip_t = 0.06 if knap_brush == 0 else 0.16
+					_last_sub = sub
+					World.request("knap", {"c": target["cell"], "cells": hit})
+					player.play_action("swing")
+					Sfx.play("knap", target["point"], -4.0)
 		"clay_remove":
 			_crack.visible = false
 			_chip_t -= delta

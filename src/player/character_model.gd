@@ -33,22 +33,27 @@ func build(color: Color) -> void:
 	var cloth := BlockTex.layer("cloth")
 	var leather := BlockTex.layer("leather")
 	var hair := BlockTex.layer("hair")
-	var shirt := color.lightened(0.15)
+	var shirt := color
 	# legs (pivot at the hip)
 	leg_l = _limb(Vector3(-0.11, 0.72, 0), Vector3(0.21, 0.72, 0.22), leather, TROUSERS.lerp(Color.WHITE, 0.4), Vector3(0, -0.36, 0))
 	leg_r = _limb(Vector3(0.11, 0.72, 0), Vector3(0.21, 0.72, 0.22), leather, TROUSERS.lerp(Color.WHITE, 0.4), Vector3(0, -0.36, 0))
 	body = _limb(Vector3(0, 0.72, 0), Vector3(0.44, 0.62, 0.24), cloth, shirt, Vector3(0, 0.31, 0))
 	# arms hang from the shoulders
-	arm_l = _limb(Vector3(-0.31, 1.3, 0), Vector3(0.18, 0.62, 0.2), cloth, shirt, Vector3(0, -0.27, 0))
-	arm_r = _limb(Vector3(0.31, 1.3, 0), Vector3(0.18, 0.62, 0.2), cloth, shirt, Vector3(0, -0.27, 0))
-	_box(arm_l, Vector3(0, -0.53, 0), Vector3(0.17, 0.12, 0.19), skin, SKIN)
-	_box(arm_r, Vector3(0, -0.53, 0), Vector3(0.17, 0.12, 0.19), skin, SKIN)
+	arm_l = _limb(Vector3(-0.32, 1.3, 0), Vector3(0.17, 0.42, 0.19), cloth, shirt.darkened(0.12), Vector3(0, -0.17, 0))
+	arm_r = _limb(Vector3(0.32, 1.3, 0), Vector3(0.17, 0.42, 0.19), cloth, shirt.darkened(0.12), Vector3(0, -0.17, 0))
+	_box(arm_l, Vector3(0, -0.47, 0), Vector3(0.15, 0.2, 0.17), skin, SKIN)
+	_box(arm_r, Vector3(0, -0.47, 0), Vector3(0.15, 0.2, 0.17), skin, SKIN)
+	# a belt
+	_box(self, Vector3(0, 0.75, 0), Vector3(0.45, 0.06, 0.25), leather, Color(0.7, 0.6, 0.5))
 	head = Node3D.new()
 	head.position = Vector3(0, 1.34, 0)
 	add_child(head)
 	_box(head, Vector3(0, 0.21, 0), Vector3(0.42, 0.42, 0.42), skin, SKIN)
 	_box(head, Vector3(0, 0.39, 0.03), Vector3(0.44, 0.1, 0.44), hair, Color.WHITE)
 	_box(head, Vector3(0, 0.25, 0.19), Vector3(0.44, 0.3, 0.08), hair, Color.WHITE)
+	_box(head, Vector3(0, 0.36, -0.19), Vector3(0.44, 0.07, 0.06), hair, Color.WHITE)
+	for sx in [-0.2, 0.2]:
+		_box(head, Vector3(sx, 0.3, 0.06), Vector3(0.06, 0.2, 0.3), hair, Color.WHITE)
 	# eyes look forward (-Z)
 	for x in [-0.09, 0.09]:
 		_box(head, Vector3(x, 0.22, -0.213), Vector3(0.07, 0.05, 0.01), hair, Color(0.25, 0.25, 0.3))
@@ -69,7 +74,9 @@ func _limb(pivot: Vector3, size: Vector3, tex: int, tint: Color, center: Vector3
 
 func _box(parent: Node3D, center: Vector3, size: Vector3, tex: int, tint: Color) -> void:
 	var s := ChunkMesher.Surf.new()
-	ChunkMesher.box_faces(s, -size * 0.5, size * 0.5, 0.0, Vector3.ZERO, tex, tex, Color(tint.r, tint.g, tint.b, 1.0))
+	# (vertex colours are linear: convert, or the colours come out washed out)
+	var lin := tint.srgb_to_linear()
+	ChunkMesher.box_faces(s, -size * 0.5, size * 0.5, 0.0, Vector3.ZERO, tex, tex, Color(lin.r, lin.g, lin.b, 1.0))
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, s.arrays())
 	m.surface_set_material(0, _mat)

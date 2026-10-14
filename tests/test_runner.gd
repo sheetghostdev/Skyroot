@@ -441,6 +441,32 @@ func suite_craft() -> void:
 	check(World.be(up).is_empty(), "after %d chips the blade is done" % chips)
 	var bi := inv().find("knife_blade")
 	check(bi >= 0 and String(inv().get_slot(bi)["d"].get("mat", "")) == "flint", "a flint knife blade")
+	# flakes: 3x3 at a time far from the shape, then a flake into the shape counts each cell
+	give("stone", 1, {}, 5)
+	use_on(c, 5, true)
+	req("knap_choose", {"c": up, "r": "shovel_head"})
+	var smask: PackedByteArray = ItemDB.knapping["shovel_head"]["mask"]
+	var corner := PackedInt32Array()
+	for z in range(6, 9):
+		for x in range(0, 3):
+			corner.append(x + z * 16)
+	var clean := true
+	for i in corner:
+		if smask[i] == 1:
+			clean = false
+	req("knap", {"c": up, "cells": corner})
+	var cells_after: PackedByteArray = World.be(up)["d"]["cells"]
+	var gone := 0
+	for i in corner:
+		if ItemDB.stone_mask[i] == 1 and cells_after[i] == 0:
+			gone += 1
+	check(clean and gone == 9 and int(World.be(up)["d"]["miss"]) == 0, "a flake knocks off several cells at once (%d)" % gone)
+	var into := PackedInt32Array()
+	for i in 256:
+		if smask[i] == 1 and into.size() < 3:
+			into.append(i)
+	req("knap", {"c": up, "cells": into})
+	check(World.be(up).is_empty(), "a flake that takes three cells of the shape splits the stone")
 	# chipping into the shape: warned twice, then the stone splits
 	use_on(c, 0, true)
 	req("knap_choose", {"c": up, "r": "axe_head"})
@@ -454,6 +480,12 @@ func suite_craft() -> void:
 	check(not World.be(up).is_empty() and int(World.be(up)["d"]["miss"]) == 2, "two slips are survivable")
 	req("knap", {"c": up, "i": inside[2]})
 	check(World.be(up).is_empty() and count("flint") == 0, "the third splits the stone")
+	# sneaking with a block in hand still places it
+	clear_inv()
+	give("dirt", 2)
+	use_on(c, 0, true)
+	check(World.block(up) == Blocks.id_of("dirt") and World.be(up).is_empty(), "sneak-right-click with soil places the block, it isn't set down as an item")
+	World.set_block(up, 0)
 	# the crafting grid
 	clear_inv()
 	inv().set_slot(Inventory.GRID + 1, Inventory.make("knife_blade", 1, {"mat": "stone", "q": 1.0}))
@@ -506,6 +538,21 @@ func suite_craft() -> void:
 	check(inv().is_empty_slot(0) and count("stick") == 6, "shift-click moves a stack from the hotbar into the backpack")
 	req("inv_close")
 	check(count("stick") == 10 and inv().is_empty_slot(Inventory.GRID + 4), "closing the screen puts the grid back in your inventory")
+	# a storage jar keeps things
+	clear_inv()
+	give("jar", 1, {}, 0)
+	give("berries", 20, {}, 1)
+	use_on(c, 0)
+	var jar := World.be(up)
+	check(not jar.is_empty() and jar["t"] == "jar", "a storage jar set down")
+	req("container_click", {"c": up, "slot": 101, "button": 0, "shift": true})
+	check(count("berries") == 0 and int((World.be(up)["d"]["inv"] as Array)[0].get("n", 0)) == 20, "shift-click puts the berries in the jar")
+	req("container_click", {"c": up, "slot": 0, "button": 1, "shift": false})
+	check(int(inv().get_slot(Inventory.CURSOR).get("n", 0)) == 10, "right click takes half back out")
+	req("inv_close")
+	check(count("berries") == 10, "and closing puts them in your pack")
+	req("break", {"c": up, "slot": 0})
+	check(World.be(up).is_empty() and count("jar") == 1 and count("berries") == 20, "picking the jar up gives back the jar and what was in it")
 	# clay forming: a bowl
 	clear_inv()
 	give("clay", 6)

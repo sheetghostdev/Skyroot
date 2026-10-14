@@ -370,17 +370,27 @@ for kind in ["knife", "axe", "shovel", "hoe"]:
 @icon("firestarter")
 def _():
     img = blank()
-    # the bow
-    for i in range(24):
-        t = i / 23.0
-        x = 4 + t * 24
-        y = 9 + math.sin(t * math.pi) * -5 + 2
-        put(img, int(x), int(y), "#735333", wrap=False)
-        put(img, int(x), int(y) + 1, "#5e4329", wrap=False)
-    line(img, 4, 11, 28, 11, "#d8cba4")
-    # the drill and hearth board
-    stroke(img, 16, 8, 16, 26, 2.4, WOOD, 28)
-    poly(img, [(6, 25), (26, 25), (26, 29), (6, 29)], lambda x, y: hexc("#9b7547") if y < 27 else hexc("#735333"))
+    # a bow drill: a hearth board with a glowing ember at the notch, the drill
+    # standing in it, and the bow lying across at an angle
+    poly(img, [(3, 26), (27, 23), (28, 28), (4, 31)], lambda x, y: hexc("#9b7547") if y < 28 else hexc("#735333"))
+    stroke(img, 11, 6, 13, 26, 2.6, WOOD, 28)
+    blob(img, 13, 26, 2.2, 1.4, lambda dx, dy: hexc("#ffb340") if dx * dx + dy * dy < 0.4 else hexc("#d0441a"), wrap=False)
+    for i, (x, y) in enumerate([(14, 22), (16, 20), (15, 18)]):
+        put(img, x, y, (0.75, 0.75, 0.75, 0.7 - i * 0.15), wrap=False)
+    # the bow: an arc from lower left to upper right, string straight across
+    a, b = (5, 19), (29, 7)
+    pts = []
+    for i in range(25):
+        t = i / 24.0
+        x = a[0] + (b[0] - a[0]) * t
+        y = a[1] + (b[1] - a[1]) * t
+        bulge = math.sin(t * math.pi) * 5.5
+        pts.append((x + bulge * 0.45, y + bulge * 0.9))
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        line(img, x0, y0, x1, y1, "#7a5636")
+        line(img, x0, y0 + 1, x1, y1 + 1, "#4e3720")
+    line(img, a[0], a[1], 12, 15, "#e8dcb8")
+    line(img, 13, 14, b[0], b[1], "#e8dcb8")
     return finish(img)
 
 
