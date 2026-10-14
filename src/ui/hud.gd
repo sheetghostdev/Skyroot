@@ -337,10 +337,11 @@ func _process(delta: float) -> void:
 		_held_t -= delta
 		held_name.modulate.a = clampf(_held_t, 0.0, 1.0)
 	if _hint_t > 0.0:
-		# a tip waits (hidden) while a full-screen panel is open
-		if panel == null:
+		# a tip waits (hidden) while a full-screen panel is open or hands are busy crafting
+		var away := panel != null or p.mode == "craft"
+		if not away:
 			_hint_t -= delta
-		hint_card.modulate.a = 0.0 if panel != null else clampf(_hint_t, 0.0, 1.0)
+		hint_card.modulate.a = 0.0 if away else clampf(_hint_t, 0.0, 1.0)
 		if _hint_t <= 0.0:
 			hint_card.visible = false
 			_next_hint()

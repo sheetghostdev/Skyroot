@@ -349,24 +349,29 @@ func _build_cord() -> void:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var x0 := -0.16
 	var twist := _twist
-	# twisted section: two strands spiralling around each other
+	# twisted section: two plies spiralling around each other (a little larger than
+	# life so the twist reads from where you kneel)
 	for strand in 2:
 		var pts: Array[Vector3] = []
-		var steps := maxi(6, int(length * 140.0))
+		var steps := maxi(8, int(length * 180.0))
 		for i in steps + 1:
 			var f := float(i) / steps
 			var x := x0 + f * length
-			var a := f * length * 220.0 + strand * PI + twist
-			pts.append(Vector3(x, 0.012 + sin(a) * 0.0028, cos(a) * 0.0028))
-		_tube(st, pts, 0.0026, Color(0.78, 0.68, 0.46) * (1.0 - strand * 0.08))
-	# loose fibres fanning out beyond the twist
+			var a := f * length * 160.0 + strand * PI + twist
+			pts.append(Vector3(x, 0.014 + sin(a) * 0.0038, cos(a) * 0.0038))
+		_tube(st, pts, 0.0036, Color(0.80, 0.69, 0.45) * (1.0 - strand * 0.12))
+	# two loose bundles of fiber still to be twisted, one for each ply
 	var rng := RandomNumberGenerator.new()
 	rng.seed = entity_id
-	for f in 10:
-		var side := 1.0 if f % 2 == 0 else -1.0
-		var start := Vector3(x0 + length, 0.012, 0.0)
-		var end := start + Vector3(0.18 - prog * 0.1, rng.randf_range(-0.004, 0.006), side * rng.randf_range(0.004, 0.035))
-		_tube(st, [start, start.lerp(end, 0.5) + Vector3(0, 0.003, 0), end], 0.0009, Color(0.74, 0.7, 0.45))
+	var start := Vector3(x0 + length, 0.014, 0.0)
+	for side in [-1.0, 1.0]:
+		var spread := 0.022 + 0.01 * (1.0 - prog)
+		var reach := 0.2 - prog * 0.1
+		for f in 9:
+			var end := start + Vector3(reach * rng.randf_range(0.85, 1.05), rng.randf_range(-0.006, 0.004), side * (spread + rng.randf_range(-0.012, 0.012)))
+			var mid := start.lerp(end, 0.45) + Vector3(0, 0.004, side * 0.004)
+			var shade := Color(0.76, 0.72, 0.46).lerp(Color(0.62, 0.66, 0.38), rng.randf())
+			_tube(st, [start, mid, end], 0.0014, shade)
 	st.generate_normals()
 	cord_mi.mesh = st.commit()
 
