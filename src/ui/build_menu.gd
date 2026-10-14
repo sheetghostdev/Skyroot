@@ -56,8 +56,7 @@ func _ready() -> void:
 		b.text = String(bp.get("name", id))
 		b.custom_minimum_size = Vector2(170, 64)
 		b.add_theme_font_size_override("font_size", 15)
-		b.pressed.connect(_select.bind(id))
-		b.mouse_entered.connect(_select.bind(id))
+		b.pressed.connect(_select.bind(id))   # (on click only: the cursor passing over must not change the choice)
 		grid.add_child(b)
 	detail = VBoxContainer.new()
 	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL

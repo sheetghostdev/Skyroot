@@ -113,6 +113,9 @@ static func material_for(role: String) -> Material:
 		if base_role == "Stone":
 			# real stone is darker than the palette's light greys look under sun and sky
 			m.set_shader_parameter("tint", Color(0.78, 0.76, 0.72))
+		elif base_role == "Straw":
+			# (warmer: under the blue sky light the palette's straw read olive)
+			m.set_shader_parameter("tint", Color(1.07, 0.93, 0.76))
 	_mats[base_role] = m
 	return m
 

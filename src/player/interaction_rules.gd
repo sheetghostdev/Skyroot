@@ -8,8 +8,25 @@ extends RefCounted
 static var _lift_cache: Dictionary = {}
 
 
+const HEAP_STARTERS := ["leaves", "grass", "food_scraps", "straw"]
+
+
 static func opt(label: String, action: String, args: Dictionary = {}, anim: String = "", hold: bool = false) -> Dictionary:
 	return {"label": label, "action": action, "args": args, "anim": anim, "hold": hold, "enabled": true}
+
+
+static func fire_verb(held: String) -> String:
+	## "Roast" only what cooks; fuel and pots go in; anything else just burns.
+	if ItemDB.food(held).has("cooks_to"):
+		return "Roast %s at the fire"
+	if not ItemDB.fuel(held).is_empty() or held == "pot":
+		return "Put %s in the fire"
+	return "Put %s in the fire (it will burn)"
+
+
+static func confirm(label: String, action: String, args: Dictionary = {}, anim: String = "", secs: float = 0.8) -> Dictionary:
+	## For something that can't be undone: it happens only after the button is held a moment.
+	return {"label": label + " (hold)", "action": action, "args": args, "anim": anim, "hold": false, "confirm_s": secs, "enabled": true}
 
 
 static func disabled(label: String, why: String) -> Dictionary:
@@ -92,10 +109,12 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			var n := int(d.get("n", 1))
 			if Inventory.stack_kg(iid, 1, d.get("x", {})) > Actions.LIFT_KG:
 				out["interact"] = disabled("%s (too heavy to lift)" % nm, "Split it where it lies with an axe.")
-			elif bool(d.get("hot", false)):
-				out["interact"] = opt("Take %s (hot!)" % nm, "pickup", {"eid": eid}, "pick")
 			else:
-				out["interact"] = opt("Pick up %s%s" % [nm, " ×%d" % n if n > 1 else ""], "pickup", {"eid": eid}, "pick")
+				var what := ItemDB.a_name(iid, d.get("x", {})) if n == 1 else ItemDB.count_name(iid, n, d.get("x", {}))
+				if bool(d.get("hot", false)):
+					out["interact"] = opt("Take %s (hot!)" % what, "pickup", {"eid": eid}, "pick")
+				else:
+					out["interact"] = opt("Pick up %s" % what, "pickup", {"eid": eid}, "pick")
 			var proc: Dictionary = ItemDB.def(iid).get("process", {})
 			var in_fire: bool = d.get("x", {}).has("fm")
 			if in_fire and (not proc.is_empty() or ItemDB.has_tag(iid, "splittable")):
@@ -124,7 +143,7 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 				if held == "stick":
 					out["secondary"] = opt("Light the stick in the fire", "fire_torch", {"eid": site}, "place")
 				elif held != "" and (not ItemDB.fuel(held).is_empty() or not ItemDB.food(held).is_empty() or held == "pot"):
-					var verb2 := "Roast %s at the fire" if ItemDB.fuel(held).is_empty() and held != "pot" else "Put %s in the fire"
+					var verb2 := fire_verb(held)
 					out["secondary"] = opt(verb2 % ItemDB.display_name(held, hd).to_lower(), "fire_add", {"eid": site}, "place")
 			if iid == "pot" and held == "" and float(d.get("x", {}).get("water", 0.0)) > 0.01:
 				out["primary"] = opt("Drink from the %s" % nm.to_lower(), "drink_entity", {"eid": eid}, "drink")
@@ -280,7 +299,8 @@ static func _plant_options(out: Dictionary, t: Dictionary, d: Dictionary, eid: i
 	var nm := String(info.get("name", sp))
 	if g >= 1.0:
 		var need := String(info.get("tool", ""))
-		if need == "" or tool == need or tool == "chop" or need == "cut" and held == "":
+		# (a plant that wants a blade is slow to pull by hand, whatever else you're holding)
+		if need == "" or tool == need or (need == "cut" and tool == "chop"):
 			out["interact"] = opt("Harvest %s" % nm.to_lower(), "harvest", {"eid": eid}, "pick" if tool == "" else "cut")
 		else:
 			var slow := opt("Harvest %s (slow by hand)" % nm.to_lower(), "harvest", {"eid": eid}, "pick")
@@ -355,11 +375,16 @@ static func _ground_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			pass
 		if held in ["clay", "clay_prepared", "fiber", "stone_head", "stone"] and not out.has("interact"):
 			_work_surface(out, p, t, held, hd, -1)
-		if CompostSim.is_compostable(held) and not out.has("interact") and layer in ["soil", "clay"] and not hd.has("fm"):
+		# (a heap is started with what heaps are made of, not with food or cord you happen to hold)
+		if held in HEAP_STARTERS and not out.has("interact") and layer in ["soil", "clay"] and not hd.has("fm"):
 			out["interact"] = opt("Start a compost heap here", "compost_start", {"pos": pos}, "place")
 
 
 static func _water_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held: String, hd: Dictionary) -> void:
+	if not WaterActions.near_pond(p.global_position):
+		# (the same reach the island checks: aiming at the water from up the bank isn't enough)
+		out["interact"] = disabled("Too far to reach the water", "Step down to the water's edge.")
+		return
 	if held == "pot":
 		var st := String(hd.get("state", ""))
 		var cap := Pottery.capacity(hd)
@@ -367,7 +392,7 @@ static func _water_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held:
 			if float(hd.get("water", 0.0)) < cap - 0.005:
 				out["interact"] = opt("Fill the %s" % Pottery.display_name(hd).to_lower(), "fill_vessel", {}, "pick")
 			else:
-				out["interact"] = disabled("Full", "The vessel is full.")
+				out["interact"] = disabled("Already full", "The vessel is full.")
 		elif st != "fired":
 			out["interact"] = disabled("Fill vessel", "Unfired clay would turn back into mud. Fire it first.")
 		else:

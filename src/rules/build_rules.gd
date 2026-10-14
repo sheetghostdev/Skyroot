@@ -25,8 +25,8 @@ static func options(out: Dictionary, p: LocalPlayer, t: Dictionary, d: Dictionar
 		else:
 			var names: PackedStringArray = []
 			for id in need:
-				names.append(ItemDB.display_name(id).to_lower())
-			out["primary"] = InteractionRules.disabled("Needs %s" % " or ".join(names), "Hold %s to fit the next part. Remaining: %s." % [" or ".join(names), remaining_text(d)])
+				names.append(ItemDB.a_name(id))
+			out["primary"] = InteractionRules.disabled("Needs %s" % " or ".join(names), "Hold %s to fit the next part. Still to come: %s." % [" or ".join(names), remaining_text(d)])
 		return
 	if bool(bp.get("bed", false)):
 		out["interact"] = {"label": "Lie down and sleep", "local": func(): p.start_sleep(eid), "enabled": true}
@@ -57,7 +57,8 @@ static func remaining_text(d: Dictionary) -> String:
 	var bits: PackedStringArray = []
 	for k in order:
 		var names: PackedStringArray = []
-		for id in k.split("|"):
-			names.append(ItemDB.display_name(id).to_lower())
-		bits.append("%d %s" % [counts[k], " or ".join(names)])
+		var ids: PackedStringArray = String(k).split("|")
+		for j in ids.size():
+			names.append(ItemDB.count_name(ids[j], int(counts[k]), {}, j == 0))
+		bits.append(" or ".join(names))
 	return ", ".join(bits)

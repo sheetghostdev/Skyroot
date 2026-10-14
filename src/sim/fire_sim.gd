@@ -791,7 +791,7 @@ static func _phase(d: Dictionary, lit: bool, heat: float, encl: float, smoke: fl
 static func describe(d: Dictionary) -> String:
 	## What a player can tell by looking at a site (no instruments - just signs).
 	var phase := String(d.get("phase", "cold"))
-	var covered := shell_coverage(d) > 0.6
+	var cov := shell_coverage(d)
 	var vents: int = d.get("vents", []).size()
 	var lines: PackedStringArray = []
 	match phase:
@@ -820,8 +820,12 @@ static func describe(d: Dictionary) -> String:
 			lines.append("Cold ashes.")
 		_:
 			lines.append("A cold fire pit.")
-	if covered:
+	if cov >= 0.95:
 		lines.append("Packed with earth%s." % ((", %d vent%s open" % [vents, "s" if vents != 1 else ""]) if vents > 0 else ", no vents"))
+	elif cov >= 0.6:
+		lines.append("Mostly covered with earth, but gaps still let the air in.")
+	elif cov > 0.1:
+		lines.append("Partly covered with earth - still wide open to the air.")
 	elif float(d.get("encl", 0.0)) > 0.45:
 		lines.append("Sheltered by what's around it.")
 	if float(d.get("ash_n", 0.0)) >= 0.02 and float(d.get("ash_c", 0.0)) >= 0.05:

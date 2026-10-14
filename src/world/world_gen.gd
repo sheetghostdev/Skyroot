@@ -10,7 +10,7 @@ const TWIGS := [Vector2(0.2, -0.6), Vector2(2.3, -0.9), Vector2(1.9, -2.9), Vect
 const STICKS := [Vector2(-0.5, -1.0), Vector2(2.6, -0.4)]
 const WILD_FIBER := [Vector2(-5.7, 1.7), Vector2(-4.6, 2.4), Vector2(-2.5, -0.7), Vector2(-5.3, -0.7)]
 const WILD_TUBER := [Vector2(2.7, -3.0), Vector2(-0.4, -2.8)]
-const BOULDERS := [[Vector2(6.5, 3.3), "a", 0.4], [Vector2(-7.0, 3.3), "b", 2.0], [Vector2(3.7, -5.1), "c", 4.1]]
+const BOULDERS := [[Vector2(6.5, 3.3), "a", 0.4], [Vector2(-5.8, 3.1), "b", 2.0], [Vector2(3.3, -4.4), "c", 4.1]]   # (well inside the rim)
 
 
 static func ground_xf(t: TerrainData, p: Vector2, yaw: float = 0.0, lift: float = 0.0) -> Transform3D:
@@ -28,7 +28,8 @@ static func initial_entities(t: TerrainData) -> Array:
 	for b in BOULDERS:
 		out.append({"t": "boulder", "xf": ground_xf(t, b[0], b[2], -0.12), "d": {"model": b[1]}})
 	out.append({"t": "mossy_log", "xf": ground_xf(t, Vector2(-0.9, -4.5), 0.35, -0.04), "d": {}})
-	out.append({"t": "mushrooms", "xf": ground_xf(t, Vector2(-0.35, -4.15), 0.9, 0.0), "d": {"caps": [1.0, 1.0, 1.0, 0.6], "substrate": 6.0, "nutr": 0.04}})
+	# (the mushrooms grow against the log's flank)
+	out.append({"t": "mushrooms", "xf": ground_xf(t, Vector2(-0.57, -4.33), 0.9, 0.0), "d": {"caps": [1.0, 1.0, 1.0, 0.6], "substrate": 6.0, "nutr": 0.04}})
 	out.append({"t": "bush", "xf": ground_xf(t, Vector2(-5.9, -2.7), 1.3, -0.03), "d": {"berries": 1.0, "biomass": 6.0}})
 	out.append({"t": "plant", "xf": ground_xf(t, Vector2(5.35, 0.15), 0.0, -0.02),
 		"d": {"sp": "grain", "g": 1.0, "wild": true, "perennial": true, "protected": true, "nutr": 0.012, "bio": 1.0}})

@@ -20,7 +20,7 @@
           "Drink at the pond to the west: look at the water and press [key]E[/key], a few times. You start a little thirsty, and work makes you thirstier.",
           "Harvest a clump of wild fiber grass by the pond with [key]E[/key]. Three bundles of fiber are tinder for your first fire; the wild grain beside the outcrop gives straw as well.",
           "Eat what the island offers: berries from the bush in the north-west, mushrooms from the mossy log in the north, and the wild tubers that grow near the tree.",
-          "Before dark, make fire with a fire drill. Carve one stick into a hearth board with your blade, set the board on bare ground with dry twigs and sticks heaped around it, and spin your second stick in its notch. See [b]The fire drill[/b]."
+          "Before dark, make fire with a fire drill. Lay one stick on the ground ([key]RMB[/key]), hold your blade and hold [key]LMB[/key] on it to carve it into a hearth board; set the board on bare ground with dry twigs and sticks heaped around it, and spin your second stick in its notch. See [b]The fire drill[/b]."
         ]},
         {"h": "After the first night", "list": [
           "Twist plant fiber into cordage, knap an axe head and a digging blade, and haft them onto sticks. The axe opens up the tree's big limbs; the digging tool opens up the ground.",
@@ -33,8 +33,8 @@
       "track": [
         {"text": "Pick up two stones", "have": "stone", "n": 2},
         {"text": "Knap a cutting blade at the flat stone", "found": "first_blade"},
-        {"text": "Gather three bundles of plant fiber for tinder", "have": "fiber", "n": 3},
-        {"text": "Carve a stick into a hearth board", "have": "hearth_board"},
+        {"text": "Gather tinder: three bundles of plant fiber (or two of straw)", "have": {"fiber": 3, "straw": 2}},
+        {"text": "Carve a stick into a hearth board", "have": "hearth_board", "near": true},
         {"text": "Light a fire before dark", "found": "first_fire"},
         {"text": "Make an axe", "found": "first_axe"}
       ]
@@ -59,10 +59,10 @@
           "[key]LMB[/key] - primary: use what you hold. Cut, dig, chop, eat, drink, strike, pour, fit a part.",
           "[key]RMB[/key] - secondary: put down what you hold, plant, till, feed a fire, poke a vent.",
           "[key]R[/key] turns the thing you are about to put down; a faint ghost shows where it will go.",
-          "[key]Q[/key] tosses one of the held item a short way ahead; [key]Ctrl[/key]+[key]Q[/key] tosses the whole stack. Near the edge, it may go over.",
+          "[key]Q[/key] tosses one of what you are holding a short way ahead; [key]Ctrl[/key]+[key]Q[/key] tosses the whole stack. Near the edge, it may go over.",
           "[key]1[/key] to [key]9[/key] or the mouse [key]Wheel[/key] choose a hotbar slot."
         ]},
-        {"h": "Your pack", "text": "[key]Tab[/key] or [key]I[/key] opens your pack: nine hotbar slots and eighteen more. Click a stack to pick it up and click another slot to put it there; stacks of the same thing merge. Right-click splits a stack in half, [key]Shift[/key]-click moves it between the hotbar and the pack, and [key]Q[/key] over an item drops it at your feet ([key]Ctrl[/key]+[key]Q[/key] for the whole stack). Hover over an item to read about it."},
+        {"h": "Your pack", "text": "[key]Tab[/key] or [key]I[/key] opens your pack: nine hotbar slots and eighteen more. Click a stack to pick it up and click another slot to put it there; stacks of the same thing merge. Right-click splits a stack in half, [key]Shift[/key]-click moves it between the hotbar and the pack, and [key]Q[/key] over an item drops it at your feet ([key]Ctrl[/key]+[key]Q[/key] for the whole stack). Hover over an item to read about it. You can carry about 45 kg in all; past about 22 kg you slow down, and nothing heavier than 35 kg can be lifted at all - split a log where it lies."},
         {"h": "Close-up work", "text": "Knapping, kneading clay, shaping pottery, twisting cord, hafting and the fire drill happen close up, with the mouse free. Each shows its own controls along the bottom of the screen. [key]Enter[/key] finishes the work; [key]Esc[/key] steps away and leaves it where it is, so you - or anyone else - can carry on later with [key]E[/key]."},
         {"h": "Panels and the rest", "list": [
           "[key]H[/key] opens this Survival Guide. While a hint card is showing, [key]H[/key] opens its entry and [key]X[/key] dismisses the hint for good.",

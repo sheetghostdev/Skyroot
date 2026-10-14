@@ -118,6 +118,55 @@ func display_name(id: String, d: Dictionary = {}) -> String:
 	return base
 
 
+# Things counted in loads, lumps and bundles rather than one by one.
+const UNITS := {
+	"earth": ["load of earth", "loads of earth"], "clay": ["lump of raw clay", "lumps of raw clay"],
+	"clay_prepared": ["lump of prepared clay", "lumps of prepared clay"], "cordage": ["length of cordage", "lengths of cordage"],
+	"straw": ["bundle of straw", "bundles of straw"], "fiber": ["bundle of fiber", "bundles of fiber"],
+	"grass": ["handful of grass", "handfuls of grass"], "leaves": ["bunch of leaves", "bunches of leaves"],
+	"firewood": ["piece of firewood", "pieces of firewood"], "charcoal": ["piece of charcoal", "pieces of charcoal"],
+	"ash": ["handful of ash", "handfuls of ash"], "compost": ["basket of compost", "baskets of compost"],
+	"food_scraps": ["handful of food scraps", "handfuls of food scraps"], "berries": ["handful of berries", "handfuls of berries"],
+	"seed_grain": ["handful of grain seeds", "handfuls of grain seeds"], "seed_fiber": ["pinch of fiber seeds", "pinches of fiber seeds"],
+	"potsherds": ["handful of potsherds", "handfuls of potsherds"],
+}
+
+
+static func with_article(noun: String) -> String:
+	## "a stone", "an axe head" (by spelling; good enough for the island's words).
+	if noun == "":
+		return noun
+	return ("an " if "aeiou".contains(noun.substr(0, 1).to_lower()) else "a ") + noun
+
+
+static func plural(noun: String) -> String:
+	if noun.ends_with("s"):
+		return noun
+	if noun.ends_with("y") and noun.length() > 1 and not "aeiou".contains(noun.substr(noun.length() - 2, 1)):
+		return noun.substr(0, noun.length() - 1) + "ies"
+	if noun.ends_with("sh") or noun.ends_with("ch") or noun.ends_with("x"):
+		return noun + "es"
+	return noun + "s"
+
+
+func a_name(id: String, d: Dictionary = {}) -> String:
+	## "a rough board", "a load of earth".
+	if UNITS.has(id):
+		return with_article(String(UNITS[id][0]))
+	return with_article(display_name(id, d).to_lower())
+
+
+func count_name(id: String, n: int, d: Dictionary = {}, number: bool = true) -> String:
+	## "3 rough boards", "6 loads of earth" (or without the number: "rough boards").
+	var word: String
+	if UNITS.has(id):
+		word = String(UNITS[id][0 if n == 1 else 1])
+	else:
+		var nm := display_name(id, d).to_lower()
+		word = nm if n == 1 else plural(nm)
+	return ("%d %s" % [n, word]) if number else word
+
+
 func describe(id: String, d: Dictionary = {}) -> String:
 	var lines: PackedStringArray = []
 	lines.append(String(def(id).get("desc", "")))
@@ -129,7 +178,10 @@ func describe(id: String, d: Dictionary = {}) -> String:
 					lines.append(String(d["note"]))
 		"stone_head":
 			if d.has("q"):
-				lines.append("Shape quality %d%%. Bind it to a stick with cordage." % int(float(d["q"]) * 100.0))
+				if String(d.get("shape", "")) in ["axe", "digger"]:
+					lines.append("Shape quality %d%%. Bind it to a stick with cordage." % int(float(d["q"]) * 100.0))
+				elif String(d.get("shape", "")) == "":
+					lines.append("Not finished yet: set it on the anvil stone again and keep knapping.")
 		"pot":
 			lines.append(Pottery.describe(d))
 	if d.has("moist") and def(id).has("moist"):

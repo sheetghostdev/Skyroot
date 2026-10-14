@@ -81,7 +81,7 @@
         {"h": "Greens and browns", "list": [
           "[b]Greens[/b] - fresh, wet and rich: leaves, cut grass, food scraps, berries, mushrooms, tubers and roasted food.",
           "[b]Browns[/b] - dry and bulky: straw, plant fiber, cordage and grain sheaves.",
-          "[b]Not wood[/b]: twigs, sticks, firewood and boards would take years to rot. Burn them or build with them. Nothing that has been in a fire will rot either.",
+          "[b]Not wood[/b]: twigs, sticks, firewood and boards would take years to rot. Burn them or build with them. Nothing charred will rot either (roasted food still does).",
           "[b]Not ash[/b]: work ash straight into the soil instead."
         ]},
         {"h": "Keeping it working", "text": "Look at the heap to read it: its weight, how hot it is, the mix, how wet it is, how much air it has, how much finished compost is ready, and a word of advice.", "list": [
@@ -100,7 +100,7 @@
         {"tip": "Each compost needs both enough finished material and enough nutrients. Food scraps and leaves are rich; straw and sheaves are bulky. Heaped together they make the most compost."}
       ],
       "track": [
-        {"text": "Gather greens: leaves, grass or scraps", "have": "leaves"},
+        {"text": "Gather greens: leaves, grass or scraps", "have": {"leaves": 1, "grass": 1, "food_scraps": 1}},
         {"text": "Gather browns: straw", "have": "straw", "n": 4},
         {"text": "Take your first compost", "found": "first_compost"}
       ]

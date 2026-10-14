@@ -170,6 +170,7 @@ func set_mode(m: String) -> void:
 
 func set_third_person(on: bool) -> void:
 	third_person = on
+	_tp_close = false
 	cam_tp.current = on
 	cam_fp.current = not on
 	model.set_first_person(not on)
@@ -530,7 +531,19 @@ func shake_camera(amount: float) -> void:
 	_shake = maxf(_shake, amount)
 
 
+var _tp_close := false
+
+
 func _update_model(delta: float, hv: Vector3) -> void:
+	if third_person:
+		# squeezed in by walls or a roof, the camera would end up inside your head:
+		# hide the body instead of looking out through it
+		var close := tp_arm.get_hit_length() < 0.75
+		if close != _tp_close:
+			_tp_close = close
+			model.set_first_person(close)
+	elif _tp_close:
+		_tp_close = false
 	if hv.length() > 0.3:
 		facing_yaw = lerp_angle(facing_yaw, atan2(-hv.x, -hv.z), 1.0 - exp(-10.0 * delta))
 	if not third_person or interactor.busy() or mode == "craft":

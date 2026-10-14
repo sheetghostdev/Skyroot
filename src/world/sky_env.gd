@@ -134,6 +134,10 @@ func _build_rain() -> void:
 	mat.albedo_color = Color(0.75, 0.82, 0.92, 0.35)
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 	mat.billboard_keep_scale = true
+	# streaks right in front of the eye would be thick white bars: they fade in from a metre or so out
+	mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+	mat.distance_fade_min_distance = 0.7
+	mat.distance_fade_max_distance = 2.4
 	quad.material = mat
 	rain_fx.draw_pass_1 = quad
 	rain_fx.position = Vector3(0, 9, 0)

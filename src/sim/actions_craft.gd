@@ -419,7 +419,7 @@ static func _finish_knap(a: Actions, pid: int, e: Dictionary) -> void:
 		head["shape"] = ""
 		a.give(pid, "stone_head", 1, head)
 		var notes: PackedStringArray = ev["notes"]
-		_result(pid, e, "Not yet a %s.\n%s\nYou kept the stone - place it on the anvil to keep working it." % [String(Knap.TARGETS[target]["name"]).to_lower(), "\n".join(notes)], "warn")
+		_result(pid, e, "Not yet %s.\n%s\nYou kept the stone - place it on the anvil to keep working it." % [ItemDB.with_article(String(Knap.TARGETS[target]["name"]).to_lower()), "\n".join(notes)], "warn")
 		return
 	var q := float(ev["q"])
 	var word := ItemDB.quality_word(q)
@@ -519,7 +519,8 @@ static func _finish_haft(a: Actions, pid: int, e: Dictionary) -> void:
 		note = "\nThe binding is loose - it will wear out sooner."
 	elif float(d["align"]) < 0.5:
 		note = "\nThe head sits a little crooked."
-	_result(pid, e, "A %s %s.%s" % [ItemDB.quality_word(q).to_lower(), ItemDB.display_name(tool_id).to_lower(), note], "craft")
+	var what := ItemDB.with_article("%s %s" % [ItemDB.quality_word(q).to_lower(), ItemDB.display_name(tool_id).to_lower()])
+	_result(pid, e, "%s%s.%s" % [what.substr(0, 1).to_upper(), what.substr(1), note], "craft")
 
 
 static func _work_cancel(pid: int, args: Dictionary, a: Actions) -> void:

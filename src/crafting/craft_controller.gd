@@ -74,8 +74,17 @@ func open(id: int) -> void:
 	_tw.tween_property(cam, "global_transform", session.camera_xf(), 0.55)
 	_tw.tween_property(cam, "fov", session.camera_fov(), 0.55)
 	gw.hud.set_work_hint(session.hint_text())
+	_clear_grass(e["xf"].origin, 0.55)
 	Events.craft_started.emit(String(e["d"]["kind"]), id)
 	Sfx.ui("ui_open", -14.0)
+
+
+func _clear_grass(at: Vector3, radius: float) -> void:
+	## Grass lies flat around the work while you're bent over it (only on this screen).
+	var gw = Game.game_world
+	var mat: ShaderMaterial = gw.island.grass_mat if gw and gw.island else null
+	if mat:
+		mat.set_shader_parameter("clear_zone", Vector4(at.x, at.z, radius, 0.0))
 
 
 func close(release: bool = true) -> void:
@@ -89,6 +98,7 @@ func close(release: bool = true) -> void:
 	eid = -1
 	var gw = Game.game_world
 	var lp: LocalPlayer = gw.local_player() if gw else null
+	_clear_grass(Vector3.ZERO, 0.0)
 	if gw:
 		gw.hud.set_work_hint("")
 	if lp:

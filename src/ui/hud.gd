@@ -107,11 +107,13 @@ void fragment() {
 	root.add_child(fade)
 	work_hint = UITheme.label("", 16, Color(1, 1, 1, 0.92))
 	work_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	work_hint.offset_top = -170
-	work_hint.offset_bottom = -140
-	work_hint.offset_left = -500
-	work_hint.offset_right = 500
+	work_hint.offset_top = -196
+	work_hint.offset_bottom = -132
+	work_hint.offset_left = -520
+	work_hint.offset_right = 520
 	work_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	work_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	work_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	work_hint.add_theme_constant_override("outline_size", 6)
 	work_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	root.add_child(work_hint)
@@ -176,7 +178,7 @@ func _build_vitals() -> void:
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(box)
 	for spec in [["health", "Health", Color(0.85, 0.32, 0.3)], ["hunger", "Food", Color(0.87, 0.62, 0.3)],
-			["thirst", "Water", UITheme.WATER], ["stamina", "Stamina", Color(0.72, 0.8, 0.42)], ["warmth", "Warmth", Color(0.95, 0.6, 0.35)]]:
+			["thirst", "Water", UITheme.WATER], ["stamina", "Stamina", Color(0.6, 0.8, 0.4)], ["warmth", "Warmth", Color(0.92, 0.5, 0.7)]]:
 		var bar := VitalBar.new()
 		bar.label = spec[1]
 		bar.color = spec[2]
@@ -196,13 +198,13 @@ func _build_clock() -> void:
 	root.add_child(box)
 	clock = UITheme.label("", 18, UITheme.PAPER, true)
 	clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	clock.add_theme_constant_override("outline_size", 5)
-	clock.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.5))
+	clock.add_theme_constant_override("outline_size", 6)
+	clock.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.72))
 	box.add_child(clock)
 	weather_lbl = UITheme.label("", 14, Color(UITheme.PAPER, 0.85))
 	weather_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	weather_lbl.add_theme_constant_override("outline_size", 4)
-	weather_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.5))
+	weather_lbl.add_theme_constant_override("outline_size", 5)
+	weather_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.72))
 	box.add_child(weather_lbl)
 
 
@@ -311,9 +313,9 @@ func _on_target(info: Dictionary) -> void:
 		badge.text = Settings.key_label(key)
 		badge.enabled = o.get("enabled", true)
 		row.add_child(badge)
-		var l := UITheme.label(String(o.get("label", "")), 16, UITheme.PAPER if o.get("enabled", true) else Color(UITheme.TEXT_DIM, 0.85))
-		l.add_theme_constant_override("outline_size", 5)
-		l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+		var l := UITheme.label(String(o.get("label", "")), 16, UITheme.PAPER if o.get("enabled", true) else Color(UITheme.PAPER, 0.62))
+		l.add_theme_constant_override("outline_size", 6)
+		l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
 		row.add_child(l)
 		prompts.add_child(row)
 		any = true
@@ -471,6 +473,7 @@ func _next_hint() -> void:
 		return
 	var h: Dictionary = Guide.hints[hid]
 	hint_id = hid
+	Guide.mark_seen(hid)
 	hint_title.text = String(h.get("title", "Tip"))
 	hint_text.text = String(h.get("text", ""))
 	hint_card.visible = true

@@ -337,7 +337,8 @@
         {
           "text": "Gather dry firewood",
           "have": "firewood",
-          "n": 6
+          "n": 6,
+          "near": true
         },
         {
           "text": "Have fire on the island",

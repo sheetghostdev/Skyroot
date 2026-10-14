@@ -470,11 +470,11 @@ static func display_name(d: Dictionary) -> String:
 		"cracked":
 			return "Cracked %s" % noun
 		"dry":
-			return "Dry clay %s" % noun
+			return ("Dry clay %s" % noun) if kind != "lump" else "Dry clay shape"
 		"leather":
 			return "Leather-hard %s" % noun
 		_:
-			return "Wet clay %s" % noun
+			return ("Wet clay %s" % noun) if kind != "lump" else "Wet clay shape"
 
 
 static func describe(d: Dictionary) -> String:

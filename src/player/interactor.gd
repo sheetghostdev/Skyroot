@@ -14,6 +14,8 @@ var ghost: Node3D
 var ghost_key := ""
 var _pending: Dictionary = {}
 var _last_sig := ""
+var _hold_sig := ""                 # an option that needs holding before it happens...
+var _hold_t := 0.0                  # ...and how long it has been held
 
 
 func setup(p: LocalPlayer) -> void:
@@ -26,7 +28,7 @@ func busy() -> bool:
 	return player.hands.is_playing()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if player.mode != "play":
 		if not target.is_empty():
 			target = {}
@@ -38,12 +40,29 @@ func _physics_process(_delta: float) -> void:
 	options = InteractionRules.options(player, target)
 	_emit()
 	_update_ghost()
+	var holding := ""
 	if not busy():
 		for key in ["interact", "primary", "secondary"]:
 			var opt: Dictionary = options.get(key, {})
-			if opt.get("hold", false) and Input.is_action_pressed(key) and opt.get("enabled", true):
+			if not Input.is_action_pressed(key) or not opt.get("enabled", true):
+				continue
+			if opt.has("confirm_s"):
+				# something that can't be undone happens only once the button has been held a moment
+				holding = "%s|%s|%s" % [key, opt.get("label", ""), target.get("eid", -1)]
+				if holding != _hold_sig:
+					_hold_sig = holding
+					_hold_t = 0.0
+				_hold_t += delta
+				if _hold_t >= float(opt["confirm_s"]):
+					_start(opt)
+					_hold_t = -INF   # once per hold
+				break
+			if opt.get("hold", false):
 				_start(opt)
 				break
+	if holding == "":
+		_hold_sig = ""
+		_hold_t = 0.0
 
 
 func _emit() -> void:
@@ -105,15 +124,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("interact"):
 		var oi: Dictionary = options.get("interact", {})
-		if not oi.get("hold", false):
+		if not oi.get("hold", false) and not oi.has("confirm_s"):
 			_start(oi)
 	elif event.is_action_pressed("primary"):
 		var o: Dictionary = options.get("primary", {})
-		if not o.get("hold", false):
+		if not o.get("hold", false) and not o.has("confirm_s"):
 			_start(o)
 	elif event.is_action_pressed("secondary"):
 		var o2: Dictionary = options.get("secondary", {})
-		if not o2.get("hold", false):
+		if not o2.get("hold", false) and not o2.has("confirm_s"):
 			_start(o2)
 	elif event.is_action_pressed("drop"):
 		_drop()

@@ -31,7 +31,7 @@ owns the save and autosaves every three minutes and on exit.
 |---|---|
 | W A S D / mouse | move / look |
 | Shift, Ctrl (or C), Space | sprint, crouch, jump |
-| E | interact (pick up, use, talk to the thing in front of you) |
+| E | interact (pick up or use the thing in front of you; hold to keep going) |
 | Left / right mouse | primary / secondary action with what you hold (place, plant, strike...) |
 | Mouse wheel, 1–9 | choose what to hold |
 | Tab (or I) | what you carry |
@@ -42,14 +42,16 @@ owns the save and autosaves every three minutes and on exit.
 | R | rotate something before placing it |
 | T | chat |
 | F5, F12, F1 | quick save (host), screenshot, hide the HUD |
-| Esc | close a panel / pause |
+| Enter | finish close-up work (knapping, pottery...) |
+| X | dismiss the tip on screen for good |
+| Esc | close a panel / the island menu (the world doesn't pause - it's co-op) |
 
 The prompts beside the crosshair always show what E and the mouse buttons will do with
 what you hold right now.
 
 ## What's in it
 
-* **The island** — smooth terrain with dig-able pockets of soil and clay, a pond with a
+* **The island** — smooth terrain with diggable pockets of soil and clay, a pond with a
   real water level, an outcrop of loose stones, the great tree, grass that grows back,
   wild tubers, fiber grass, wild grain, a berry bush and mushrooms on a mossy log.
   Changes persist.
@@ -57,12 +59,12 @@ what you hold right now.
   walls, a roof and staying dry help.  You can carry about 45 kg, and a heavy load
   slows you down.  Falling off the edge is final for what you carry; dying on the
   island leaves a satchel you can recover.
-* **Physical crafting** — knapping (blade, axe head, digging head, judged by the actual
+* **Physical crafting** — knapping (blade, axe head, digging blade, judged by the actual
   shape you made), cordage, hafting, clay preparation, pottery (a lathe profile you
-  pull and thin; bowl, cup or jar; it can collapse or crack), drying, pit firing,
+  pull and thin; bowl, cup or jar; rain slumps it, and thin or uneven walls crack in the fire), drying, pit firing,
   log splitting into boards or firewood, the fire drill.
 * **Fire** — a physical fire model: tinder, kindling and fuel heat each other; air,
-  moisture and enclosure decide whether a lay catches, roars, smoulders or chars.  The
+  moisture and enclosure decide whether a lay catches, roars, smolders or chars.  The
   same evaluator runs campfires, cooking, pit kilns and charcoal mounds (seal it with
   earth, leave vents, watch the smoke, seal it when it thins — open it hot and it burns
   to ash).

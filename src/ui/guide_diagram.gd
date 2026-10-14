@@ -1229,9 +1229,14 @@ func _thermo_frame(bulb: Vector2, hgt: float, ticks: int = 4) -> void:
 # --- 1. island ---------------------------------------------------------------
 
 func _d_island() -> void:
+	## The island from above, drawn from the world's own layout (x east, z south;
+	## north is up), so it matches what you find when you walk about.
 	var t := _t
 	var fr := Rect2(14, 14, 452, 242)
-	var pc := Vector2(318, 168)
+	var ctr := Vector2(232, 136)
+	var sc := 15.0                       # px per metre
+	var P := func(w: Vector2) -> Vector2: return ctr + w * sc
+	var pc: Vector2 = P.call(TerrainData.POND_CENTER)
 	if _layer(2, false):
 		_fill(_rectp(fr), Color(SKY, 0.30))
 	# clouds drifting far below the island (they pass beneath it)
@@ -1245,10 +1250,9 @@ func _d_island() -> void:
 		if a > 0.01:
 			_cloud(Vector2(cx, cy), cw, cw * 0.42, Color(1, 1, 1, 0.8 * a), Color(INK, 0.35 * a), 1.3)
 	if _layer(4, false):
-		var ctr := Vector2(240, 134)
-		var rx := 160.0
-		var ry := 94.0
-		var isl := _lumpy(ctr, rx, ry, 0.06, 80, 1.7, 0.0, 0.012)
+		var isl := PackedVector2Array()
+		for i in 96:
+			isl.append(P.call(TerrainData.outline_point(TAU * i / 96.0)))
 		# underside shadow (it floats)
 		_fill(_xpts(isl, Vector2(5, 10)), Color(0.28, 0.33, 0.42, 0.28))
 		_shape(isl, GRASS, INK, 2.4, 0.6)
@@ -1256,89 +1260,97 @@ func _d_island() -> void:
 		var segs := PackedVector2Array()
 		var tuft_pts := PackedVector2Array()
 		for i in isl.size():
-			var p := isl[i]
-			var g := Vector2((p.x - ctr.x) / (rx * rx), (p.y - ctr.y) / (ry * ry)).normalized()
+			var q := isl[i]
+			var g := (q - ctr).normalized()
 			var l := 4.0 + 4.0 * _rnd(i * 3)
-			segs.append(p + g * 1.5)
-			segs.append(p + g * (1.5 + l))
+			segs.append(q + g * 1.5)
+			segs.append(q + g * (1.5 + l))
 		for k in 46:
 			var a := TAU * _rnd(k * 7 + 3)
-			var rr := 0.25 + 0.68 * sqrt(_rnd(k * 11 + 5))
-			tuft_pts.append(ctr + Vector2(cos(a) * (rx - 10.0) * rr, sin(a) * (ry - 10.0) * rr))
+			var rr := 0.2 + 0.7 * sqrt(_rnd(k * 11 + 5))
+			tuft_pts.append(P.call(TerrainData.outline_point(a) * rr))
 		_ml(segs, Color(INK, 0.55), 1.2, true)
 		_tufts(tuft_pts, Color(0.33, 0.45, 0.22, 0.7), 0.8, 1.1)
 		# pond with its clay bank
-		_shape(_lumpy(pc + Vector2(7, 7), 44.0, 27.0, 0.08, 30, 3.3), Color(CLAY, 0.8), Color(INK, 0.5), 1.3, 0.5)
-		_stipple(Rect2(pc.x + 4, pc.y + 18, 40, 12), 14, Color(INK, 0.35), 3)
-		_shape(_lumpy(pc, 37.0, 21.0, 0.1, 30, 4.1), Color(WATER, 0.82), INK, 2.0, 0.5)
+		var prx := TerrainData.POND_RADII.x * sc
+		var pry := TerrainData.POND_RADII.y * sc
+		_shape(_lumpy(pc, prx + 9.0, pry + 8.0, 0.08, 30, 3.3), Color(CLAY, 0.8), Color(INK, 0.5), 1.3, 0.5)
+		_stipple(Rect2(pc.x - prx, pc.y + pry - 2.0, prx * 2.0, 9), 14, Color(INK, 0.35), 3)
+		_shape(_lumpy(pc, prx, pry, 0.1, 30, 4.1), Color(WATER, 0.82), INK, 2.0, 0.5)
 	# ripples
 	_layer(5, true)
 	for k in 2:
-		var rc := pc + Vector2(-14.0 + 26.0 * k, -4.0 + 9.0 * k)
+		var rc := pc + Vector2(-8.0 + 16.0 * k, -3.0 + 6.0 * k)
 		for j in 2:
 			var ph := fposmod(t / 3.2 + k * 0.37 + j * 0.5, 1.0)
-			var rr := 2.0 + 11.0 * ph
+			var rr := 2.0 + 9.0 * ph
 			_pl(_arcp(rc, rr, rr * 0.5, 0.0, TAU, 20), Color(1, 1, 1, 0.75 * (1.0 - ph)), 1.2)
 	if not _layer(6, false):
 		return
-	# rocky outcrop
-	var rocks := [[Vector2(344, 80), 15.0, 11.0], [Vector2(366, 72), 11.0, 8.0], [Vector2(370, 91), 12.0, 9.0],
-		[Vector2(350, 99), 9.0, 7.0], [Vector2(326, 92), 8.0, 6.0]]
+	# the outcrop and its loose stones
+	var oc: Vector2 = P.call(TerrainData.OUTCROP_POS)
+	var rocks := [[Vector2(0, -6), 15.0, 11.0], [Vector2(16, -12), 11.0, 8.0], [Vector2(20, 6), 12.0, 9.0],
+		[Vector2(4, 13), 9.0, 7.0], [Vector2(-14, 7), 8.0, 6.0]]
 	for i in rocks.size():
 		var r: Array = rocks[i]
-		_stone(r[0], r[1], r[2], 3.0 + i * 2.0, Color(STONE, 0.92))
-	# flat work stone + a few flakes
-	var ws := _rrect(Rect2(-21, -12, 42, 24), 7.0, 3)
-	_shape(_rot_ptsc(ws, Vector2(152, 172), -0.12), Color(STONE.lerp(PAPER, 0.3), 0.95), INK, 1.8, 0.5)
+		_stone(oc + (r[0] as Vector2) * 0.8, r[1] * 0.8, r[2] * 0.8, 3.0 + i * 2.0, Color(STONE, 0.92))
+	# the boulders
+	for b in WorldGen.BOULDERS:
+		_stone(P.call(b[0]), 7.0, 5.2, float(b[2]) * 3.0, Color(STONE.darkened(0.08), 0.9))
+	# the flat stone to knap on, with a few flakes
+	var fs: Vector2 = P.call(TerrainData.FLAT_STONE_POS)
+	_shape(_rot_ptsc(_rrect(Rect2(-13, -8, 26, 16), 5.0, 3), fs, -0.12), Color(STONE.lerp(PAPER, 0.3), 0.95), INK, 1.8, 0.5)
 	for k in 3:
-		var fp := Vector2(180 + k * 6, 182 - k * 5)
-		_fill(PackedVector2Array([fp, fp + Vector2(4, -2), fp + Vector2(2, 3)]), Color(INK, 0.5))
-	# berry bushes
-	for b in [[Vector2(118, 104), 16.0, 1.0], [Vector2(98, 134), 13.0, 2.0], [Vector2(132, 132), 11.0, 3.0]]:
-		var bc: Vector2 = b[0]
-		var br: float = b[1]
-		_shape(_lumpy(bc, br, br * 0.9, 0.08, 20, float(b[2]), 0.0, 0.04), Color(0.38, 0.52, 0.27, 0.95), INK, 1.6, 0.4)
-		for k in 4:
-			_dot(bc + Vector2(cos(k * 1.9 + b[2]), sin(k * 1.9 + b[2])) * br * 0.5, 2.3, BERRY)
-	# great tree (canopy from above)
-	var tc := Vector2(228, 110)
-	var canopy := _lumpy(tc, 40.0, 35.0, 0.07, 44, 5.0, 0.0, 0.07)
+		var fp := fs + Vector2(16 + k * 4, 6 - k * 4)
+		_fill(PackedVector2Array([fp, fp + Vector2(3, -2), fp + Vector2(2, 3)]), Color(INK, 0.5))
+	# the berry bush
+	var bc: Vector2 = P.call(Vector2(-5.9, -2.7))
+	_shape(_lumpy(bc, 15.0, 13.0, 0.08, 20, 1.0, 0.0, 0.04), Color(0.38, 0.52, 0.27, 0.95), INK, 1.6, 0.4)
+	for k in 5:
+		_dot(bc + Vector2(cos(k * 1.9 + 1.0), sin(k * 1.9 + 1.0)) * 7.0, 2.3, BERRY)
+	# the great tree (canopy from above)
+	var tc: Vector2 = P.call(TerrainData.TREE_POS)
+	var canopy := _lumpy(tc, 38.0, 34.0, 0.07, 44, 5.0, 0.0, 0.07)
 	_fill(_xpts(canopy, Vector2(6, 7)), Color(0.2, 0.25, 0.15, 0.22))
 	_shape(canopy, Color(0.36, 0.50, 0.25, 0.95), INK, 2.0, 0.5)
 	for k in 6:
 		var a := TAU * k / 6.0 + 0.4
-		var p := tc + Vector2(cos(a) * 21.0, sin(a) * 18.0)
-		_stroke(_arcp(p, 7.0, 6.0, PI * 1.1, PI * 1.9, 6), Color(INK, 0.35), 1.1, false, 0.2)
+		var q := tc + Vector2(cos(a) * 20.0, sin(a) * 17.0)
+		_stroke(_arcp(q, 7.0, 6.0, PI * 1.1, PI * 1.9, 6), Color(INK, 0.35), 1.1, false, 0.2)
 	for k in 5:
 		var a := TAU * k / 5.0 + 0.9
 		_line(tc, tc + Vector2(cos(a), sin(a)) * 14.0, Color(WOOD.darkened(0.3), 0.7), 1.6, 0.3)
 	_circ(tc, 5.0, Color(WOOD, 1.0), INK, 1.5)
-	# mossy log with mushrooms
-	var lc := Vector2(240, 194)
-	var lr := -0.14
-	_shape(_rot_ptsc(_rrect(Rect2(-32, -7, 64, 14), 6.0, 3), lc, lr), Color(WOOD, 0.95), INK, 1.8, 0.4)
-	_circ(lc + Vector2(31, 0).rotated(lr), 6.0, Color(STRAW, 1.0), INK, 1.3)
-	_ring(lc + Vector2(31, 0).rotated(lr), 2.6, Color(INK, 0.5), 1.0)
+	# the mossy log with its mushrooms
+	var lc: Vector2 = P.call(Vector2(-0.9, -4.5))
+	var lr := 0.35
+	_shape(_rot_ptsc(_rrect(Rect2(-22, -6, 44, 12), 5.0, 3), lc, lr), Color(WOOD, 0.95), INK, 1.8, 0.4)
+	_circ(lc + Vector2(21, 0).rotated(lr), 5.0, Color(STRAW, 1.0), INK, 1.3)
+	_ring(lc + Vector2(21, 0).rotated(lr), 2.2, Color(INK, 0.5), 1.0)
 	for k in 3:
-		_fill(_lumpy(lc + Vector2(-20.0 + 15.0 * k, -4.0).rotated(lr), 7.0, 3.0, 0.2, 10, float(k)), Color(LEAF, 0.95))
+		_fill(_lumpy(lc + Vector2(-13.0 + 11.0 * k, -3.0).rotated(lr), 5.0, 2.4, 0.2, 10, float(k)), Color(LEAF, 0.95))
 	for k in 3:
-		var mp := lc + Vector2(-16.0 + 13.0 * k, 10.0).rotated(lr)
-		_circ(mp, 3.0, Color(0.93, 0.80, 0.62, 1.0), INK, 1.1)
-		_dot(mp, 1.0, Color(FIRED, 0.9))
+		var mp := lc + Vector2(-9.0 + 9.0 * k, 3.0).rotated(lr)
+		_circ(mp, 2.6, Color(0.93, 0.80, 0.62, 1.0), INK, 1.0)
+		_dot(mp, 0.9, Color(FIRED, 0.9))
+	# where you wake
+	var sp: Vector2 = P.call(TerrainData.SPAWN_POS)
+	_ring(sp, 5.0, Color(INK, 0.8), 1.4)
+	_dot(sp, 1.8, INK)
 	# labels
-	_text(Vector2(228, 158), "great tree", 13)
-	_text(pc + Vector2(-2, -1), "pond", 12, PAPER, CENTER, false)
-	_callout("clay", Vector2(404, 190), pc + Vector2(34, 22), 12)
-	_text(Vector2(350, 120), "rocks", 12)
-	_text(Vector2(152, 196), "work stone", 12)
-	_text(Vector2(112, 80), "berries", 12)
-	_text(Vector2(240, 216), "mossy log", 12)
-	_callout("cliff edge", Vector2(50, 222), Vector2(122, 200), 12)
+	_text(tc + Vector2(0, 24), "great tree", 13)
+	_text(pc, "pond", 12, PAPER, CENTER, false)
+	_callout("clay", pc + Vector2(-62, 44), pc + Vector2(-8, 24), 12)
+	_text(oc + Vector2(6, -26), "outcrop", 12)
+	_callout("flat stone", fs + Vector2(58, 26), fs + Vector2(12, 4), 12)
+	_text(bc + Vector2(0, -22), "berries", 12)
+	_text(lc + Vector2(0, -16), "mossy log", 12)
+	_callout("you wake here", sp + Vector2(-30, 40), sp + Vector2(-3, 5), 12)
+	_callout("cliff edge", Vector2(60, 64), P.call(TerrainData.outline_point(PI * 1.2)) + Vector2(4, 2), 12)
 	_text(Vector2(430, 244), "abyss", 12, INK2)
 	# north arrow
 	_arrow(Vector2(446, 60), Vector2(446, 36), INK, 1.6, 6.0)
 	_text(Vector2(446, 26), "N", 11)
-
 
 func _rot_ptsc(pts: PackedVector2Array, c: Vector2, rot: float) -> PackedVector2Array:
 	## Rotate points (defined around the origin) by rot and move them to c.
@@ -1348,9 +1360,10 @@ func _rot_ptsc(pts: PackedVector2Array, c: Vector2, rot: float) -> PackedVector2
 # --- 2. vitals ---------------------------------------------------------------
 
 func _d_vitals() -> void:
-	var names := ["Hunger", "Thirst", "Stamina", "Health", "Warmth"]
-	var caps := ["eat", "drink", "rest", "bandage", "fire"]
-	var cols := [Color(0.82, 0.58, 0.26), WATER, Color(0.52, 0.64, 0.32), Color(0.78, 0.30, 0.24), EMBER]
+	# (the same names, order and colors as the bars on screen)
+	var names := ["Health", "Food", "Water", "Stamina", "Warmth"]
+	var caps := ["eat, sleep", "eat", "drink", "rest", "fire, roof"]
+	var cols := [Color(0.78, 0.30, 0.24), Color(0.82, 0.58, 0.26), WATER, Color(0.52, 0.70, 0.34), Color(0.86, 0.46, 0.64)]
 	var top := 48.0
 	var bot := 184.0
 	var bw := 26.0
@@ -3852,13 +3865,13 @@ func _d_log_split() -> void:
 	var hit := 0.9
 	if _layer(2, false):
 		_dashed(PackedVector2Array([Vector2(24, 136), Vector2(456, 136)]), INK2, 1.2, 6.0, 5.0)
-		_text(Vector2(86, 22), "careful strikes", 13)
-		_text(Vector2(86, 148), "quick strikes", 13)
+		_text(Vector2(86, 22), "strike near the side", 13)
+		_text(Vector2(86, 148), "halve it, and again", 13)
 		_arrow(Vector2(146, 70), Vector2(196, 70), INK, 1.8, 7.0)
 		_arrow(Vector2(146, 196), Vector2(196, 196), INK, 1.8, 7.0)
 		_text(Vector2(420, 82), "boards", 14)
 		_text(Vector2(420, 172), "firewood", 14)
-	# --- careful strikes along the grain: boards come off one by one
+	# --- strikes near one side: slabs come off, and slabs make boards
 	var split := lt >= 2.6
 	_layer_fx(3, Transform2D.IDENTITY, Color(1, 1, 1, 0.0 if split else 1.0))
 	if _layer(3, false):
@@ -3897,7 +3910,7 @@ func _d_log_split() -> void:
 				var tap := fposmod(g * 3.0, 1.0)
 				var sp := c1 + Vector2(cx, -hh - 3.0)
 				_arrow(sp + Vector2(0, -20.0 + 8.0 * tap), sp + Vector2(0, -2.0 + 2.0 * tap), Color(RED.darkened(0.1), 0.9), 2.0, 6.0)
-	# --- quick strikes: it bursts into chunky firewood
+	# --- halved and halved again: small pieces make firewood
 	var burst_on := lt >= hit + 0.12
 	_layer_fx(10, Transform2D.IDENTITY, Color(1, 1, 1, 0.0 if burst_on else 1.0))
 	if _layer(10, false):

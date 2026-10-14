@@ -40,11 +40,11 @@
   "edge": {"title": "The edge", "text": "Beyond the cliffs is the abyss: whatever falls is gone for good. Hold Ctrl to crouch - crouching, you won't walk off the edge.", "entry": "health", "time": 14},
 
   "item_torch": {"title": "A burning stick", "text": "It burns down in under two minutes. Touch it to dry tinder or kindling (LMB on the piece) to light a new fire.", "entry": "fire", "time": 14},
-  "item_stick": {"title": "Sticks", "text": "Tool handles, fire drill spindles, wattle rods and fuel. A blade carves a stick into a hearth board.", "entry": "mat_wood", "time": 12},
+  "item_stick": {"title": "Sticks", "text": "Tool handles, fire drill spindles, wattle rods and fuel. Lay one on the ground (RMB) and work it with a blade (LMB) to carve a hearth board.", "entry": "mat_wood", "time": 12},
   "item_hearth_board": {"title": "A hearth board", "text": "Set it down where you want your fire, hold a second stick and press LMB on it to drill for fire. Have tinder in your pack.", "entry": "fire_drill", "time": 14},
   "item_pole": {"title": "A pole", "text": "Long and straight: the backbone of platforms, posts, walls, roofs and ladders.", "entry": "construction", "time": 12},
   "item_limb": {"title": "A large limb", "text": "Lay it down and chop it up with the axe: two poles, sticks, firewood, twigs and leaves.", "entry": "woodworking", "time": 12},
-  "item_log": {"title": "A log", "text": "Split it with an axe - LMB on the end. Careful splits give boards; quick ones give firewood.", "entry": "woodworking", "time": 14},
+  "item_log": {"title": "A log", "text": "Split it with an axe - LMB on the end, where you want it to split. Slabs struck off near one side become boards; small pieces become firewood.", "entry": "woodworking", "time": 14},
   "item_wood_piece": {"title": "Split wood", "text": "Keep splitting. Thin slabs at least 15 centimeters wide become boards; small pieces become firewood.", "entry": "woodworking", "time": 12},
   "item_board": {"title": "Rough boards", "text": "Six boards and two poles make a platform; two boards make a shelf.", "entry": "platforms", "time": 12},
   "item_firewood": {"title": "Firewood", "text": "Burns long and hot once a fire is going, but won't catch from tinder alone. Let it dry in the open first: green wood smokes.", "entry": "fire", "time": 14},

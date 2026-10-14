@@ -60,8 +60,9 @@ void fragment() {
 	col *= mix(1.0, 0.6, moist * porous);
 
 	ALBEDO = col;
-	ROUGHNESS = clamp(mix(0.93, 0.5, moist * porous) - ww.z * 0.1, 0.3, 1.0);
-	SPECULAR = 0.35;
+	// (bare rock is matte: in shade it mustn't mirror the blue sky like a puddle)
+	ROUGHNESS = clamp(mix(0.93, 0.5, moist * porous) - ww.z * 0.1 + ww.w * 0.07, 0.3, 1.0);
+	SPECULAR = 0.35 - 0.22 * ww.w;
 	NORMAL_MAP = texture(noise_n, p * 0.8).rgb;
-	NORMAL_MAP_DEPTH = 0.55 + ww.w * 0.9 + tilled * 0.5;
+	NORMAL_MAP_DEPTH = 0.55 + ww.w * 0.4 + tilled * 0.5;
 }

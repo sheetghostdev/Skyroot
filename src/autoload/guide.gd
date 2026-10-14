@@ -22,8 +22,13 @@ var last_entry := ""                # where the guide reopens
 var read: Dictionary = {}           # entry id -> true
 var fresh: Dictionary = {}          # entry id -> true (highlighted as new)
 var pinned: Array = []              # entry ids
-var dismissed: Dictionary = {}      # hint id -> true
+var dismissed: Dictionary = {}      # hint id -> true (X: never again)
+var seen: Dictionary = {}           # hint id -> true (shown once: that's enough)
+var steps: Dictionary = {}          # "entry:index" -> true: checklist steps done (they stay done)
 var hints_disabled := false
+
+# warnings about your own state may come back (once a session, see Survival.hint_once)
+const RECURRING_HINTS := ["hungry", "thirsty", "tired", "hurt", "cold", "edge"]
 
 var _sync_timer := -1.0
 
@@ -164,7 +169,8 @@ func toggle_pin(id: String) -> void:
 	else:
 		pinned.append(id)
 		while pinned.size() > MAX_PINS:
-			pinned.pop_front()
+			var gone := String(pinned.pop_front())
+			Events.toast.emit("Unpinned \"%s\" to make room - three checklists at most." % String(entry(gone).get("title", gone)), "info")
 	pinned_changed.emit()
 	_changed()
 
@@ -175,6 +181,28 @@ func is_pinned(id: String) -> bool:
 
 func dismiss_hint(hint_id: String) -> void:
 	dismissed[hint_id] = true
+	_changed()
+
+
+func step_done(entry_id: String, i: int, st: Dictionary) -> bool:
+	## A checklist step, once done, stays ticked (using the stones you gathered
+	## doesn't undo having gathered them).
+	var key := "%s:%d" % [entry_id, i]
+	if steps.has(key):
+		return true
+	if GuideTracker.step_live(st):
+		steps[key] = true
+		_changed()
+		return true
+	return false
+
+
+func mark_seen(hint_id: String) -> void:
+	## A tip that has been on screen once doesn't come back each time you pick
+	## the thing up again.
+	if hint_id in RECURRING_HINTS or seen.has(hint_id):
+		return
+	seen[hint_id] = true
 	_changed()
 
 
@@ -198,7 +226,7 @@ func _on_discovery(discovery_id: String, who: String) -> void:
 
 
 func should_show(hint_id: String) -> bool:
-	return Settings.show_hints and not hints_disabled and not dismissed.has(hint_id) and hints.has(hint_id)
+	return Settings.show_hints and not hints_disabled and not dismissed.has(hint_id) and not seen.has(hint_id) and hints.has(hint_id)
 
 
 func encountered_item(item_id: String) -> void:
@@ -226,7 +254,8 @@ func _process(delta: float) -> void:
 
 
 func export_state() -> Dictionary:
-	return {"read": read.keys(), "fresh": fresh.keys(), "pinned": pinned.duplicate(), "dismissed": dismissed.keys()}
+	return {"read": read.keys(), "fresh": fresh.keys(), "pinned": pinned.duplicate(), "dismissed": dismissed.keys(), "seen": seen.keys(),
+		"steps": steps.keys()}
 
 
 func import_state(st: Dictionary) -> void:
@@ -237,6 +266,10 @@ func import_state(st: Dictionary) -> void:
 			fresh[id] = true
 	for id in st.get("dismissed", []):
 		dismissed[id] = true
+	for id in st.get("seen", []):
+		seen[id] = true
+	for id in st.get("steps", []):
+		steps[id] = true
 	if st.get("pinned", []).size() > 0:
 		pinned = st["pinned"].duplicate()
 	progress_changed.emit()
@@ -248,6 +281,8 @@ func load_local(world_key: String) -> void:
 	fresh.clear()
 	pinned.clear()
 	dismissed.clear()
+	seen.clear()
+	steps.clear()
 	var cfg := ConfigFile.new()
 	if cfg.load(LOCAL_PATH) == OK and cfg.has_section(world_key):
 		import_state(cfg.get_value(world_key, "state", {}))

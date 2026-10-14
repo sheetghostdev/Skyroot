@@ -34,7 +34,7 @@
         {"warn": "Standing in the flames burns you fast, and anything taken hot out of a fire burns your hands. Rain chills an open fire badly; a roof over it keeps it going."}
       ],
       "track": [
-        {"text": "Tinder: three bundles of fiber (or two of straw)", "have": "fiber", "n": 3},
+        {"text": "Tinder: three bundles of fiber (or two of straw)", "have": {"fiber": 3, "straw": 2}},
         {"text": "Kindling: a handful of dry twigs", "have": "twig", "n": 4},
         {"text": "Two sticks", "have": "stick", "n": 2},
         {"text": "Some firewood", "have": "firewood", "n": 2},
@@ -77,9 +77,9 @@
       ],
       "track": [
         {"text": "Knap a cutting blade", "have": "blade"},
-        {"text": "Carve a hearth board", "have": "hearth_board"},
+        {"text": "Carve a hearth board", "have": "hearth_board", "near": true},
         {"text": "Carry a spare stick to spin", "have": "stick"},
-        {"text": "Carry tinder (three fiber or two straw)", "have": "fiber", "n": 3},
+        {"text": "Carry tinder (three fiber or two straw)", "have": {"fiber": 3, "straw": 2}},
         {"text": "Make fire", "found": "first_fire"}
       ]
     },
@@ -135,7 +135,7 @@
         {"h": "Building a mound", "steps": [
           "Stack a woodpile, packed close: dry firewood, split wood, sticks, charred wood, with tinder and twigs where you will light it.",
           "Light it and let it get going properly. Cover it before it has caught and it never will.",
-          "Dig some earth (four liters to a load). Hold a load and hold [key]LMB[/key] on the fire to pack it on: each load covers the part you aim at first, then thickens it. A small pile takes about four loads to seal, a big one eight or more. Looking at it tells you when it is packed with earth.",
+          "Dig the earth before you light the pile and heap it beside it: three firewood need about seven loads, six need nine or ten, and a big pile a dozen or more - more than you can carry at once (a load weighs about 5 kg). Hold a load and hold [key]LMB[/key] on the fire to pack it on: each load covers the part you aim at first, then thickens it. Keep going until looking at it says it is [i]packed with earth[/i] - [i]mostly covered[/i] still lets too much air in.",
           "Hold a stick and press [key]RMB[/key] on the earth to poke a vent. Two vents is a good start; there's room for up to eight.",
           "Watch the smoke and read the mound - see below. The charring takes a few in-game hours.",
           "When the smoke turns thin and blue, close every vent by packing earth over it, and leave the mound to cool.",
@@ -159,8 +159,8 @@
         {"warn": "Digging into a mound that is still hot lets the air in. If the prompt says [i]hot![/i], leave it alone."}
       ],
       "track": [
-        {"text": "Stack six or more firewood", "have": "firewood", "n": 6},
-        {"text": "Dig four loads of earth", "have": "earth", "n": 4},
+        {"text": "Stack six or more firewood", "have": "firewood", "n": 6, "near": true},
+        {"text": "Heap eight loads of earth by the woodpile", "have": "earth", "n": 8, "near": true},
         {"text": "Carry a stick for the vents", "have": "stick"},
         {"text": "Dig out your charcoal", "have": "charcoal"}
       ]

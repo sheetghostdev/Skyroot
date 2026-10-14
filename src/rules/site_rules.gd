@@ -28,7 +28,7 @@ static func options(out: Dictionary, p: LocalPlayer, t: Dictionary, d: Dictionar
 		out["primary"] = opt.call("Pour water on the fire" if lit or hot else "Pour water on the ashes", "pour", {"eid": eid, "pos": pos}, "pour")
 	if not covered and held != "" and held != "earth" and held != "stick" and not out.has("secondary"):
 		if not ItemDB.fuel(held).is_empty() or not ItemDB.food(held).is_empty() or held == "pot":
-			var verb := "Put %s in the fire" if not ItemDB.fuel(held).is_empty() or held == "pot" else "Roast %s at the fire's edge"
+			var verb := InteractionRules.fire_verb(held).replace("at the fire", "at the fire's edge")
 			if not lit:
 				verb = "Put %s in the fire pit"
 			out["secondary"] = opt.call(verb % ItemDB.display_name(held, hd).to_lower(), "fire_add", {"eid": eid}, "place")

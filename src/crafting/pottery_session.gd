@@ -107,7 +107,7 @@ func camera_fov() -> float:
 
 
 func hint_text() -> String:
-	return "LMB on wall: narrow / widen / pull up  ·  LMB on top: open & deepen  ·  LMB on rim: shape rim  ·  RMB: smooth  ·  T+click: trim  ·  R: add clay  ·  Wheel: turn  ·  W/S: view  ·  Enter: finish"
+	return "LMB on the wall: narrow, widen, pull up  ·  LMB on top: open and deepen  ·  LMB on the rim: shape it\nRMB: smooth  ·  T+click: trim  ·  R: add clay  ·  Wheel: turn  ·  W/S: view  ·  Enter: finish  ·  Esc: step away"
 
 
 # ---------------------------------------------------------------------------

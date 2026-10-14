@@ -8,9 +8,18 @@ const PORRIDGE_SEEDS := 4        # grains of seed in a portion
 const PORRIDGE_WATER := 0.12     # litres of water a portion soaks up
 
 
+const POND_REACH_Q := 1.9         # how far from the shore (in pond radii) you can still reach the water
+
+
+static func near_pond(p: Vector3) -> bool:
+	return World.terrain.pond_q(Vector2(p.x, p.z)) < POND_REACH_Q
+
+
 static func _near_pond(a: Actions, pid: int) -> bool:
-	var p := a.player_pos(pid)
-	return World.terrain.pond_q(Vector2(p.x, p.z)) < 1.9
+	if near_pond(a.player_pos(pid)):
+		return true
+	World.notify(pid, "You can't reach the water from here - step down to the edge.")
+	return false
 
 
 static func drink_pond(a: Actions, pid: int, args: Dictionary) -> void:

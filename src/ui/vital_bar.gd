@@ -20,7 +20,9 @@ func _draw() -> void:
 	var y := size.y * 0.5
 	var low := value < 0.2
 	var a := 0.75 + (0.25 * sin(_pulse) if low else 0.0)
-	draw_string(UITheme.font_bold(), Vector2(0, y + 5), label, HORIZONTAL_ALIGNMENT_LEFT, 64, 13, Color(UITheme.PAPER, 0.85))
+	# (outlined: it has to read over bright sky and sunlit grass)
+	draw_string_outline(UITheme.font_bold(), Vector2(0, y + 5), label, HORIZONTAL_ALIGNMENT_LEFT, 64, 13, 5, Color(0, 0, 0, 0.7))
+	draw_string(UITheme.font_bold(), Vector2(0, y + 5), label, HORIZONTAL_ALIGNMENT_LEFT, 64, 13, Color(UITheme.PAPER, 0.95))
 	var r := Rect2(66, y - 4, w, 8)
 	draw_rect(r, Color(0, 0, 0, 0.45))
 	draw_rect(Rect2(r.position, Vector2(w * clampf(_shown, 0.0, 1.0), 8)), Color(color, a))

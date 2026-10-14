@@ -33,7 +33,7 @@ func _ready() -> void:
 	var left := VBoxContainer.new()
 	left.add_theme_constant_override("separation", 10)
 	h.add_child(left)
-	left.add_child(UITheme.title_label("Carried", 30))
+	left.add_child(UITheme.title_label("Your pack", 30))
 	var pack := GridContainer.new()
 	pack.columns = 9
 	pack.add_theme_constant_override("h_separation", 6)
@@ -113,8 +113,8 @@ func _on_hover(i: int) -> void:
 	var food := ItemDB.food(id)
 	if not food.is_empty():
 		lines.append("Food: %s" % ("filling" if float(food.get("hunger", 0)) > 0.15 else "a small bite"))
-	if ItemDB.has_tag(id, "compostable"):
-		lines.append("Compostable.")
+	if CompostSim.is_compostable(id):
+		lines.append("Compostable: counts as a %s." % CompostSim.kind_of(id))
 	detail_text.text = "\n".join(lines)
 	var g := ItemDB.guide_entry(id)
 	detail_guide.visible = g != "" and Guide.has_entry(g)

@@ -13,7 +13,7 @@ static func options(out: Dictionary, _p: LocalPlayer, t: Dictionary, d: Dictiona
 			out["interact"] = opt.call("Take compost (%d ready)" % n, "compost_take", {"eid": eid}, "dig")
 		else:
 			out["interact"] = InteractionRules.disabled("No finished compost yet", "Compost forms as the heap rots. Keep it damp, mixed and turned.")
-		out["secondary"] = opt.call("Spread the heap here", "compost_spread", {"eid": eid}, "dig")
+		out["secondary"] = InteractionRules.confirm("Spread the heap into the soil", "compost_spread", {"eid": eid}, "dig")
 	if held == "" or held == "stick" or tool == "dig":
 		out["primary"] = opt.call("Turn the heap", "compost_turn", {"eid": eid}, "dig", true)
 	elif CompostSim.is_compostable(held):

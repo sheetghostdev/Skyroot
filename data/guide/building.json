@@ -72,7 +72,7 @@
         {"tip": "Crouch with [key]Ctrl[/key] while you work on an open edge, and put the railing up before anything else."}
       ],
       "track": [
-        {"text": "Split six boards", "have": "board", "n": 6},
+        {"text": "Split six boards", "have": "board", "n": 6, "near": true},
         {"text": "Gather two poles", "have": "pole", "n": 2},
         {"text": "Twist two cordage", "have": "cordage", "n": 2},
         {"text": "Build a platform", "built": "platform"},
@@ -154,7 +154,7 @@
       "sections": [
         {"h": "How to", "steps": [
           "Press [key]B[/key] and choose [b]Take apart...[/b] at the top of the build menu.",
-          "Look at a piece and hold [key]LMB[/key]. Parts come off one at a time, last in first, about two a second, each straight into your pack.",
+          "Look at a piece and hold [key]LMB[/key]. Parts come off one at a time, last in first, about two a second, each straight into your pack (or, if you can't carry it, set down at your feet).",
           "When the last part is off, the empty frame disappears.",
           "[key]RMB[/key], [key]Esc[/key] or [key]B[/key] leaves."
         ]},
@@ -162,7 +162,9 @@
         {"h": "Careful", "list": [
           "Taking even one part off a finished piece makes it a frame again: it stops carrying anything, and whatever rested on it may start to groan.",
           "Taking apart a sleeping mat clears it as anyone's waking place.",
-          "Make room in your pack first. A part that doesn't fit drops where the piece stands - and over the abyss, that means gone.",
+          "Clear a deck or shelf before you start: as soon as a part under them comes off, whatever was lying on it falls - and out over the abyss, it is gone.",
+          "Make room in your pack first: boards and poles are heavy, and a part you can't carry is set down at your feet.",
+          "Nobody can take up a floor while someone is standing on it.",
           "Taking apart only works from the build menu, so nobody pulls up a floor by accident."
         ]},
         {"tip": "Moving house? Take it apart, carry the parts, and build it again. Frames are free; only the parts cost anything."}

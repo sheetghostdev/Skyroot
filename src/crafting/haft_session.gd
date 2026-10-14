@@ -33,7 +33,7 @@ func camera_fov() -> float:
 
 
 func hint_text() -> String:
-	return "Drag the head onto the handle (wheel turns it)  ·  then hold LMB and circle around the joint to bind  ·  hold RMB and pull down to tighten  ·  Enter: finish"
+	return "Drag the head onto the handle (wheel turns it)  ·  then hold LMB and circle around the joint to bind  ·  hold RMB and pull down to tighten  ·  Enter: finish  ·  Esc: step away"
 
 
 func handle_input(event: InputEvent) -> bool:

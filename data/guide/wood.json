@@ -36,7 +36,7 @@
     {
       "id": "woodworking",
       "title": "Working wood",
-      "summary": "Cut branches into sticks and twigs, chop limbs into poles and firewood, carve hearth boards, and split logs into boards - careful splits for boards, quick ones for firewood.",
+      "summary": "Cut branches into sticks and twigs, chop limbs into poles and firewood, carve hearth boards, and split logs into boards - slabs taken off one side make boards, small pieces make firewood.",
       "keywords": ["wood", "process", "cut up", "chop", "split", "log", "board", "plank", "firewood", "pole", "stick", "twig", "hearth board", "carve", "season", "lumber"],
       "related": ["trees", "mat_wood", "tool_assembly", "construction", "fire", "charcoal"],
       "items": ["branch", "limb", "log", "wood_piece", "board", "firewood", "pole", "stick", "twig", "hearth_board"],
@@ -61,9 +61,9 @@
       "track": [
         {"text": "Cut up a branch for sticks", "have": "stick", "n": 2},
         {"text": "Chop up a limb for poles", "have": "pole", "n": 2},
-        {"text": "Make some firewood", "have": "firewood", "n": 4},
+        {"text": "Make some firewood", "have": "firewood", "n": 4, "near": true},
         {"text": "Split a log", "found": "first_split"},
-        {"text": "Split six boards", "have": "board", "n": 6}
+        {"text": "Split six boards", "have": "board", "n": 6, "near": true}
       ]
     }
   ]

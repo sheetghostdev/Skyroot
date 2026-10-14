@@ -324,8 +324,8 @@ func show_entry(id: String, push: bool = true) -> void:
 	var track: Array = e.get("track", [])
 	if not track.is_empty():
 		page.add_child(_heading("Checklist"))
-		for st in track:
-			page.add_child(_check_row(st))
+		for i in track.size():
+			page.add_child(_check_row(String(e.get("id", current)), i, track[i]))
 	var rel: Array = e.get("related", [])
 	if not rel.is_empty():
 		page.add_child(_heading("See also"))
@@ -471,10 +471,10 @@ func _on_icon_ready(_key: String) -> void:
 			tr.texture = hud.icons.get_icon(String(c[1]))
 
 
-func _check_row(st: Dictionary) -> Control:
+func _check_row(entry_id: String, i: int, st: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	var done := GuideTracker.step_done(st)
+	var done := Guide.step_done(entry_id, i, st)
 	var tr := TextureRect.new()
 	tr.texture = UITheme._check_tex(done)
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED

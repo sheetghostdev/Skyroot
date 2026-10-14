@@ -213,7 +213,8 @@ static func button(text: String, cb: Callable, min_w: float = 0.0) -> Button:
 	return b
 
 
-static func hslider(label_text: String, min_v: float, max_v: float, step: float, value: float, cb: Callable, fmt: String = "%.2f") -> Control:
+static func hslider(label_text: String, min_v: float, max_v: float, step: float, value: float, cb: Callable, fmt: Variant = "%.2f") -> Control:
+	## `fmt` is a format string or a Callable turning the value into its text.
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	var l := label(label_text, 16, TEXT_DIM)
@@ -227,10 +228,11 @@ static func hslider(label_text: String, min_v: float, max_v: float, step: float,
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	s.custom_minimum_size = Vector2(180, 24)
 	s.focus_mode = Control.FOCUS_NONE
-	var val := label(fmt % value, 15, TEXT)
-	val.custom_minimum_size = Vector2(52, 0)
+	var show := func(v: float) -> String: return String((fmt as Callable).call(v)) if fmt is Callable else String(fmt) % v
+	var val := label(show.call(value), 15, TEXT)
+	val.custom_minimum_size = Vector2(64, 0)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	s.value_changed.connect(func(v): val.text = fmt % v; cb.call(v))
+	s.value_changed.connect(func(v): val.text = show.call(v); cb.call(v))
 	row.add_child(s)
 	row.add_child(val)
 	return row

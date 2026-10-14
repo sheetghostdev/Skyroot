@@ -113,9 +113,35 @@ func interaction_point(part: String) -> Vector3:
 	return global_position + Vector3(0, 1.2, 0)
 
 
+var _hp := {}    # what the last blows left: "trunk", "lhp", "shp", "sb", "lb"
+
+
+static func _dropped(was, now) -> bool:
+	## Did any part of it go down (a blow landed, or a branch came off)?
+	if was == null or now == null:
+		return false
+	if was is Array and now is Array:
+		for i in mini((was as Array).size(), (now as Array).size()):
+			if float(now[i]) < float(was[i]) - 1e-6:
+				return true
+		return false
+	return float(now) < float(was) - 1e-6
+
+
 func _refresh(keys: Array) -> void:
 	var d := data()
 	var felled := bool(d.get("felled", false))
+	# a blow at a branch, a limb or the trunk - every cut changes these, and they
+	# reach every screen reliably - shakes the tree (growing doesn't)
+	if _dropped(_hp.get("trunk"), d.get("trunk")):
+		shake(0.8)
+	elif _dropped(_hp.get("lhp"), d.get("lhp")) or _dropped(_hp.get("lb"), d.get("lb")):
+		shake(0.5)
+	elif _dropped(_hp.get("shp"), d.get("shp")) or _dropped(_hp.get("sb"), d.get("sb")):
+		shake(0.3)
+	for k in ["trunk", "lhp", "shp", "sb", "lb"]:
+		var v = d.get(k)
+		_hp[k] = v.duplicate() if v is Array else v
 	var g := TreeSim.growth(d)
 	var st := TreeSim.stage(d)
 	if felled and not _was_felled:

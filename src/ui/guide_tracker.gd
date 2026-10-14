@@ -17,9 +17,20 @@ func _ready() -> void:
 	_rebuild()
 
 
-static func step_done(st: Dictionary) -> bool:
+static func step_live(st: Dictionary) -> bool:
+	## Is this checklist step true right now?  "have" is an item id (with "n") or
+	## {id: n, ...} for any of several; with "near", things lying close by count too.
 	if st.has("have"):
-		return World.my_inventory != null and World.my_inventory.count(String(st["have"])) >= int(st.get("n", 1))
+		if World.my_inventory == null:
+			return false
+		var want: Dictionary = st["have"] if st["have"] is Dictionary else {String(st["have"]): int(st.get("n", 1))}
+		for id in want:
+			var n := World.my_inventory.count(String(id))
+			if bool(st.get("near", false)):
+				n += _lying_near(String(id))
+			if n >= int(want[id]):
+				return true
+		return false
 	if st.has("found"):
 		return World.discoveries.has(String(st["found"]))
 	if st.has("built"):
@@ -29,7 +40,23 @@ static func step_done(st: Dictionary) -> bool:
 	return false
 
 
+static func _lying_near(id: String) -> int:
+	var gw = Game.game_world
+	var lp: Node3D = gw.local_player() if gw else null
+	if lp == null:
+		return 0
+	var n := 0
+	for e in World.entities_near(lp.global_position, 3.5, "item"):
+		if String(e["d"].get("i", "")) == id:
+			n += int(e["d"].get("n", 1))
+	return n
+
+
 func _process(delta: float) -> void:
+	# (out of the way while hands are busy in a close-up: its gauges sit here)
+	var gw = Game.game_world
+	var lp = gw.local_player() if gw else null
+	visible = lp == null or String(lp.mode) != "craft"
 	_t -= delta
 	if _t > 0.0:
 		return
@@ -38,8 +65,9 @@ func _process(delta: float) -> void:
 	var sig := ""
 	for id in Guide.pinned:
 		sig += String(id) + ":"
-		for st in Guide.entry(id).get("track", []):
-			sig += "1" if step_done(st) else "0"
+		var track: Array = Guide.entry(id).get("track", [])
+		for i in track.size():
+			sig += "1" if Guide.step_done(String(id), i, track[i]) else "0"
 	if sig != _sig:
 		_rebuild()
 
@@ -72,8 +100,9 @@ func _rebuild() -> void:
 			v.add_child(s)
 		var next_marked := false
 		var all_done := not track.is_empty()
-		for st in track:
-			var done := step_done(st)
+		for si in track.size():
+			var st: Dictionary = track[si]
+			var done := Guide.step_done(String(id), si, st)
 			_sig += "1" if done else "0"
 			all_done = all_done and done
 			var row := HBoxContainer.new()

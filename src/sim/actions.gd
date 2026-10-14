@@ -705,7 +705,7 @@ func _a_guide_state(pid: int, args: Dictionary) -> void:
 	## island so it comes back with them.  Only lists of entry ids are kept.
 	var st: Dictionary = args.get("state", {})
 	var clean := {}
-	for k in ["read", "fresh", "pinned", "dismissed"]:
+	for k in ["read", "fresh", "pinned", "dismissed", "seen", "steps"]:
 		var ids: Array = []
 		var v = st.get(k, [])
 		if v is Array:

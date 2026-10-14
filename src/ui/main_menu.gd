@@ -107,6 +107,9 @@ func refresh() -> void:
 			_saves_list.add_item("%s   —   day %d   (%s)" % [s.get("name", "?"), int(s.get("day", 1)), String(s.get("saved_at", "")).replace("T", " ")])
 		if _saves.size() > 0:
 			_saves_list.select(0)
+		else:
+			_saves_list.add_item("No islands yet - name one below and wake on it.", null, false)
+			_saves_list.set_item_disabled(0, true)
 	if _name_edit:
 		_name_edit.text = Settings.player_name
 
