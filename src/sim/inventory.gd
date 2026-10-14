@@ -166,7 +166,7 @@ func remove(id: String, n: int = 1) -> bool:
 
 func take_from(i: int, n: int = 1) -> Dictionary:
 	## Removes up to n from slot i, returning the removed stack (or {}).
-	if is_empty_slot(i):
+	if is_empty_slot(i) or n <= 0:
 		return {}
 	var s: Dictionary = slots[i]
 	var take := mini(n, int(s["n"]))
@@ -207,7 +207,8 @@ func move(from: int, to: int) -> void:
 
 
 func split(from: int, to: int) -> void:
-	if is_empty_slot(from) or not is_empty_slot(to):
+	# (is_empty_slot() calls a slot past either end "empty": check the target is a real one)
+	if is_empty_slot(from) or to < 0 or to >= slots.size() or not slots[to].is_empty():
 		return
 	var a: Dictionary = slots[from]
 	var half := int(a["n"]) / 2

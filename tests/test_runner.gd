@@ -1249,7 +1249,57 @@ func me() -> Dictionary:
 	return World.stats.get(Net.my_id(), {})
 
 
+func test_bad_requests() -> void:
+	print("-- broken or hostile requests change nothing")
+	var L0 := ledger()
+	give("stone", 3)
+	give("stick", 2)
+	var items0 := World.entities_of("item").size()
+	var s_stone := slot_of("stone")
+	req("inv_drop_slot", {"slot": s_stone, "n": -5})
+	await frames(2)
+	check(inv().count("stone") == 3 and World.entities_of("item").size() == items0, "dropping a negative number of stones conjures none")
+	var s_stick := slot_of("stick")
+	var last := inv().slots.size() - 1
+	var last0: Dictionary = inv().slots[last].duplicate(true)
+	req("inv_split", {"from": s_stick, "to": -1})
+	req("inv_split", {"from": s_stick, "to": inv().slots.size()})
+	await frames(1)
+	check(inv().count("stick") == 2 and inv().slots[last] == last0, "splitting into a slot that doesn't exist does nothing")
+	# a clay workpiece kneaded with a nonsense number
+	give("clay", 2, {"moist": 0.3})
+	var spot := clear_soil_spot()
+	await stand_near(spot, Vector3(0, 0, 0.8))
+	req("work_start", {"kind": "clay_prep", "surface": -1, "pos": spot, "slot": slot_of("clay")})
+	await frames(2)
+	var w := _work()
+	check(not w.is_empty() and String(w["d"]["kind"]) == "clay_prep", "a lump of clay to knead")
+	if not w.is_empty():
+		req("work_op", {"eid": int(w["id"]), "op": ["knead", NAN]})
+		req("work_op", {"eid": int(w["id"]), "op": ["knead", INF]})
+		await frames(1)
+		check(is_finite(float(World.pools.get("atmo_water_l", 0.0))) and is_finite(float(World.get_entity(int(w["id"]))["d"]["moist"])),
+			"kneading with NaN or infinity is refused (the air's water is still a number)")
+		req("work_cancel", {"eid": int(w["id"])})
+		await frames(1)
+	var hp := float(me()["health"])
+	req("hurt", {"amount": NAN, "cause": "fall"})
+	req("place", {"slot": slot_of("stone"), "xf": Transform3D(Basis(), Vector3(NAN, 0, 0))})
+	req("build_place", {"bp": "platform", "xf": Transform3D(Basis(), lp.global_position + Vector3(0, 0, 2)), "sy": NAN})
+	req("pickup", {"eid": "not an id"})
+	req("dig", {"pos": "here", "slot": 0})
+	await frames(2)
+	check(is_finite(float(me()["health"])) and float(me()["health"]) == hp, "a NaN hurt is ignored")
+	check(inv().count("stone") == 3, "placing something at NaN is refused")
+	req("guide_state", {"state": {"read": ["fire", 42, "x".repeat(500)], "junk": {"a": 1}, "pinned": "fire"}})
+	await frames(1)
+	var gs: Dictionary = World.guide_states.get(Net.my_id(), {})
+	check(gs.get("read", []) == ["fire"] and not gs.has("junk") and gs.get("pinned", []) == [], "only entry ids are kept from a guide-progress update (%s)" % str(gs))
+	ledger_same(L0, ledger(), "broken requests")
+
+
 func suite_survival() -> void:
+	await test_bad_requests()
 	var L0 := ledger()
 	print("-- needs fall over time")
 	var st := me()

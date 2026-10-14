@@ -107,7 +107,7 @@ static func prepare_pickup(eid: int) -> void:
 		World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) - (n * ItemDB.unit_mass(iid) - fm - ch)
 		var extra := nu - n * ItemDB.nutrients(iid)
 		if not site.is_empty():
-			site["d"]["ash_n"] = float(site["d"].get("ash_n", 0.0)) + extra
+			World.update(sid, {"ash_n": float(site["d"].get("ash_n", 0.0)) + extra})
 		else:
 			World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + extra
 		World.update(eid, {"x": {"moist": float(x.get("moist", ItemDB.default_moist(iid)))}, "site": -1, "char": 0.0})
@@ -116,8 +116,8 @@ static func prepare_pickup(eid: int) -> void:
 		var k := int(floor(ch / unit + 1e-6))
 		var rest := ch - k * unit
 		if not site.is_empty():
-			site["d"]["ash_c"] = float(site["d"].get("ash_c", 0.0)) + rest
-			site["d"]["ash_n"] = float(site["d"].get("ash_n", 0.0)) + nu
+			# (everyone sees the ash it leaves behind)
+			World.update(sid, {"ash_c": float(site["d"].get("ash_c", 0.0)) + rest, "ash_n": float(site["d"].get("ash_n", 0.0)) + nu})
 		else:
 			World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) + rest
 			World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + nu

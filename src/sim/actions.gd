@@ -38,10 +38,65 @@ func handle(pid: int, action: String, args: Dictionary) -> void:
 		return
 	if not Net.players.has(pid):
 		return
+	if not args_ok(args):
+		push_warning("Ignored a malformed '%s' request from peer %d" % [action, pid])
+		return
 	var alive: bool = World.stats.get(pid, {}).get("alive", true)
 	if not alive and not action in ["respawn", "guide_state", "fell", "inv_move", "inv_split"]:
 		return
 	handlers[action].call(pid, args)
+
+
+# What the handlers expect each argument to be (anything else is refused).
+const ARG_TYPES := {
+	"eye": [TYPE_VECTOR3], "pos": [TYPE_VECTOR3], "dir": [TYPE_VECTOR3], "xf": [TYPE_TRANSFORM3D],
+	"op": [TYPE_ARRAY], "state": [TYPE_DICTIONARY],
+	"slot": [TYPE_INT, TYPE_FLOAT], "eid": [TYPE_INT, TYPE_FLOAT], "from": [TYPE_INT, TYPE_FLOAT],
+	"to": [TYPE_INT, TYPE_FLOAT], "n": [TYPE_INT, TYPE_FLOAT], "idx": [TYPE_INT, TYPE_FLOAT],
+	"surface": [TYPE_INT, TYPE_FLOAT], "board": [TYPE_INT, TYPE_FLOAT], "sy": [TYPE_INT, TYPE_FLOAT],
+	"amount": [TYPE_INT, TYPE_FLOAT],
+	"kind": [TYPE_STRING, TYPE_STRING_NAME], "part": [TYPE_STRING, TYPE_STRING_NAME],
+	"bp": [TYPE_STRING, TYPE_STRING_NAME], "cause": [TYPE_STRING, TYPE_STRING_NAME],
+}
+
+
+static func args_ok(args: Dictionary) -> bool:
+	## A request's arguments must be the kinds of thing the handlers expect, and
+	## every number in them a real one: a NaN or an infinity from a broken or
+	## hostile client would poison whatever it touched (the island's books, a save).
+	for k in args:
+		var want: Array = ARG_TYPES.get(String(k), [])
+		if not want.is_empty() and not typeof(args[k]) in want:
+			return false
+	return _finite(args, 0)
+
+
+static func _finite(v: Variant, depth: int) -> bool:
+	if depth > 6:
+		return false
+	match typeof(v):
+		TYPE_FLOAT:
+			return is_finite(v)
+		TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4, TYPE_QUATERNION, TYPE_BASIS, TYPE_TRANSFORM2D, \
+				TYPE_TRANSFORM3D, TYPE_PLANE, TYPE_AABB, TYPE_RECT2:
+			return v.is_finite()
+		TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY:
+			for x in v:
+				if not is_finite(x):
+					return false
+		TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY:
+			for x in v:
+				if not x.is_finite():
+					return false
+		TYPE_ARRAY:
+			for x in v:
+				if not _finite(x, depth + 1):
+					return false
+		TYPE_DICTIONARY:
+			for k in v:
+				if not _finite(k, depth + 1) or not _finite(v[k], depth + 1):
+					return false
+	return true
 
 
 # ---------------------------------------------------------------------------
@@ -646,7 +701,19 @@ func _a_exert(pid: int, args: Dictionary) -> void:
 
 
 func _a_guide_state(pid: int, args: Dictionary) -> void:
-	World.guide_states[pid] = args.get("state", {})
+	## Someone's own guide progress (what they've read and pinned), kept with the
+	## island so it comes back with them.  Only lists of entry ids are kept.
+	var st: Dictionary = args.get("state", {})
+	var clean := {}
+	for k in ["read", "fresh", "pinned", "dismissed"]:
+		var ids: Array = []
+		var v = st.get(k, [])
+		if v is Array:
+			for id in v:
+				if (id is String or id is StringName) and String(id).length() <= 64 and ids.size() < 256:
+					ids.append(String(id))
+		clean[k] = ids
+	World.guide_states[pid] = clean
 
 
 func _a_chat_cmd(_pid: int, _args: Dictionary) -> void:
