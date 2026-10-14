@@ -5,9 +5,9 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_linear;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform sampler2D wave_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D wave_b : hint_normal, filter_linear_mipmap, repeat_enable;
-uniform vec3 shallow_col : source_color = vec3(0.36, 0.52, 0.46);
-uniform vec3 deep_col : source_color = vec3(0.08, 0.20, 0.24);
-uniform float clarity = 1.6;
+uniform vec3 shallow_col : source_color = vec3(0.28, 0.46, 0.40);
+uniform vec3 deep_col : source_color = vec3(0.04, 0.15, 0.16);
+uniform float clarity = 4.5;
 uniform float rain = 0.0;
 uniform float wind = 0.3;
 
@@ -36,11 +36,13 @@ void fragment() {
 	vec3 refr = textureLod(screen_tex, SCREEN_UV + off, 1.5).rgb;
 	vec3 tint = mix(shallow_col, deep_col, clamp(thick * 1.4, 0.0, 1.0));
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
-	vec3 col = mix(refr * mix(vec3(1.0), shallow_col * 1.4, 0.55), tint, a * 0.85);
+	// what you see through the water takes on its colour quickly with depth
+	vec3 seen = refr * mix(vec3(1.0), shallow_col * 1.6, 0.7);
+	vec3 col = mix(seen, tint, clamp(a * 0.95, 0.0, 1.0));
 	float edge = 1.0 - smoothstep(0.0, 0.05, thick);
 	ALBEDO = mix(col, vec3(0.85, 0.9, 0.88), edge * 0.35);
 	ROUGHNESS = 0.06 + rain * 0.12;
 	METALLIC = 0.0;
 	SPECULAR = 0.6;
-	ALPHA = clamp(0.55 + fres * 0.4 + a * 0.2, 0.0, 1.0) * smoothstep(0.0, 0.025, thick);
+	ALPHA = clamp(0.62 + fres * 0.35 + a * 0.3, 0.0, 1.0) * smoothstep(0.0, 0.04, thick);
 }

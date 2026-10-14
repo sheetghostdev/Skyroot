@@ -29,6 +29,9 @@ var capsule: CapsuleShape3D
 var model: CharacterModel
 var hands: FPHands
 var interactor: Interactor
+var placer: BuildPlacer
+var climbing := -1           # ladder being climbed (structure id)
+var sleeping_on := -1
 
 var yaw := 0.0
 var pitch := 0.0
@@ -121,6 +124,10 @@ func _ready() -> void:
 	interactor.name = "Interactor"
 	add_child(interactor)
 	interactor.setup(self)
+	placer = BuildPlacer.new()
+	placer.name = "BuildPlacer"
+	placer.player = self
+	add_child(placer)
 
 	cam_fp.current = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -154,7 +161,7 @@ func can_act() -> bool:
 
 func set_mode(m: String) -> void:
 	mode = m
-	if m == "play":
+	if m == "play" or m == "build":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif m == "ui" or m == "craft":
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -174,13 +181,21 @@ func set_third_person(on: bool) -> void:
 # ---------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (mode == "play" or mode == "sleep"):
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (mode == "play" or mode == "sleep" or mode == "build"):
 		var s := Settings.mouse_sensitivity
 		yaw -= event.relative.x * s
 		pitch -= event.relative.y * s * (-1.0 if Settings.invert_y else 1.0)
 		pitch = clampf(pitch, deg_to_rad(-88.0), deg_to_rad(88.0))
 		return
-	if mode != "play":
+	if mode == "sleep" and (event.is_action_pressed("interact") or event.is_action_pressed("jump") or event.is_action_pressed("pause")):
+		wake()
+		get_viewport().set_input_as_handled()
+		return
+	if climbing != -1 and (event.is_action_pressed("jump") or event.is_action_pressed("interact")):
+		climbing = -1
+		get_viewport().set_input_as_handled()
+		return
+	if mode != "play" and mode != "build":
 		return
 	if event.is_action_pressed("camera_toggle"):
 		set_third_person(not third_person)
@@ -209,9 +224,20 @@ func select_hotbar(i: int) -> void:
 # ---------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
-	var moving_allowed := mode == "play" or mode == "ui"
+	if climbing != -1:
+		_climb(delta)
+		return
+	if mode == "sleep":
+		velocity = Vector3.ZERO
+		_update_camera(delta, Vector2.ZERO, 0.0)
+		_update_model(delta, Vector3.ZERO)
+		_pose_t -= delta
+		if _pose_t <= 0.0:
+			_pose_t = 0.2
+			_send_pose(Vector3.ZERO)
+		return
 	var input := Vector2.ZERO
-	if moving_allowed and mode == "play":
+	if mode == "play" or mode == "build":
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var want_crouch := mode == "play" and Input.is_action_pressed("crouch")
 	if mode == "craft":
@@ -223,7 +249,7 @@ func _physics_process(delta: float) -> void:
 	_apply_crouch_shape(delta)
 	var st := float(World.my_stats.get("stamina", stamina))
 	stamina = lerpf(stamina, st, 0.1)
-	sprinting = mode == "play" and Input.is_action_pressed("sprint") and input.y < -0.2 and not crouching and stamina > 0.04
+	sprinting = (mode == "play" or mode == "build") and Input.is_action_pressed("sprint") and input.y < -0.2 and not crouching and stamina > 0.04
 	var speed := CROUCH if crouching else (SPRINT if sprinting else WALK)
 	speed *= speed_mult * (0.62 if _in_water else 1.0) * (0.75 if stamina < 0.08 else 1.0)
 	var basis := Basis(Vector3.UP, yaw)
@@ -242,7 +268,7 @@ func _physics_process(delta: float) -> void:
 	if not on_floor:
 		velocity.y -= GRAVITY * delta
 		_fall_v = minf(_fall_v, velocity.y)
-	elif mode == "play" and Input.is_action_just_pressed("jump") and not crouching and stamina > 0.05:
+	elif (mode == "play" or mode == "build") and Input.is_action_just_pressed("jump") and not crouching and stamina > 0.05:
 		velocity.y = JUMP_V
 		World.request("exert", {"kind": "jump"})
 		Sfx.play("step_grass", global_position, -8.0)
@@ -327,6 +353,70 @@ func _fell_into_abyss() -> void:
 	Events.player_died.emit("abyss")
 
 
+func start_sleep(eid: int) -> void:
+	## Lie down on a bed roll: it becomes where you wake, and when everyone on
+	## the island is asleep the night passes quickly.
+	var e := World.get_entity(eid)
+	if e.is_empty():
+		return
+	World.request("bed_set", {"eid": eid, "eye": eye_position()})
+	sleeping_on = eid
+	global_position = (e["xf"] as Transform3D).origin + Vector3(0, 0.08, 0)
+	velocity = Vector3.ZERO
+	set_mode("sleep")
+	Events.toast.emit("Sleeping... (E, Space or Esc to get up)", "info")
+
+
+func wake() -> void:
+	if mode != "sleep":
+		return
+	sleeping_on = -1
+	set_mode("play")
+
+
+func start_climb(eid: int) -> void:
+	var e := World.get_entity(eid)
+	if e.is_empty():
+		return
+	climbing = eid
+	var lxf: Transform3D = e["xf"]
+	var front := lxf.basis.z.normalized()
+	var p := lxf.origin + front * 0.38
+	p.y = maxf(global_position.y, lxf.origin.y + 0.02)
+	global_position = p
+	yaw = atan2(front.x, front.z)
+	velocity = Vector3.ZERO
+
+
+func _climb(delta: float) -> void:
+	var e := World.get_entity(climbing)
+	if e.is_empty() or mode != "play":
+		climbing = -1
+		return
+	var lxf: Transform3D = e["xf"]
+	var top := lxf.origin.y + 2.5 * float(e["d"].get("sy", 1.0))
+	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	velocity = Vector3(0, -input.y * 1.7, 0)
+	move_and_slide()
+	_step += absf(input.y) * delta * 1.7
+	if _step > 0.45:
+		_step = 0.0
+		Sfx.play("step_wood", global_position, -10.0)
+	if global_position.y > top - 0.95 and input.y < 0.0:
+		# over the top and onto whatever it leans against
+		var front := lxf.basis.z.normalized()
+		global_position += -front * 0.75 + Vector3(0, 1.0, 0)
+		climbing = -1
+	elif global_position.y <= lxf.origin.y + 0.03 and input.y > 0.0:
+		climbing = -1
+	_update_camera(delta, Vector2.ZERO, 0.0)
+	_update_model(delta, Vector3.ZERO)
+	_pose_t -= delta
+	if _pose_t <= 0.0:
+		_pose_t = 0.05
+		_send_pose(Vector3.ZERO)
+
+
 func respawn_at(pos: Vector3, yaw_v: float) -> void:
 	global_position = pos
 	velocity = Vector3.ZERO
@@ -334,7 +424,8 @@ func respawn_at(pos: Vector3, yaw_v: float) -> void:
 	pitch = 0.0
 	_falling_abyss = false
 	_fall_v = 0.0
-	if mode == "dead":
+	climbing = -1
+	if mode == "dead" or mode == "sleep":
 		set_mode("play")
 
 

@@ -3,6 +3,7 @@ extends Node
 ##   --shot=/abs/path.png  --delay=8  --pos=x,y,z  --look=yaw_deg,pitch_deg  --hour=17.5
 ##   --tp  (third person)  --give=item:n,item:n  --hotbar=N  --panel=inventory|guide|pause|build
 ##   --menu (capture the title screen)  --hidehud
+##   --fire=camp|mound|kiln|ash|drill  --fhours=H  (build, light and fast-forward a fire in view)
 
 var path := ""
 var delay := 8.0
@@ -60,6 +61,8 @@ func _setup() -> void:
 		Game.game_world.hud.root.visible = false
 	if Game.cli.has("craft"):
 		_craft_setup.call_deferred(String(Game.cli["craft"]))
+	if Game.cli.has("fire"):
+		_fire_setup.call_deferred(String(Game.cli["fire"]))
 
 
 func _frames(n: int) -> void:
@@ -138,3 +141,97 @@ func _craft_setup(kind: String) -> void:
 			await _frames(2)
 			for i in n:
 				World.request("work_op", {"eid": eid, "op": ["wrap", 0.5]})
+
+
+func _spawn(id: String, n: int, x: Dictionary, p: Vector3) -> int:
+	return World.actions.spawn_item(id, n, x, p + Vector3(0, 0.25, 0))
+
+
+func _fire_setup(kind: String) -> void:
+	var lp: LocalPlayer = Game.game_world.local_player()
+	var c := Vector3(0.0, 0.0, 3.0)
+	c.y = World.terrain.height(c.x, c.z)
+	var back := Vector3(0.0, 0.0, 1.5) if kind != "drill" else Vector3(0.0, 0.0, 0.9)
+	lp.global_position = Vector3(c.x + back.x, World.terrain.height(c.x + back.x, c.z + back.z) + 0.05, c.z + back.z)
+	lp.yaw = 0.0
+	lp.pitch = deg_to_rad(-28.0)
+	await _frames(4)
+	var hours := float(Game.cli.get("fhours", "0.3"))
+	if kind == "drill":
+		var inv := World.inventory_of(Net.my_id())
+		inv.add("hearth_board", 1)
+		inv.add("stick", 1)
+		inv.add("straw", 2)
+		World.mark_inventory(Net.my_id())
+		await _frames(2)
+		World.request("work_start", {"kind": "fire_drill", "pos": c, "slot": inv.find("hearth_board"), "eye": lp.eye_position()})
+		await _frames(4)
+		var w := {}
+		for e in World.entities.values():
+			if e["t"] == "work":
+				w = e
+		if not w.is_empty():
+			for i in int(Game.cli.get("auto", "60")):
+				World.request("work_op", {"eid": int(w["id"]), "op": ["spin", 1.0, 0.05]})
+				await _frames(1)
+		return
+	var tinder := _spawn("straw", 3, {"moist": 0.08}, c)
+	_spawn("twig", 6, {"moist": 0.1}, c + Vector3(0.06, 0, 0.03))
+	_spawn("stick", 3, {"moist": 0.15}, c + Vector3(-0.05, 0, 0.05))
+	var nfw := 9 if kind == "mound" else (6 if kind == "kiln" else 3)
+	if kind == "kiln":
+		var pot := Pottery.new_lump(Pottery.LUMP_L * 2.0, 0.22, 99)
+		for i in 8:
+			Pottery.apply_op(pot, ["hollow", 0.1 * (i + 1), 0.25 + 0.06 * i, 0.0])
+		Pottery.finalize(pot)
+		pot["moist"] = 0.03
+		pot["state"] = "dry"
+		_spawn("pot", 1, pot, c + Vector3(0.02, 0, 0.0))
+	for i in nfw:
+		var a := i * TAU / nfw
+		var rad := 0.13 if (nfw < 9 or i % 2 == 0) else 0.22
+		_spawn("firewood", 1, {"moist": 0.15}, c + Vector3(cos(a) * rad, 0, sin(a) * rad))
+	await _frames(4)
+	FireSim.ignite(tinder, 620.0)
+	var pid := Net.my_id()
+	var pre := 0.5 if kind == "mound" else (0.3 if kind == "kiln" else hours)
+	for i in int(pre / 0.05):
+		FireSim.tick(0.05, 2.5)
+		await _frames(1)
+	if kind == "mound" or kind == "kiln":
+		var sid := FireSim.site_at(c)
+		var inv2 := World.inventory_of(pid)
+		inv2.add("earth", 20 if kind == "mound" else 5)
+		World.mark_inventory(pid)
+		await _frames(2)
+		var guard := 0
+		while guard < 24 and inv2.count("earth") > 0:
+			var d: Dictionary = World.get_entity(sid)["d"]
+			var worst := 0
+			var wc := 2.0
+			for k in FireSim.CELLS:
+				var cv := FireSim.coverage(d, k)
+				if kind == "kiln" and k >= FireSim.AZ:
+					continue
+				if cv < wc:
+					wc = cv
+					worst = k
+			if wc >= 0.999:
+				break
+			World.request("fire_cover", {"eid": sid, "pos": FireSim.cell_point(worst, d, c), "slot": inv2.find("earth"), "eye": lp.eye_position()})
+			await _frames(1)
+			guard += 1
+		if kind == "mound":
+			inv2.add("stick", 1)
+			World.mark_inventory(pid)
+			await _frames(1)
+			for k in [3, 6]:
+				World.request("fire_vent", {"eid": sid, "pos": FireSim.cell_point(k, World.get_entity(sid)["d"], c), "slot": inv2.find("stick"), "eye": lp.eye_position()})
+				await _frames(1)
+		for i in int(hours / 0.05):
+			FireSim.tick(0.05, 2.5)
+			await _frames(1)
+	if kind == "ash":
+		for i in int(5.0 / 0.05):
+			FireSim.tick(0.05, 2.5)
+			await _frames(1)

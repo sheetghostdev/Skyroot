@@ -325,10 +325,11 @@ func _build_water() -> void:
 			var f := float(r) / rings
 			st.set_normal(Vector3.UP)
 			st.add_vertex(Vector3(cos(a) * rx * f, 0.0, sin(a) * rz * f))
+	# wound to face up (front faces are clockwise seen from above)
 	for s in segs:
 		st.add_index(0)
-		st.add_index(1 + (s + 1) % segs)
 		st.add_index(1 + s)
+		st.add_index(1 + (s + 1) % segs)
 	for r in range(1, rings):
 		for s in segs:
 			var a := 1 + (r - 1) * segs + s
@@ -336,11 +337,11 @@ func _build_water() -> void:
 			var c := 1 + r * segs + s
 			var d := 1 + r * segs + (s + 1) % segs
 			st.add_index(a)
-			st.add_index(b)
 			st.add_index(c)
 			st.add_index(b)
+			st.add_index(b)
+			st.add_index(c)
 			st.add_index(d)
-			st.add_index(c)
 	water_mi = MeshInstance3D.new()
 	water_mi.name = "Pond"
 	water_mi.mesh = st.commit()

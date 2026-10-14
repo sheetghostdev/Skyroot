@@ -716,3 +716,155 @@ func suite_pit() -> void:
 
 func suite_mound() -> void:
 	await test_charcoal_mound()
+
+
+func suite_mtime() -> void:
+	var t0 := Time.get_ticks_msec()
+	await test_charcoal_mound()
+	print("mound test took %d ms" % (Time.get_ticks_msec() - t0))
+
+
+# ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
+
+func structures() -> Array:
+	return World.entities_of("structure")
+
+
+func build_frame(bp: String, xf: Transform3D, sy: float = 1.0) -> int:
+	var before := structures().size()
+	req("build_place", {"bp": bp, "xf": xf, "sy": sy})
+	await frames(2)
+	if structures().size() == before:
+		return -1
+	var newest_s := newest("structure")
+	return int(newest_s["id"])
+
+
+func complete(eid: int) -> void:
+	## Bring every part the frame still needs and fit it.
+	var e := World.get_entity(eid)
+	var parts: Array = ItemDB.blueprint(String(e["d"]["bp"])).get("parts", [])
+	for i in range(int(e["d"]["installed"]), parts.size()):
+		var id := String(parts[i]).get_slice("|", 0)
+		if inv().count(id) < 1:
+			give(id, 1)
+		req("build_install", {"eid": eid, "slot": slot_of(id)})
+		await frames(1)
+
+
+func edge_spot() -> Dictionary:
+	## A flattish place just inside the island's rim, and the direction out.
+	var best := {}
+	for k in 16:
+		var a := k * TAU / 16.0
+		var dir := Vector2(cos(a), sin(a))
+		var r := 0.0
+		while r < 12.0 and World.terrain.is_inside(dir.x * r, dir.y * r):
+			r += 0.05
+		var c := dir * (r - 1.15)
+		var hs: Array = []
+		for o in [Vector2.ZERO, Vector2(0.9, 0.9), Vector2(-0.9, 0.9), Vector2(0.9, -0.9), Vector2(-0.9, -0.9)]:
+			hs.append(World.terrain.height(c.x + o.x, c.y + o.y))
+		var spread: float = hs.max() - hs.min()
+		var near_tree := c.distance_to(TerrainData.TREE_POS) < 3.0 or c.distance_to(TerrainData.OUTCROP_POS) < 3.2 or c.distance_to(TerrainData.POND_CENTER) < 3.0
+		if not near_tree and (best.is_empty() or spread < float(best["spread"])):
+			best = {"c": c, "dir": dir, "spread": spread, "top": hs.max()}
+	return best
+
+
+func suite_build() -> void:
+	Events.toast.connect(func(t, k): print("     [toast] ", t))
+	var L0 := ledger()
+	var spot := edge_spot()
+	var c: Vector2 = spot["c"]
+	var dir: Vector2 = spot["dir"]
+	var yaw := atan2(dir.x, dir.y)
+	var basis := Basis(Vector3.UP, yaw)
+	print("-- building at the rim (%.1f, %.1f), ground spread %.2f m" % [c.x, c.y, float(spot["spread"])])
+	var origin := Vector3(c.x, float(spot["top"]) + 0.04, c.y)
+	await stand_near(origin, Vector3(-dir.x * 1.8, 0, -dir.y * 1.8))
+	var a_id := await build_frame("platform", Transform3D(basis, origin))
+	check(a_id != -1, "a platform frame was placed on the ground")
+	if a_id == -1:
+		return
+	check(int(World.get_entity(a_id)["d"]["installed"]) == 0, "the frame starts empty")
+	req("build_install", {"eid": a_id, "slot": 0})
+	await frames(1)
+	check(int(World.get_entity(a_id)["d"]["installed"]) == 0, "nothing goes in without the right material")
+	await complete(a_id)
+	var a := World.get_entity(a_id)
+	check(StructureSim.is_complete(a["d"]), "every part installed by hand: the platform is finished")
+	await frames(3)
+	var hit := lp.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin + Vector3(0.3, 1.0, 0.2), origin + Vector3(0.3, -1.0, 0.2), EntityView.LAYER_STRUCT))
+	check(not hit.is_empty(), "the finished deck is solid underfoot")
+	# out over the abyss
+	var out := basis.z
+	var b_xf := Transform3D(basis, origin + out * 2.0)
+	var b_id := await build_frame("platform", b_xf)
+	check(b_id != -1, "a second platform can reach out over the edge")
+	await complete(b_id)
+	# walk out onto the new deck to keep building
+	lp.global_position = origin + out * 1.6 + Vector3(0, 0.1, 0)
+	lp.velocity = Vector3.ZERO
+	await frames(3)
+	var c_xf := Transform3D(basis, origin + out * 4.0)
+	var c_id := await build_frame("platform", c_xf)
+	check(c_id != -1, "a third one is allowed, with a warning")
+	if c_id == -1:
+		return
+	await complete(c_id)
+	StructureSim.tick(0.1)
+	await frames(2)
+	check(float(World.get_entity(c_id)["d"].get("stress", 0.0)) == 0.5, "two steps out it creaks (stress %.1f)" % float(World.get_entity(c_id)["d"].get("stress", 0.0)))
+	check(float(World.get_entity(b_id)["d"].get("stress", 0.0)) == 0.0, "one step out holds fine")
+	var d_id := await build_frame("platform", Transform3D(basis, origin + out * 6.0))
+	check(d_id == -1, "a fourth one out is refused: nothing would hold it")
+	# a railing along the far edge, and a mat to sleep on
+	var r_id := await build_frame("railing", Transform3D(basis.rotated(Vector3.UP, 0.0), origin + out * 0.93))
+	check(r_id != -1, "a railing frame along an edge")
+	if r_id != -1:
+		await complete(r_id)
+	var m_id := await build_frame("sleeping_mat", Transform3D(basis, origin + Vector3(0.3, 0.0, 0.0) - out * 0.4))
+	check(m_id != -1, "a sleeping mat on the deck")
+	if m_id != -1:
+		await complete(m_id)
+		req("bed_set", {"eid": m_id})
+		await frames(2)
+		check(int(World.stats[Net.my_id()].get("bed", -1)) == m_id, "sleeping on the mat makes it home")
+	# take the far platform apart: every part comes back
+	var have_boards := inv().count("board")
+	var guard := 0
+	while World.has_entity(c_id) and guard < 20:
+		req("build_dismantle", {"eid": c_id})
+		await frames(1)
+		guard += 1
+	check(not World.has_entity(c_id), "the far platform came apart")
+	check(inv().count("board") == have_boards + 6, "its six boards came back")
+	# now pull the grounded platform out from under the other one
+	await stand_near(origin - out * 2.6, Vector3.ZERO)
+	var lost0 := float(World.pools.get("lost_carbon", 0.0))
+	guard = 0
+	while World.has_entity(a_id) and guard < 20:
+		req("build_dismantle", {"eid": a_id})
+		await frames(1)
+		guard += 1
+	StructureSim.mark_dirty()
+	StructureSim.tick(0.1)
+	await frames(2)
+	check(float(World.get_entity(b_id)["d"].get("stress", 0.0)) >= 1.0, "without its support, the outer platform groans")
+	for i in 30:
+		StructureSim.tick(0.5)
+		await frames(1)
+	check(not World.has_entity(b_id), "...and then it falls")
+	print("     lost to the abyss: %.2f kg of wood" % (float(World.pools.get("lost_carbon", 0.0)) - lost0))
+	await frames(3)
+	var L1 := ledger()
+	ledger_same(L0, L1, "construction")
+
+
+func suite_pond() -> void:
+	var t := World.terrain
+	print("pond capacity %.1f L, pond_l %.1f L, level %.3f, bed at centre %.3f" % [t.pond_capacity(), float(World.env.get("pond_l", -1)), Game.game_world.island.water_level(), t.height(TerrainData.POND_CENTER.x, TerrainData.POND_CENTER.y)])
+	print("water visible: ", Game.game_world.island.water_mi.visible, " pos ", Game.game_world.island.water_mi.global_position)

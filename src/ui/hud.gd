@@ -412,6 +412,12 @@ func toast(text: String, kind: String = "info") -> void:
 	if kind == "death":
 		_show_death(text)
 		return
+	# the same message again just stays up longer
+	for t in toasts.get_children():
+		if t.get_meta("text", "") == text and not t.is_queued_for_deletion():
+			t.set_meta("life", maxf(float(t.get_meta("life", 0.0)), 4.5))
+			toasts.move_child(t, -1)
+			return
 	var pc := PanelContainer.new()
 	var col: Color = {"warn": Color(0.4, 0.22, 0.12, 0.85), "error": Color(0.45, 0.14, 0.12, 0.88), "save": Color(0.15, 0.25, 0.18, 0.85),
 		"discovery": Color(0.32, 0.25, 0.1, 0.9)}.get(kind, Color(0.08, 0.075, 0.065, 0.8))
@@ -423,10 +429,13 @@ func toast(text: String, kind: String = "info") -> void:
 	l.custom_minimum_size = Vector2(min(640, 40 + text.length() * 8), 0)
 	pc.add_child(l)
 	pc.set_meta("life", 4.5 if kind != "discovery" else 7.0)
+	pc.set_meta("text", text)
 	pc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	toasts.add_child(pc)
 	while toasts.get_child_count() > 4:
-		toasts.get_child(0).queue_free()
+		var old := toasts.get_child(0)
+		toasts.remove_child(old)
+		old.queue_free()
 	if kind == "warn" or kind == "error":
 		Sfx.ui("ui_error", -10.0)
 
@@ -475,7 +484,9 @@ func _on_chat(from: String, text: String) -> void:
 	l.set_meta("life", 10.0)
 	chat_box.add_child(l)
 	while chat_box.get_child_count() > 8:
-		chat_box.get_child(0).queue_free()
+		var old := chat_box.get_child(0)
+		chat_box.remove_child(old)
+		old.queue_free()
 
 
 func _send_chat(text: String) -> void:
@@ -538,6 +549,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			close_panel()
 		elif p.mode == "craft":
 			pass  # the craft session handles Esc
+		elif p.mode == "build":
+			p.placer.stop()
+		elif p.mode == "sleep":
+			p.wake()
 		else:
 			open_panel("pause")
 		get_viewport().set_input_as_handled()

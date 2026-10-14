@@ -30,7 +30,7 @@ func _refresh(keys: Array) -> void:
 				mi.set_meta("unique_mat", true)
 			if m is ShaderMaterial:
 				m.set_shader_parameter("char_amount", charred)
-				m.set_shader_parameter("emission_strength", glow * 2.5)
+				m.set_shader_parameter("emission_strength", glow * 1.1)
 		_override_surfaces(charred, glow)
 
 
@@ -46,7 +46,7 @@ func _override_surfaces(charred: float, glow: float) -> void:
 					Models.set_surface_unique(mi, s, m)
 					mi.set_meta("unique_surf_%d" % s, true)
 				m.set_shader_parameter("char_amount", charred)
-				m.set_shader_parameter("emission_strength", glow * 2.5)
+				m.set_shader_parameter("emission_strength", glow * 1.1)
 
 
 func _rebuild() -> void:

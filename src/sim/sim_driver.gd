@@ -50,6 +50,7 @@ func _tick(hours: float, real_dt: float) -> void:
 	PlantSim.tick(hours, ctx)
 	DryingSim.tick(hours, ctx)
 	FireSim.tick(hours, real_dt)
+	StructureSim.tick(real_dt)
 	CompostSim.tick(hours)
 	_survival(hours, real_dt)
 	Events.env_changed.emit()

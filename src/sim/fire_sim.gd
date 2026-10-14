@@ -34,11 +34,28 @@ const TORCH_HOURS := 2.0
 
 static var _rt: Dictionary = {}     # site id -> runtime state (rebuilt from entity data after a load)
 static var _hot: Dictionary = {}    # item id -> true: hot items cooling outside any fire
+static var _ext_cache: Dictionary = {}
+
+
+static func item_extent(iid: String, x: Dictionary = {}) -> Vector2:
+	## (horizontal half-length, height) of an item's model, for sizing a pile.
+	var key := iid if not iid in ["wood_piece", "charred_wood"] else iid + String(x.get("from", ""))
+	if _ext_cache.has(key):
+		return _ext_cache[key]
+	var out := Vector2(0.06, 0.06)
+	var vis := ItemVisual.single(iid, x if iid in ["wood_piece", "charred_wood"] else {})
+	if vis:
+		var bb := Models.aabb_of(vis)
+		out = Vector2(maxf(bb.size.x, bb.size.z) * 0.5, bb.size.y)
+		vis.free()
+	_ext_cache[key] = out
+	return out
 
 
 static func reset() -> void:
 	_rt.clear()
 	_hot.clear()
+	_ext_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +82,7 @@ static func cell_of_dir(dir: Vector3) -> int:
 
 static func dome_radii(d: Dictionary) -> Vector2:
 	## (horizontal, vertical) radii of the shell around the pile.
-	return Vector2(float(d.get("r", 0.25)) + 0.15, maxf(float(d.get("h", 0.15)) + 0.12, 0.25))
+	return Vector2(float(d.get("r", 0.25)) + 0.08, maxf(float(d.get("h", 0.15)) + 0.08, 0.22))
 
 
 static func cell_area(k: int, d: Dictionary) -> float:
@@ -287,6 +304,14 @@ static func _tick_site(e: Dictionary, dt: float, real_dt: float) -> void:
 	if lit and not bool(d.get("lit", false)):
 		World.update(id, {"lit": true, "t_lit": World.hours()})
 	_feedback(e, rt, acc, lit, real_dt)
+	if lit and float(acc["heat_w"]) > 2000.0 and not bool(rt.get("scorched", false)):
+		# the grass under a real fire burns away (back into the soil, like any torn-up grass)
+		rt["scorched"] = true
+		var c2: Vector3 = e["xf"].origin
+		var cells := World.terrain.cells_in_radius(Vector2(c2.x, c2.z), float(d.get("r", 0.25)) + 0.1)
+		TerrainActions.remove_grass(cells, 1.0)
+		var ck := TerrainData.cell_at(Vector2(c2.x, c2.z))
+		World.terrain_edited(Rect2i(ck - Vector2i(4, 4), Vector2i(9, 9)))
 	# going out, cooling down, finishing up
 	if not lit and hottest < 55.0 and float(s["T"]) < 55.0:
 		rt["cold_s"] = float(rt["cold_s"]) + dt
@@ -549,7 +574,7 @@ static func _gather(e: Dictionary, rt: Dictionary) -> void:
 		if not _fuel_props(String(od.get("i", "")), od.get("x", {})).is_empty():
 			cen += op
 			nf += 1
-			top = maxf(top, op.y - c.y + 0.06)
+			top = maxf(top, op.y - c.y + item_extent(String(od.get("i", "")), od.get("x", {})).y * 0.5)
 	rt["members"] = members
 	if nf > 0:
 		cen /= nf
@@ -559,8 +584,9 @@ static func _gather(e: Dictionary, rt: Dictionary) -> void:
 			if _fuel_props(String(me["d"].get("i", "")), me["d"].get("x", {})).is_empty():
 				continue
 			var op2: Vector3 = me["xf"].origin
-			rmax = maxf(rmax, Vector2(op2.x - cen.x, op2.z - cen.z).length())
-		var nr := clampf(rmax + 0.14, 0.2, 0.9)
+			var ext := item_extent(String(me["d"].get("i", "")), me["d"].get("x", {}))
+			rmax = maxf(rmax, Vector2(op2.x - cen.x, op2.z - cen.z).length() + ext.x * 0.8)
+		var nr := clampf(rmax + 0.05, 0.2, 1.0)
 		var nh := clampf(top, 0.06, 1.0)
 		var changes := {}
 		if absf(nr - r) > 0.03:
@@ -619,7 +645,9 @@ static func _enclosure(e: Dictionary, rt: Dictionary) -> void:
 		var cov := coverage(d, k)
 		var b := maxf(rb, cov)
 		if cov >= rb:
-			ins = 0.85
+			# packed earth holds heat well, and a thick layer better still
+			var thick := float(d.get("shell", [])[k]) / maxf(0.001, cell_full_l(k, d)) if k < d.get("shell", []).size() else 0.0
+			ins = 0.85 + 0.1 * clampf((thick - 1.0) / 0.6, 0.0, 1.0)
 		var area := cell_area(k, d)
 		a_total += area
 		a_block += area * b

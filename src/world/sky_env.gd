@@ -34,7 +34,8 @@ func _ready() -> void:
 	sky_mat.set_shader_parameter("cloud_detail", Tex.clouds_detail())
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	# realtime sky radiance must be 256 (the only size the realtime path supports)
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY

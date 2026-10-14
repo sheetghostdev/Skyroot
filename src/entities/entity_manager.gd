@@ -14,6 +14,7 @@ const VIEWS := {
 	"plant": preload("res://src/entities/plant_view.gd"),
 	"work": preload("res://src/entities/work_view.gd"),
 	"site": preload("res://src/entities/site_view.gd"),
+	"structure": preload("res://src/entities/structure_view.gd"),
 }
 
 var views: Dictionary = {}

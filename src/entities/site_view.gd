@@ -19,6 +19,8 @@ var snd_small: AudioStreamPlayer3D
 var snd_large: AudioStreamPlayer3D
 var snd_mound: AudioStreamPlayer3D
 var _smoke_mat: ParticleProcessMaterial
+var _jet_mat: ParticleProcessMaterial
+var _jet_mesh: QuadMesh
 var _flame_mat: ParticleProcessMaterial
 var _vent_nodes: Array = []
 var _t := 0.0
@@ -244,6 +246,26 @@ func _make_smoke() -> void:
 	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	smoke.position = Vector3(0, 0.25, 0)
 	add_child(smoke)
+	# small jets for vents and gaps in an earth mound
+	_jet_mat = ParticleProcessMaterial.new()
+	_jet_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	_jet_mat.emission_sphere_radius = 0.015
+	_jet_mat.direction = Vector3(0, 1, 0)
+	_jet_mat.spread = 20.0
+	_jet_mat.initial_velocity_min = 0.15
+	_jet_mat.initial_velocity_max = 0.3
+	_jet_mat.gravity = Vector3(0, 0.15, 0)
+	_jet_mat.turbulence_enabled = true
+	_jet_mat.turbulence_noise_strength = 0.3
+	_jet_mat.angle_min = -180.0
+	_jet_mat.angle_max = 180.0
+	_jet_mat.scale_curve = sct
+	_jet_mat.scale_min = 0.5
+	_jet_mat.scale_max = 0.9
+	_jet_mat.color_ramp = _smoke_mat.color_ramp
+	_jet_mesh = QuadMesh.new()
+	_jet_mesh.size = Vector2(0.45, 0.45)
+	_jet_mesh.material = m
 
 
 func _set_smoke_colour(sc: float, density: float) -> void:
@@ -253,7 +275,7 @@ func _set_smoke_colour(sc: float, density: float) -> void:
 		c = Color(0.93, 0.93, 0.92).lerp(Color(0.62, 0.58, 0.48), sc)
 	else:
 		c = Color(0.55, 0.62, 0.78)
-	var a := clampf(0.12 + density * 0.45, 0.05, 0.6) * (0.55 if sc > 1.5 else 1.0)
+	var a := clampf(0.08 + density * 0.3, 0.04, 0.38) * (0.55 if sc > 1.5 else 1.0)
 	var g := Gradient.new()
 	g.set_color(0, Color(c, 0.0))
 	g.add_point(0.12, Color(c, a))
@@ -262,6 +284,8 @@ func _set_smoke_colour(sc: float, density: float) -> void:
 	var gt := GradientTexture1D.new()
 	gt.gradient = g
 	_smoke_mat.color_ramp = gt
+	if _jet_mat:
+		_jet_mat.color_ramp = gt
 
 
 func _refresh(keys: Array) -> void:
@@ -355,6 +379,8 @@ func _build_bed(d: Dictionary) -> void:
 
 func _build_dome(d: Dictionary) -> void:
 	## The earth shell: one patch per cell, as thick as the earth packed there.
+	## Vents are small dark holes with smoke curling out; uncovered gaps in an
+	## otherwise covered mound leak smoke too, so players can find them.
 	for v in _vent_nodes:
 		v.queue_free()
 	_vent_nodes.clear()
@@ -367,71 +393,130 @@ func _build_dome(d: Dictionary) -> void:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = entity_id
-	var base_col := Color(0.34, 0.25, 0.17)
 	var vents: Array = d.get("vents", [])
 	var bands: Array = FireSim.BANDS
+	var mostly := FireSim.shell_coverage(d) > 0.5
+	var leaks := 0
 	for k in FireSim.CELLS:
 		var cov := FireSim.coverage(d, k)
 		if cov < 0.04:
+			if mostly and leaks < 6:
+				_add_leak(_dp(rr, _cell_el(k, bands), _cell_az(k), 0.0), false)
+				leaks += 1
 			continue
 		var thick := 0.012 + 0.05 * cov
-		var col := base_col * (0.85 + 0.25 * rng.randf())
+		var col := Color(0.42, 0.31, 0.2) * (0.86 + 0.24 * rng.randf())
+		col.a = 1.0
 		if k == FireSim.CELLS - 1:
-			# the cap: a small disc on top
 			var top := Vector3(0, rr.y + thick, 0)
 			var e0 := deg_to_rad(80.0)
-			for j in FireSim.AZ:
-				var a0 := float(j) / FireSim.AZ * TAU
-				var a1 := float(j + 1) / FireSim.AZ * TAU
-				var p0 := _dp(rr, e0, a0, thick)
-				var p1 := _dp(rr, e0, a1, thick)
-				_tri(st, top, p1, p0, col)
+			for jj in FireSim.AZ:
+				var a0 := float(jj) / FireSim.AZ * TAU
+				var a1 := float(jj + 1) / FireSim.AZ * TAU
+				_tri(st, top, _dp(rr, e0, a0, thick), _dp(rr, e0, a1, thick), col)
 			continue
 		var band := k / FireSim.AZ
 		var az := k % FireSim.AZ
 		var el0 := deg_to_rad(float(bands[band]))
 		var el1 := deg_to_rad(float(bands[band + 1]))
-		var a0 := float(az) / FireSim.AZ * TAU
-		var a1 := float(az + 1) / FireSim.AZ * TAU
+		var a0b := float(az) / FireSim.AZ * TAU
+		var a1b := float(az + 1) / FireSim.AZ * TAU
 		# patches shrink toward their centre when only partly covered
-		var shrink := lerpf(0.55, 1.03, cov)
+		var shrink := lerpf(0.55, 1.04, cov)
 		var mid_el := (el0 + el1) * 0.5
-		var mid_a := (a0 + a1) * 0.5
-		var e0 := lerpf(mid_el, el0, shrink)
-		var e1 := lerpf(mid_el, el1, shrink)
-		var b0 := lerpf(mid_a, a0, shrink)
-		var b1 := lerpf(mid_a, a1, shrink)
+		var mid_a := (a0b + a1b) * 0.5
+		var e0b := lerpf(mid_el, el0, shrink) if band > 0 else el0 - 0.03
+		var e1b := lerpf(mid_el, el1, shrink)
+		var b0 := lerpf(mid_a, a0b, shrink)
+		var b1 := lerpf(mid_a, a1b, shrink)
 		var subs := 2
 		for si in subs:
 			for sj in subs:
-				var ea := lerpf(e0, e1, float(si) / subs)
-				var eb := lerpf(e0, e1, float(si + 1) / subs)
+				var ea := lerpf(e0b, e1b, float(si) / subs)
+				var eb := lerpf(e0b, e1b, float(si + 1) / subs)
 				var aa := lerpf(b0, b1, float(sj) / subs)
 				var ab := lerpf(b0, b1, float(sj + 1) / subs)
-				var bump := func(e: float, a: float) -> float:
-					return thick * (0.85 + 0.3 * sin(e * 13.0 + a * 7.0 + k))
-				var q0 := _dp(rr, ea, aa, bump.call(ea, aa))
-				var q1 := _dp(rr, ea, ab, bump.call(ea, ab))
-				var q2 := _dp(rr, eb, ab, bump.call(eb, ab))
-				var q3 := _dp(rr, eb, aa, bump.call(eb, aa))
-				_tri(st, q0, q2, q1, col)
-				_tri(st, q0, q3, q2, col)
+				var q0 := _dp(rr, ea, aa, _bump(thick, ea, aa, k))
+				var q1 := _dp(rr, ea, ab, _bump(thick, ea, ab, k))
+				var q2 := _dp(rr, eb, ab, _bump(thick, eb, ab, k))
+				var q3 := _dp(rr, eb, aa, _bump(thick, eb, aa, k))
+				_tri(st, q0, q1, q2, col)
+				_tri(st, q0, q2, q3, col)
 		if k in vents:
-			var vp := _dp(rr, mid_el, mid_a, thick + 0.004)
-			var vn := MeshInstance3D.new()
-			var sm := SphereMesh.new()
-			sm.radius = 0.035
-			sm.height = 0.03
-			vn.mesh = sm
-			var vm := StandardMaterial3D.new()
-			vm.albedo_color = Color(0.03, 0.025, 0.02)
-			vm.roughness = 1.0
-			vn.material_override = vm
-			vn.position = vp
-			add_child(vn)
-			_vent_nodes.append(vn)
+			_add_vent(_dp(rr, mid_el, mid_a, thick + 0.003), Vector3(cos(mid_el) * cos(mid_a), sin(mid_el), cos(mid_el) * sin(mid_a)))
+		elif cov < 0.6 and mostly and leaks < 6:
+			_add_leak(_dp(rr, mid_el, mid_a, thick * 0.5), true)
+			leaks += 1
 	st.generate_normals()
 	dome.mesh = st.commit()
+
+
+func _cell_el(k: int, bands: Array) -> float:
+	if k >= FireSim.CELLS - 1:
+		return PI * 0.5
+	var band := k / FireSim.AZ
+	return deg_to_rad((float(bands[band]) + float(bands[band + 1])) * 0.5)
+
+
+func _cell_az(k: int) -> float:
+	return (float(k % FireSim.AZ) + 0.5) / FireSim.AZ * TAU
+
+
+func _bump(thick: float, e: float, a: float, k: int) -> float:
+	return thick * (0.85 + 0.3 * sin(e * 13.0 + a * 7.0 + k))
+
+
+func _add_vent(pos: Vector3, nrm: Vector3) -> void:
+	var holder := Node3D.new()
+	holder.position = pos
+	var up := nrm.normalized()
+	var side := up.cross(Vector3.UP)
+	if side.length() < 0.01:
+		side = Vector3.RIGHT
+	side = side.normalized()
+	holder.basis = Basis(side, up, side.cross(up))
+	var vn := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.028
+	cm.bottom_radius = 0.02
+	cm.height = 0.012
+	cm.radial_segments = 10
+	vn.mesh = cm
+	var vm := StandardMaterial3D.new()
+	vm.albedo_color = Color(0.035, 0.03, 0.028)
+	vm.roughness = 1.0
+	vm.emission_enabled = true
+	vm.emission = Color(1.0, 0.35, 0.08)
+	vm.emission_energy_multiplier = 0.0
+	vn.material_override = vm
+	vn.set_meta("vent", true)
+	holder.add_child(vn)
+	add_child(holder)
+	_vent_nodes.append(holder)
+	_add_smoke_jet(holder, Vector3(0, 0.01, 0), 1.0)
+
+
+func _add_leak(pos: Vector3, partial: bool) -> void:
+	var holder := Node3D.new()
+	holder.position = pos
+	add_child(holder)
+	_vent_nodes.append(holder)
+	_add_smoke_jet(holder, Vector3.ZERO, 1.6 if not partial else 1.1)
+
+
+func _add_smoke_jet(parent: Node3D, at: Vector3, strength: float) -> void:
+	var gp := GPUParticles3D.new()
+	gp.amount = 10
+	gp.lifetime = 4.0
+	gp.local_coords = false
+	gp.emitting = false
+	gp.visibility_aabb = AABB(Vector3(-3, -1, -3), Vector3(6, 8, 6))
+	gp.process_material = _jet_mat
+	gp.draw_pass_1 = _jet_mesh
+	gp.position = at
+	gp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	gp.set_meta("jet", strength)
+	parent.add_child(gp)
 
 
 func _dp(rr: Vector2, el: float, az: float, off: float) -> Vector3:
@@ -440,6 +525,12 @@ func _dp(rr: Vector2, el: float, az: float, off: float) -> Vector3:
 
 
 func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, col: Color) -> void:
+	# keep every face pointing out of the dome (front faces wind clockwise seen from outside)
+	var n := (b - a).cross(c - a)
+	if n.dot((a + b + c) / 3.0) > 0.0:
+		var t := b
+		b = c
+		c = t
 	for v in [a, b, c]:
 		st.set_color(col.srgb_to_linear())
 		st.add_vertex(v)
@@ -462,9 +553,20 @@ func _process(delta: float) -> void:
 	sparks.emitting = _flame > 0.35 or (_glow > 0.5 and not covered)
 	sparks.amount_ratio = clampf(_flame, 0.15, 1.0)
 	var wind: Vector2 = World.env.get("wind", Vector2.ZERO)
-	var vented: bool = not d.get("vents", []).is_empty()
-	smoke.emitting = _smoke > 0.04 or (covered and bool(d.get("lit", false)) and vented)
+	var lit := bool(d.get("lit", false))
+	smoke.emitting = not covered and _smoke > 0.04
 	smoke.amount_ratio = clampf(_smoke * 1.2 + 0.1, 0.1, 1.0)
+	var hot := clampf((float(d.get("T", 15)) - 250.0) / 400.0, 0.0, 1.0)
+	for holder in _vent_nodes:
+		if not is_instance_valid(holder):
+			continue
+		for ch in holder.get_children():
+			if ch is GPUParticles3D:
+				var strength: float = ch.get_meta("jet", 1.0)
+				ch.emitting = covered and lit and (_smoke > 0.03 or hot > 0.2)
+				ch.amount_ratio = clampf((_smoke * 0.9 + hot * 0.3) * strength, 0.15, 1.0)
+			elif ch is MeshInstance3D and ch.has_meta("vent"):
+				(ch.material_override as StandardMaterial3D).emission_energy_multiplier = hot * 2.5 if lit else 0.0
 	_smoke_mat.gravity = Vector3(wind.x * 0.12, 0.14 + _smoke * 0.05, wind.y * 0.12)
 	# firelight flickers; a covered mound only glows dully through its vents
 	var flick := 0.82 + 0.18 * sin(_t * 13.0) * sin(_t * 7.3 + 1.0) + 0.08 * sin(_t * 23.0)
