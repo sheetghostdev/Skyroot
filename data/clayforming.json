@@ -1,0 +1,7 @@
+{
+	"_doc": "Clay forming recipes, one 16x16 layer at a time from the bottom up. A layer is a disc {disc: radius}, a ring {ring: [outer, inner]} or rectangles {rects: [[x0, z0, x1, z1]...]} (inclusive cells), centred on the block. Each lump of clay is worth 32 voxels.",
+	"bowl": {"label": "Bowl", "out": "bowl_raw", "n": 1, "layers": [{"disc": 4.6}, {"ring": [5.6, 4.3]}, {"ring": [6.4, 5.3]}]},
+	"pot": {"label": "Cooking pot", "out": "pot_raw", "n": 1, "layers": [{"disc": 5.6}, {"ring": [6.4, 5.3]}, {"ring": [6.4, 5.3]}, {"ring": [6.4, 5.3]}, {"ring": [6.9, 5.7]}]},
+	"jar": {"label": "Storage jar", "out": "jar_raw", "n": 1, "layers": [{"disc": 4.9}, {"ring": [5.6, 4.5]}, {"ring": [6.4, 5.3]}, {"ring": [6.7, 5.6]}, {"ring": [6.4, 5.3]}, {"ring": [5.3, 4.2]}, {"ring": [4.3, 3.2]}, {"ring": [4.9, 3.5]}]},
+	"bricks": {"label": "Bricks (4)", "out": "brick_raw", "n": 4, "layers": [{"rects": [[1, 2, 6, 4], [9, 2, 14, 4], [1, 10, 6, 12], [9, 10, 14, 12]]}, {"rects": [[1, 2, 6, 4], [9, 2, 14, 4], [1, 10, 6, 12], [9, 10, 14, 12]]}]}
+}

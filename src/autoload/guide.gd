@@ -1,36 +1,34 @@
 extends Node
-## The Survival Guide's data and each player's personal progress with it.
+## The Handbook (H) and the goal tracker, client side.
 ##
-## Entries are data (res://data/guide/*.json) describing how the world works,
-## linked to items and processes.  Every entry is readable from the start;
-## encountering a material or process marks related entries as "new" so the
-## player notices them.  Progress (read / pinned / dismissed hints) is personal:
-## kept locally and mirrored to the host's save so it survives reconnects.
-
-signal progress_changed
-signal pinned_changed
+## * Handbook pages come from data/guide.json (how-to pages) plus one generated
+##   page per item: what it is, how to get it, what it is used for.
+## * Hints (data/hints.json) are shown once each, when the game asks for them.
+## * Goals: the first steps on the island, one after another, each ticked off
+##   when its condition is met (they stay done).  The tracker shows the current
+##   one; the Handbook lists them all.
+##
+## Progress is per player and per island: it is kept locally and sent to the
+## host, which saves it with the player's record.
 
 const LOCAL_PATH := "user://guide_progress.cfg"
-const MAX_PINS := 3
 
-var categories: Array = []          # [{id, title, order, entries: [ids]}]
-var entries: Dictionary = {}        # id -> entry dict (with "category")
-var hints: Dictionary = {}          # hint id -> {text, entry, keys}
-var discovery_defs: Dictionary = {} # discovery id -> {title, text ("{who}..."), entry}
-var last_entry := ""                # where the guide reopens
+var pages: Dictionary = {}          # id -> {title, cat, body, items}
+var categories: Array = []          # [{id, title, pages: [ids]}]
+var hints: Dictionary = {}          # hint id -> {text, keys}
+var goals: Array = []               # [{id, title, text, page, check}]
+var discovery_defs: Dictionary = {}
 
-var read: Dictionary = {}           # entry id -> true
-var fresh: Dictionary = {}          # entry id -> true (highlighted as new)
-var pinned: Array = []              # entry ids
-var dismissed: Dictionary = {}      # hint id -> true (X: never again)
-var seen: Dictionary = {}           # hint id -> true (shown once: that's enough)
-var steps: Dictionary = {}          # "entry:index" -> true: checklist steps done (they stay done)
+var read: Dictionary = {}           # page id -> true
+var seen: Dictionary = {}           # hint id -> true
+var done: Dictionary = {}           # goal id -> true
+var flags: Dictionary = {}          # things this player has done ("lit_fire"...)
 var hints_disabled := false
+var last_page := ""
 
-# warnings about your own state may come back (once a session, see Survival.hint_once)
-const RECURRING_HINTS := ["hungry", "thirsty", "tired", "hurt", "cold", "edge"]
-
+var _world_key := ""
 var _sync_timer := -1.0
+var _check_t := 0.0
 
 
 func _ready() -> void:
@@ -40,259 +38,275 @@ func _ready() -> void:
 
 
 func _load_data() -> void:
-	categories.clear()
-	entries.clear()
-	var files: PackedStringArray
-	if ResourceLoader.has_method("list_directory"):
-		files = ResourceLoader.list_directory("res://data/guide")
-	else:
-		var d := DirAccess.open("res://data/guide")
-		files = d.get_files() if d else PackedStringArray()
-	for f in files:
-		f = f.trim_suffix(".import").trim_suffix(".remap")
-		if not f.ends_with(".json"):
-			continue
-		var data := _load_json("res://data/guide/" + f)
-		if data.is_empty():
-			continue
-		if f == "hints.json":
-			hints = data
-			continue
-		if f == "discoveries.json":
-			discovery_defs = data
-			continue
-		var cat := {"id": f.get_basename(), "title": data.get("title", f), "order": int(data.get("order", 99)),
-			"icon": data.get("icon", ""), "entries": []}
-		for e in data.get("entries", []):
-			e["category"] = cat["id"]
-			entries[e["id"]] = e
-			cat["entries"].append(e["id"])
-		categories.append(cat)
-	categories.sort_custom(func(a, b): return a["order"] < b["order"])
+	var g := _load_json("res://data/guide.json")
+	for c in g.get("categories", []):
+		var ids: Array = []
+		for p in c.get("pages", []):
+			p["cat"] = c["id"]
+			pages[p["id"]] = p
+			ids.append(p["id"])
+		categories.append({"id": c["id"], "title": c["title"], "pages": ids})
+	goals = g.get("goals", [])
+	discovery_defs = g.get("discoveries", {})
+	hints = _load_json("res://data/hints.json")
+	hints.erase("_doc")
 
 
 func _load_json(path: String) -> Dictionary:
-	var res = load(path)
-	if res is JSON and res.data is Dictionary:
-		return res.data
 	var f := FileAccess.open(path, FileAccess.READ)
-	if f:
-		var parsed = JSON.parse_string(f.get_as_text())
-		if parsed is Dictionary:
-			return parsed
-	push_warning("Guide: could not load " + path)
+	if f == null:
+		return {}
+	var parsed = JSON.parse_string(f.get_as_text())
+	return parsed if parsed is Dictionary else {}
+
+
+func page(id: String) -> Dictionary:
+	if pages.has(id):
+		return pages[id]
+	if id.begins_with("item:"):
+		return item_page(id.substr(5))
 	return {}
 
 
-func entry(id: String) -> Dictionary:
-	return entries.get(id, {})
+func item_page(item: String) -> Dictionary:
+	## A generated page: what an item is, where it comes from, what it makes.
+	if not ItemDB.exists(item):
+		return {}
+	var get_lines: Array = []
+	for nm in Blocks.defs:
+		var bd: Dictionary = Blocks.defs[nm]
+		for dr in bd.get("drops", []):
+			if String(dr["item"]) == item:
+				var how := "Break %s" % String(bd.get("label", nm)).to_lower()
+				if dr.has("tool"):
+					how += " with a %s" % String(dr["tool"])
+				if float(dr.get("p", 1.0)) < 1.0:
+					how += " (sometimes)"
+				get_lines.append(how + ".")
+		if String(bd.get("item", "")) == item and not bd.has("drops"):
+			get_lines.append("Break %s." % String(bd.get("label", nm)).to_lower())
+	for r in ItemDB.recipes_making(item):
+		get_lines.append("Crafting grid: " + _recipe_text(r) + ".")
+	for k in ItemDB.knapping:
+		if k == item:
+			get_lines.append("Knap it from stone or flint.")
+	for k in ItemDB.clayforming:
+		if ItemDB.clayforming[k]["out"] == item:
+			get_lines.append("Shape it from clay (%s)." % ItemDB.clayforming[k]["label"])
+	var fired := ItemDB.fired_of(item)
+	var use_lines: Array = []
+	for r in ItemDB.recipes_using(item):
+		use_lines.append("Makes %s: %s." % [ItemDB.label(String(r["out"])).to_lower(), _recipe_text(r)])
+	if fired != "":
+		use_lines.append("Fire it in a pit kiln to get a %s." % ItemDB.label(fired).to_lower())
+	var body := ItemDB.desc(item)
+	if not get_lines.is_empty():
+		body += "\n\n[b]Getting it[/b]\n" + "\n".join(get_lines)
+	if not use_lines.is_empty():
+		body += "\n\n[b]Uses[/b]\n" + "\n".join(use_lines)
+	return {"id": "item:" + item, "title": ItemDB.label(item), "cat": "items", "body": body, "items": [item]}
 
 
-func has_entry(id: String) -> bool:
-	return entries.has(id)
+func _recipe_text(r: Dictionary) -> String:
+	var parts: Array = []
+	var ings: Array = r.get("shapeless", [])
+	if r.has("keys"):
+		var shape: Array = r["shape"]
+		var counts := {}
+		for row in shape:
+			for ch in String(row):
+				if r["keys"].has(ch):
+					counts[ch] = int(counts.get(ch, 0)) + 1
+		for ch in counts:
+			parts.append(_ing_name(String(r["keys"][ch]), int(counts[ch])))
+		return " + ".join(parts) + (" (%s)" % ("stacked" if shape.size() > 1 and String(shape[0]).length() == 1 else "in a row" if shape.size() == 1 else "in a square"))
+	var counts2 := {}
+	for s in ings:
+		counts2[s] = int(counts2.get(s, 0)) + 1
+	for s in counts2:
+		parts.append(_ing_name(String(s), int(counts2[s])))
+	return " + ".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Search
-# ---------------------------------------------------------------------------
+func _ing_name(spec: String, n: int) -> String:
+	var nm := ""
+	if spec.begins_with("tool:"):
+		nm = "any " + spec.substr(5)
+	else:
+		var alts: Array = []
+		for a in spec.split("|"):
+			alts.append(ItemDB.label(a).to_lower())
+		nm = " or ".join(alts)
+	return ("%d %s" % [n, nm]) if n > 1 else nm
+
 
 func search(query: String) -> Array:
-	query = query.strip_edges().to_lower()
-	if query == "":
-		return []
-	var words := query.split(" ", false)
-	var scored: Array = []
-	for id in entries:
-		var e: Dictionary = entries[id]
-		var score := 0.0
-		var title := String(e.get("title", "")).to_lower()
-		var kw := " ".join(PackedStringArray(e.get("keywords", []))).to_lower()
-		var body := _entry_text(e).to_lower()
-		for w in words:
-			if title.contains(w):
-				score += 10.0 + (5.0 if title.begins_with(w) else 0.0)
-			if kw.contains(w):
-				score += 6.0
-			if String(e.get("summary", "")).to_lower().contains(w):
-				score += 3.0
-			var c := body.count(w)
-			score += minf(c, 6) * 0.8
-		if score > 0.0:
-			scored.append([score, id])
-	scored.sort_custom(func(a, b): return a[0] > b[0])
+	var q := query.strip_edges().to_lower()
 	var out: Array = []
-	for s in scored:
-		out.append(s[1])
+	for id in pages:
+		var p: Dictionary = pages[id]
+		if q == "" or String(p["title"]).to_lower().contains(q) or String(p.get("body", "")).to_lower().contains(q):
+			out.append(id)
+	for item in ItemDB.items:
+		if q != "" and (ItemDB.label(item).to_lower().contains(q) or item.contains(q)):
+			out.append("item:" + item)
 	return out
 
 
-func _entry_text(e: Dictionary) -> String:
-	var parts: PackedStringArray = [String(e.get("summary", ""))]
-	for sec in e.get("sections", []):
-		parts.append(String(sec.get("h", "")))
-		parts.append(String(sec.get("text", "")))
-		for s in sec.get("steps", []):
-			parts.append(String(s))
-		for s in sec.get("list", []):
-			parts.append(String(s))
-	return " ".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Progress
-# ---------------------------------------------------------------------------
-
 func mark_read(id: String) -> void:
-	if not read.has(id) or fresh.has(id):
+	if not read.has(id):
 		read[id] = true
-		fresh.erase(id)
 		_changed()
+	last_page = id
 
 
-func mark_fresh(ids: Array) -> void:
-	var any := false
-	for id in ids:
-		if entries.has(id) and not read.has(id) and not fresh.has(id):
-			fresh[id] = true
-			any = true
-	if any:
-		_changed()
+# ---------------------------------------------------------------------------
+# Hints
+# ---------------------------------------------------------------------------
 
-
-func unread_count() -> int:
-	return fresh.size()
-
-
-func toggle_pin(id: String) -> void:
-	if pinned.has(id):
-		pinned.erase(id)
-	else:
-		pinned.append(id)
-		while pinned.size() > MAX_PINS:
-			var gone := String(pinned.pop_front())
-			Events.toast.emit("Unpinned \"%s\" to make room - three checklists at most." % String(entry(gone).get("title", gone)), "info")
-	pinned_changed.emit()
-	_changed()
-
-
-func is_pinned(id: String) -> bool:
-	return pinned.has(id)
-
-
-func dismiss_hint(hint_id: String) -> void:
-	dismissed[hint_id] = true
-	_changed()
-
-
-func step_done(entry_id: String, i: int, st: Dictionary) -> bool:
-	## A checklist step, once done, stays ticked (using the stones you gathered
-	## doesn't undo having gathered them).
-	var key := "%s:%d" % [entry_id, i]
-	if steps.has(key):
-		return true
-	if GuideTracker.step_live(st):
-		steps[key] = true
-		_changed()
-		return true
-	return false
+func should_show(hint_id: String) -> bool:
+	return not hints_disabled and Settings.show_hints and hints.has(hint_id) and not seen.has(hint_id)
 
 
 func mark_seen(hint_id: String) -> void:
-	## A tip that has been on screen once doesn't come back each time you pick
-	## the thing up again.
-	if hint_id in RECURRING_HINTS or seen.has(hint_id):
-		return
-	seen[hint_id] = true
-	_changed()
+	if not seen.has(hint_id):
+		seen[hint_id] = true
+		_changed()
 
 
-func _on_hint_requested(hint_id: String) -> void:
-	pass  # the HUD listens to Events.hint and asks should_show()
+func _on_hint_requested(_hint_id: String) -> void:
+	pass  # the HUD shows it; it calls mark_seen
 
 
 func _on_discovery(discovery_id: String, who: String) -> void:
-	## Someone on the island worked something out: tell everyone, and point at the entry.
-	var def: Dictionary = discovery_defs.get(discovery_id, {})
-	if def.is_empty():
-		return
-	# the host may have renamed us ("Wren 2"), so compare with the name we actually play under
-	var me := who == Net.player_name(Net.my_id())
-	var text := String(def.get("text", "")).replace("{who}", "You" if me else who)
-	Events.toast.emit("%s - %s" % [String(def.get("title", "Discovery")), text], "discovery")
-	Sfx.ui("discovery", -4.0)
-	var ent := String(def.get("entry", ""))
-	if ent != "" and not me:
-		mark_fresh([ent])
+	flags["disc:" + discovery_id] = true
 
 
-func should_show(hint_id: String) -> bool:
-	return Settings.show_hints and not hints_disabled and not dismissed.has(hint_id) and not seen.has(hint_id) and hints.has(hint_id)
+# ---------------------------------------------------------------------------
+# Goals
+# ---------------------------------------------------------------------------
+
+func flag(name: String) -> void:
+	## Something this player did that a goal may wait for ("lit_fire").
+	if not flags.has(name):
+		flags[name] = true
+		_changed()
+		check_goals()
 
 
-func encountered_item(item_id: String) -> void:
-	## Called when the local player first handles an item: highlight related entries.
-	var gid := ItemDB.guide_entry(item_id)
-	var ids: Array = []
-	if gid != "":
-		ids.append(gid)
-		ids.append_array(entry(gid).get("related", []))
-	mark_fresh(ids)
+func has_flag(name: String) -> bool:
+	return flags.has(name)
 
 
-func _changed() -> void:
-	progress_changed.emit()
-	_sync_timer = 2.0
+func current_goal() -> Dictionary:
+	for g in goals:
+		if not done.has(g["id"]):
+			return g
+	return {}
+
+
+func goal_met(g: Dictionary) -> bool:
+	var c: Dictionary = g.get("check", {})
+	var inv := World.my_inventory
+	for k in c:
+		match String(k):
+			"have":
+				for item in c["have"]:
+					var need := int(c["have"][item])
+					var n := 0
+					for alt in String(item).split("|"):
+						n += _count_any(inv, alt)
+					if n < need:
+						return false
+			"flag":
+				for f in c["flag"]:
+					if not flags.has(String(f)):
+						return false
+			"day":
+				if World.day() < int(c["day"]):
+					return false
+	return true
+
+
+func _count_any(inv: Inventory, id: String) -> int:
+	var n := 0
+	for i in Inventory.MAIN:
+		var s := inv.get_slot(i)
+		if not s.is_empty() and String(s["i"]) == id:
+			n += int(s["n"])
+	var cur := inv.get_slot(Inventory.CURSOR)
+	if not cur.is_empty() and String(cur["i"]) == id:
+		n += int(cur["n"])
+	return n
+
+
+func check_goals() -> void:
+	var changed := false
+	for g in goals:
+		if done.has(g["id"]):
+			continue
+		if goal_met(g):
+			done[g["id"]] = true
+			changed = true
+			Events.toast.emit("Goal done: " + String(g["title"]), "goal")
+		else:
+			break    # one at a time, in order
+	if changed:
+		_changed()
+	Events.goal_progress.emit()
 
 
 func _process(delta: float) -> void:
 	if _sync_timer > 0.0:
 		_sync_timer -= delta
 		if _sync_timer <= 0.0:
+			_sync_timer = -1.0
 			save_local()
 			if World.running:
 				World.request("guide_state", {"state": export_state()})
+	_check_t -= delta
+	if _check_t <= 0.0 and World.running:
+		_check_t = 1.0
+		check_goals()
 
+
+func _changed() -> void:
+	_sync_timer = 1.5
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
 
 func export_state() -> Dictionary:
-	return {"read": read.keys(), "fresh": fresh.keys(), "pinned": pinned.duplicate(), "dismissed": dismissed.keys(), "seen": seen.keys(),
-		"steps": steps.keys()}
+	return {"read": read.duplicate(), "seen": seen.duplicate(), "done": done.duplicate(), "flags": flags.duplicate()}
 
 
 func import_state(st: Dictionary) -> void:
-	for id in st.get("read", []):
-		read[id] = true
-	for id in st.get("fresh", []):
-		if not read.has(id):
-			fresh[id] = true
-	for id in st.get("dismissed", []):
-		dismissed[id] = true
-	for id in st.get("seen", []):
-		seen[id] = true
-	for id in st.get("steps", []):
-		steps[id] = true
-	if st.get("pinned", []).size() > 0:
-		pinned = st["pinned"].duplicate()
-	progress_changed.emit()
-	pinned_changed.emit()
+	for k in ["read", "seen", "done", "flags"]:
+		var src = st.get(k, {})
+		if src is Dictionary:
+			var dst: Dictionary = get(k)
+			for key in src:
+				dst[String(key)] = true
+	Events.goal_progress.emit()
 
 
 func load_local(world_key: String) -> void:
+	_world_key = world_key
 	read.clear()
-	fresh.clear()
-	pinned.clear()
-	dismissed.clear()
 	seen.clear()
-	steps.clear()
+	done.clear()
+	flags.clear()
 	var cfg := ConfigFile.new()
 	if cfg.load(LOCAL_PATH) == OK and cfg.has_section(world_key):
 		import_state(cfg.get_value(world_key, "state", {}))
-	set_meta("world_key", world_key)
 
 
 func save_local() -> void:
-	if not has_meta("world_key"):
+	if _world_key == "":
 		return
 	var cfg := ConfigFile.new()
 	cfg.load(LOCAL_PATH)
-	cfg.set_value(get_meta("world_key"), "state", export_state())
+	cfg.set_value(_world_key, "state", export_state())
 	cfg.save(LOCAL_PATH)

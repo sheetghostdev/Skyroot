@@ -4,22 +4,16 @@ extends Node3D
 
 const VIEWS := {
 	"item": preload("res://src/entities/item_view.gd"),
-	"tree": preload("res://src/entities/tree_view.gd"),
-	"outcrop": preload("res://src/entities/rock_view.gd"),
-	"flat_stone": preload("res://src/entities/rock_view.gd"),
-	"boulder": preload("res://src/entities/rock_view.gd"),
-	"mossy_log": preload("res://src/entities/rock_view.gd"),
-	"mushrooms": preload("res://src/entities/mushroom_view.gd"),
-	"bush": preload("res://src/entities/bush_view.gd"),
-	"plant": preload("res://src/entities/plant_view.gd"),
-	"work": preload("res://src/entities/work_view.gd"),
-	"site": preload("res://src/entities/site_view.gd"),
-	"structure": preload("res://src/entities/structure_view.gd"),
-	"compost": preload("res://src/entities/compost_view.gd"),
+	"satchel": preload("res://src/entities/satchel_view.gd"),
+	"firepit": preload("res://src/entities/firepit_view.gd"),
+	"kiln": preload("res://src/entities/kiln_view.gd"),
+	"knap": preload("res://src/entities/knap_view.gd"),
+	"clay": preload("res://src/entities/clay_view.gd"),
+	"ground": preload("res://src/entities/ground_view.gd"),
+	"jar": preload("res://src/entities/jar_view.gd"),
 }
 
 var views: Dictionary = {}
-var extra_views: Dictionary = {}   # type -> script, registered by other systems
 
 
 func _ready() -> void:
@@ -31,17 +25,13 @@ func _ready() -> void:
 		_on_spawned(id)
 
 
-func register(t: String, script: Script) -> void:
-	extra_views[t] = script
-
-
 func _on_spawned(id: int) -> void:
 	if views.has(id):
 		return
 	var ent = World.entities.get(id)
 	if ent == null:
 		return
-	var script: Script = VIEWS.get(ent["t"], extra_views.get(ent["t"]))
+	var script: Script = VIEWS.get(ent["t"])
 	if script == null:
 		return
 	var v: EntityView = script.new()

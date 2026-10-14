@@ -1,15 +1,19 @@
+class_name InventoryUI
 extends Control
-## Inventory (Tab).  Click a slot then another to move/merge/swap, right-click
-## to split a stack, shift-click to move between hotbar and pack, Q to drop.
+## The inventory screen (E): your backpack and hotbar, the 3x3 crafting grid
+## with its result, and - when you open a storage jar - the jar's slots.
+##
+## Left click picks up / puts down / swaps a stack; right click takes half or
+## puts down one; shift-click moves a stack straight across.  The host keeps
+## the stack on your cursor, so nothing can get lost or doubled.
 
-var hud: Node
-var slots: Array = []
-var picked := -1
-var detail_title: Label
-var detail_text: Label
-var detail_guide: Button
-var hovered := -1
-var weight_lbl: Label
+var jar_cell = null       # Vector3i when a jar is open
+var slots: Dictionary = {}      # slot index -> SlotView (100+i for jar slots)
+var output: SlotView
+var tip: Label
+var cursor: Control
+var recipe_hint: Label
+var _hover := -1
 
 
 func _ready() -> void:
@@ -18,151 +22,173 @@ func _ready() -> void:
 	var dim := ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.color = Color(0, 0, 0, 0.35)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(dim)
 	var pc := PanelContainer.new()
 	pc.set_anchors_preset(Control.PRESET_CENTER)
-	pc.offset_left = -560
-	pc.offset_right = 560
-	pc.offset_top = -250
-	pc.offset_bottom = 250
-	pc.add_theme_stylebox_override("panel", UITheme.panel(UITheme.BG_SOLID, 14, UITheme.LINE, 22))
+	pc.offset_left = -330
+	pc.offset_right = 330
+	pc.offset_top = -330
+	pc.offset_bottom = 330
+	pc.add_theme_stylebox_override("panel", UITheme.panel(UITheme.BG_SOLID, 12, UITheme.LINE, 20))
 	add_child(pc)
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 26)
-	pc.add_child(h)
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 10)
-	h.add_child(left)
-	left.add_child(UITheme.title_label("Your pack", 30))
-	var pack := GridContainer.new()
-	pack.columns = 9
-	pack.add_theme_constant_override("h_separation", 6)
-	pack.add_theme_constant_override("v_separation", 6)
-	left.add_child(pack)
-	for i in range(Inventory.HOTBAR, Inventory.SIZE):
-		pack.add_child(_slot(i))
-	var sep := UITheme.label("HOTBAR  (1-9, mouse wheel)", 12, UITheme.TEXT_DIM, true)
-	left.add_child(sep)
-	var hb := GridContainer.new()
-	hb.columns = 9
-	hb.add_theme_constant_override("h_separation", 6)
-	left.add_child(hb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	pc.add_child(v)
+	if jar_cell != null:
+		v.add_child(UITheme.label("Storage jar", 18, UITheme.PAPER, true))
+		var jg := GridContainer.new()
+		jg.columns = 8
+		jg.add_theme_constant_override("h_separation", 4)
+		jg.add_theme_constant_override("v_separation", 4)
+		v.add_child(jg)
+		for i in CraftActs.JAR_SLOTS:
+			jg.add_child(_slot(100 + i))
+	else:
+		v.add_child(UITheme.label("Crafting", 18, UITheme.PAPER, true))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 18)
+		v.add_child(row)
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override("h_separation", 4)
+		grid.add_theme_constant_override("v_separation", 4)
+		row.add_child(grid)
+		for i in 9:
+			grid.add_child(_slot(Inventory.GRID + i))
+		var arrow := UITheme.label("→", 34, UITheme.TEXT_DIM, true)
+		arrow.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(arrow)
+		output = _slot(Actions.OUTPUT)
+		output.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(output)
+		recipe_hint = UITheme.label("", 13, UITheme.TEXT_DIM)
+		recipe_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		recipe_hint.custom_minimum_size = Vector2(240, 0)
+		recipe_hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(recipe_hint)
+	v.add_child(UITheme.label("Backpack", 15, UITheme.TEXT_DIM, true))
+	var bag := GridContainer.new()
+	bag.columns = 9
+	bag.add_theme_constant_override("h_separation", 4)
+	bag.add_theme_constant_override("v_separation", 4)
+	v.add_child(bag)
+	for i in range(Inventory.HOTBAR, Inventory.MAIN):
+		bag.add_child(_slot(i))
+	v.add_child(UITheme.label("Hotbar", 15, UITheme.TEXT_DIM, true))
+	var hot := GridContainer.new()
+	hot.columns = 9
+	hot.add_theme_constant_override("h_separation", 4)
+	v.add_child(hot)
 	for i in Inventory.HOTBAR:
-		hb.add_child(_slot(i))
-	var help := UITheme.label("Click: pick up / place    Right-click: split    Shift-click: move to pack/hotbar    Q: drop", 13, UITheme.TEXT_DIM)
-	left.add_child(help)
-	weight_lbl = UITheme.label("", 14, UITheme.TEXT)
-	left.add_child(weight_lbl)
-	var right := VBoxContainer.new()
-	right.custom_minimum_size = Vector2(330, 0)
-	right.add_theme_constant_override("separation", 10)
-	h.add_child(right)
-	detail_title = UITheme.title_label("", 24, UITheme.PAPER)
-	detail_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	right.add_child(detail_title)
-	detail_text = UITheme.label("Hover an item to learn about it.", 15, UITheme.TEXT)
-	detail_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right.add_child(detail_text)
-	detail_guide = UITheme.button("Read about it in the guide", _open_guide, 0)
-	detail_guide.visible = false
-	right.add_child(detail_guide)
+		hot.add_child(_slot(i))
+	tip = UITheme.label("", 14, UITheme.PAPER)
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tip.custom_minimum_size = Vector2(600, 40)
+	v.add_child(tip)
+	var help := UITheme.label("Left click: take / put down   ·   Right click: half / one   ·   Shift + click: move across", 12, Color(UITheme.TEXT_DIM, 0.8))
+	v.add_child(help)
+	cursor = Control.new()
+	cursor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cursor.size = Vector2(52, 52)
+	cursor.draw.connect(_draw_cursor)
+	add_child(cursor)
 	Events.inventory_changed.connect(_refresh)
-	hud.icons.icon_ready.connect(func(_k): for s in slots: s.queue_redraw())
+	Events.entity_changed.connect(func(_id, _k): _refresh())
 	_refresh()
 
 
 func _slot(i: int) -> SlotView:
 	var s := SlotView.new()
 	s.index = i
-	s.icons = hud.icons
+	s.slot_size = 60
 	s.clicked.connect(_on_click)
-	s.hovered.connect(_on_hover)
-	slots.append(s)
+	s.hovered.connect(func(idx): _hover = idx; _update_tip())
+	slots[i] = s
 	return s
+
+
+func _jar_items() -> Array:
+	if jar_cell == null:
+		return []
+	var be := World.be(jar_cell)
+	if be.is_empty() or be["t"] != "jar":
+		return []
+	return be["d"].get("inv", [])
 
 
 func _refresh() -> void:
 	var inv := World.my_inventory
-	var lp: LocalPlayer = hud.lp()
-	for s in slots:
-		s.stack = inv.get_slot(s.index)
-		s.selected = s.index == picked or (picked < 0 and lp and s.index == lp.hotbar)
-		s.queue_redraw()
-	var kg := inv.carried_kg()
-	weight_lbl.text = "Carrying %.1f of %d kg%s" % [kg, int(Actions.CARRY_KG), ("  - heavy: you move slower" if kg > 22.0 else "")]
-	weight_lbl.add_theme_color_override("font_color", UITheme.TEXT if kg < 22.0 else Color(1.0, 0.78, 0.5))
-	if hovered >= 0:
-		_on_hover(hovered)
+	var jar := _jar_items()
+	if jar_cell != null and World.be(jar_cell).is_empty():
+		var hud = get_meta("hud", null)
+		if hud:
+			hud.close_panel()
+		return
+	for i in slots:
+		var s: SlotView = slots[i]
+		if i >= 100:
+			var k: int = i - 100
+			s.set_stack(jar[k] if k < jar.size() else {})
+		elif i == Actions.OUTPUT:
+			s.set_stack({})
+		else:
+			s.set_stack(inv.get_slot(i))
+	if output:
+		var grid := inv.grid()
+		var m := ItemDB.match_recipe(grid)
+		output.ghost = ItemDB.recipe_output(m, grid) if not m.is_empty() else {}
+		output.queue_redraw()
+		if not m.is_empty():
+			recipe_hint.text = "Click the result to make %s.%s" % [ItemDB.label(String(output.ghost["i"])).to_lower(),
+				"" if int(output.ghost["n"]) <= 1 else " (%d at a time)" % int(output.ghost["n"])]
+		else:
+			var any := false
+			for gi in 9:
+				if not (grid[gi] as Dictionary).is_empty():
+					any = true
+			recipe_hint.text = "That doesn't make anything." if any else "Put things in the grid to craft. Recipes are in the handbook (H)."
+	_update_tip()
 
 
-func _on_hover(i: int) -> void:
-	hovered = i
-	var s := World.my_inventory.get_slot(i)
+func _on_click(i: int, button: int, shift: bool) -> void:
+	if i >= 100:
+		World.request("container_click", {"c": jar_cell, "slot": i - 100, "button": button, "shift": shift})
+	elif jar_cell != null and shift and i < Inventory.MAIN:
+		World.request("container_click", {"c": jar_cell, "slot": 100 + i, "button": button, "shift": shift})
+	else:
+		World.request("inv_click", {"slot": i, "button": button, "shift": shift})
+	Sfx.ui("ui_click", -16.0)
+
+
+func _update_tip() -> void:
+	var s: Dictionary = {}
+	if slots.has(_hover):
+		var sv: SlotView = slots[_hover]
+		s = sv.stack if not sv.stack.is_empty() else sv.ghost
 	if s.is_empty():
-		detail_title.text = ""
-		detail_text.text = "Empty slot." if picked < 0 else "Click to put it here."
-		detail_guide.visible = false
+		tip.text = ""
 		return
 	var id := String(s["i"])
-	detail_title.text = ItemDB.display_name(id, s["d"]) + ("  ×%d" % int(s["n"]) if int(s["n"]) > 1 else "")
-	var lines: PackedStringArray = [ItemDB.describe(id, s["d"])]
-	var fuel := ItemDB.fuel(id)
-	if not fuel.is_empty():
-		lines.append("Fuel: %s" % ("catches easily" if float(fuel["ign"]) < 300 else ("burns steadily" if float(fuel["ign"]) < 420 else "needs a hot fire")))
-	var food := ItemDB.food(id)
-	if not food.is_empty():
-		lines.append("Food: %s" % ("filling" if float(food.get("hunger", 0)) > 0.15 else "a small bite"))
-	if CompostSim.is_compostable(id):
-		lines.append("Compostable: counts as a %s." % CompostSim.kind_of(id))
-	detail_text.text = "\n".join(lines)
-	var g := ItemDB.guide_entry(id)
-	detail_guide.visible = g != "" and Guide.has_entry(g)
-	detail_guide.set_meta("entry", g)
+	var d: Dictionary = s.get("d", {})
+	var line := ItemDB.label(id, d)
+	if d.has("dur"):
+		line += "  (%d/%d uses left)" % [int(d["dur"]), ItemDB.max_durability(id, d)]
+	if d.has("q") and float(d["q"]) < 0.99:
+		line += "  - a little rough"
+	var f := ItemDB.food(id)
+	if not f.is_empty():
+		line += "  ·  food"
+	tip.text = line + "\n" + ItemDB.desc(id)
 
 
-func _on_click(i: int, button: int) -> void:
-	var inv := World.my_inventory
-	if button == MOUSE_BUTTON_RIGHT:
-		var empty := _first_empty(i < Inventory.HOTBAR)
-		if empty >= 0 and int(inv.get_slot(i).get("n", 0)) > 1:
-			World.request("inv_split", {"from": i, "to": empty})
+func _process(_delta: float) -> void:
+	cursor.position = get_local_mouse_position() - Vector2(26, 26)
+	cursor.queue_redraw()
+
+
+func _draw_cursor() -> void:
+	var s := World.my_inventory.get_slot(Inventory.CURSOR)
+	if s.is_empty():
 		return
-	if Input.is_key_pressed(KEY_SHIFT):
-		if inv.is_empty_slot(i):
-			return
-		var to := _first_empty(i >= Inventory.HOTBAR)
-		if to >= 0:
-			World.request("inv_move", {"from": i, "to": to})
-		return
-	if picked < 0:
-		if not inv.is_empty_slot(i):
-			picked = i
-			Sfx.ui("ui_click", -10.0)
-	else:
-		if picked != i:
-			World.request("inv_move", {"from": picked, "to": i})
-			Sfx.ui("drop", -10.0)
-		picked = -1
-	_refresh()
-
-
-func _first_empty(in_hotbar: bool) -> int:
-	var inv := World.my_inventory
-	var r := range(0, Inventory.HOTBAR) if in_hotbar else range(Inventory.HOTBAR, Inventory.SIZE)
-	for i in r:
-		if inv.is_empty_slot(i):
-			return i
-	return -1
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("drop") and hovered >= 0 and not World.my_inventory.is_empty_slot(hovered):
-		World.request("inv_drop_slot", {"slot": hovered, "n": 999 if Input.is_key_pressed(KEY_CTRL) else 1})
-		get_viewport().set_input_as_handled()
-
-
-func _open_guide() -> void:
-	var e := String(detail_guide.get_meta("entry", ""))
-	hud.open_panel("guide")
-	Events.guide_open_entry.emit(e)
+	SlotView.draw_item(cursor, s, Rect2(Vector2.ZERO, cursor.size))

@@ -1,11 +1,7 @@
 class_name Weather
 extends RefCounted
-## Weather emerges from the island's own water: when evaporation has loaded
-## the air with vapour, clouds build and it rains (WaterSim moves the water);
-## dry air clears.  Wind wanders; calm humid dawns bring mist.
-
-var _gust_t := 0.0
-
+## Showers come and go; wind wanders; calm mornings bring mist.  Rain puts out
+## open fires and pit kilns, soaks you, and waters crops.
 
 func light_factor() -> float:
 	var h := World.hour_of_day()
@@ -19,21 +15,21 @@ func light_factor() -> float:
 
 func tick(hours: float) -> void:
 	var env := World.env
-	var humid := clampf(float(World.pools.get("atmo_water_l", 0.0)) / WaterSim.ATMO_CAPACITY, 0.0, 1.5)
 	var rain := float(env.get("rain", 0.0))
 	var target := float(env.get("rain_target", 0.0))
+	# the first day stays dry: there is enough to learn without rain
+	var first_day := World.hours() < 24.0 + 20.0
 	if target <= 0.0:
-		if humid > 0.7 and randf() < hours * 0.25 * (humid - 0.6):
-			target = randf_range(0.3, 0.85)
-	else:
-		if humid < 0.2 or randf() < hours * 0.035:
-			target = 0.0
+		if not first_day and randf() < hours * 0.045:
+			target = randf_range(0.35, 0.9)
+	elif randf() < hours * 0.3:
+		target = 0.0
 	env["rain_target"] = target
-	env["rain"] = move_toward(rain, target, hours * 0.6)
-	var cloud_target := clampf(humid * 1.05 - 0.1 + sin(World.hours() * 0.37) * 0.12, 0.05, 1.0)
+	env["rain"] = move_toward(rain, target, hours * 0.8)
+	var cloud_target := clampf(0.25 + sin(World.hours() * 0.37) * 0.2 + sin(World.hours() * 0.11) * 0.15, 0.05, 0.8)
 	if target > 0.0:
-		cloud_target = maxf(cloud_target, 0.9)
-	env["cloud"] = move_toward(float(env.get("cloud", 0.2)), cloud_target, hours * 0.2)
+		cloud_target = 0.95
+	env["cloud"] = move_toward(float(env.get("cloud", 0.2)), cloud_target, hours * 0.25)
 	var wind: Vector2 = env.get("wind", Vector2(1.2, 0.4))
 	wind += Vector2(randf_range(-1, 1), randf_range(-1, 1)) * hours * 1.4
 	var want_len := 1.4 + float(env["rain"]) * 2.4 + maxf(0.0, sin(World.hours() * 0.21)) * 1.2
@@ -41,6 +37,6 @@ func tick(hours: float) -> void:
 	env["wind"] = wind
 	var h := World.hour_of_day()
 	var mist := 0.0
-	if h > 4.0 and h < 9.0 and humid > 0.45 and wind.length() < 2.2:
-		mist = clampf((humid - 0.45) * 2.0, 0.0, 0.6) * (1.0 - absf(h - 6.5) / 2.5)
+	if h > 4.0 and h < 9.0 and wind.length() < 2.2:
+		mist = 0.35 * (1.0 - absf(h - 6.5) / 2.5)
 	env["fog"] = move_toward(float(env.get("fog", 0.0)), mist, hours * 0.5)

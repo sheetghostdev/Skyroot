@@ -1,25 +1,27 @@
 extends Node
 ## Authoritative world state and its replication.
 ##
-## The host owns everything here.  Every mutation goes through spawn()/update()/
-## set_xf()/despawn() (entities) or terrain_edited() (ground), which apply the
-## change locally and queue a replication op.  Ops are flushed to all clients once
-## per physics frame as a single reliable RPC, so clients see changes in exactly
-## the order the host made them.  Clients never mutate state: they call
-## request(action, args) and the host's action handler validates and applies it.
+## The host owns everything here: the blocks (VoxelData), the entities (dropped
+## items and block entities such as fire pits, knapping stones, clay work, kilns,
+## ground storage) and every player's inventory and stats.  Every mutation goes
+## through set_block() / spawn() / update() / set_xf() / despawn(), which apply
+## the change locally and queue a replication op.  Ops are flushed to all clients
+## once per physics frame as one reliable RPC, so clients see changes in exactly
+## the order the host made them.  Clients never change state: they call
+## request(action, args) and the host's Actions validate and apply it.
 
-const SAVE_VERSION := 3
+const SAVE_VERSION := 10
 const SAVE_DIR := "user://saves"
-const START_HOUR := 7.5
+const START_HOUR := 7.0
 
 var running := false
 var world_name := ""
 var world_seed := 0
+var vox := VoxelData.new()
 var entities: Dictionary = {}      # id -> {"id": int, "t": String, "xf": Transform3D, "d": Dictionary}
+var be_at: Dictionary = {}         # Vector3i -> entity id (block entities: one per cell)
 var next_id := 1
-var terrain := TerrainData.new()
-var env: Dictionary = {}           # replicated environment: time, weather, wind, pond...
-var pools: Dictionary = {}         # host-only ledger pools: atmosphere, losses...
+var env: Dictionary = {}           # replicated environment: time, weather, wind
 var discoveries: Dictionary = {}   # discovery id -> player name
 var player_saves: Dictionary = {}  # host-only: player name -> persisted record
 
@@ -37,7 +39,6 @@ var _ops: Array = []
 var _inv_dirty: Dictionary = {}
 var _stats_dirty: Dictionary = {}
 var _env_timer := 0.0
-var _soil_timer := 0.0
 
 
 func is_host() -> bool:
@@ -52,36 +53,21 @@ func new_world(name: String, seed_value: int = 0) -> void:
 	reset()
 	world_name = name
 	world_seed = seed_value if seed_value != 0 else randi()
-	terrain.generate()
+	IslandGen.generate(vox)
 	env = {
 		"t": 24.0 + START_HOUR,   # absolute game hours; day 1 starts at t=24
-		"weather": "clear", "rain": 0.0, "cloud": 0.15, "wind": Vector2(1.2, 0.4), "fog": 0.0,
-		"pond_l": terrain.pond_capacity() * 0.86,
+		"rain": 0.0, "cloud": 0.2, "wind": Vector2(1.2, 0.4), "fog": 0.0, "rain_target": 0.0,
 	}
-	pools = {
-		"atmo_water_l": 520.0,      # water vapour above the island (closed reservoir)
-		"atmo_carbon_kg": 600.0,    # CO2 expressed as fixable biomass-equivalent
-		"lost_water_l": 0.0,        # spilled into the abyss
-		"lost_mass": {},            # item id -> count lost to the abyss
-		"soil_organic_kg": 40.0,    # organic matter in the ground (roots, humus)
-		"debris_stone_kg": 0.0,     # knapping flakes
-		"tree_nutr": TreeSim.biomass(TreeSim.new_state()) * TreeSim.NUTR_PER_KG,   # minerals held in the great tree's wood
-		"plant_water_l": 6.0 * 0.03 * 2.5,  # juice in the ripe berries
-	}
-	var g := 0.0
-	for k in terrain.grass.size():
-		if terrain.inside[k]:
-			g += terrain.grass[k]
-	pools["grass_nutr"] = g * 0.0005
 	running = true
 
 
 func reset() -> void:
 	running = false
+	vox = VoxelData.new()
 	entities.clear()
+	be_at.clear()
 	next_id = 1
 	env = {}
-	pools = {}
 	discoveries.clear()
 	player_saves.clear()
 	inventories.clear()
@@ -92,11 +78,6 @@ func reset() -> void:
 	_stats_dirty.clear()
 	my_inventory = Inventory.new()
 	my_stats = {}
-	terrain = TerrainData.new()
-	FireSim.reset()
-	StructureSim.reset()
-	CompostSim.reset()
-	Survival.reset_hints()
 
 
 func _physics_process(delta: float) -> void:
@@ -104,7 +85,6 @@ func _physics_process(delta: float) -> void:
 		return
 	if is_host():
 		_flush(delta)
-		StructureSim.settle_step()
 
 
 func _flush(delta: float) -> void:
@@ -116,7 +96,7 @@ func _flush(delta: float) -> void:
 	for pid in _inv_dirty.keys():
 		if inventories.has(pid):
 			var arr: Array = inventories[pid].to_array()
-			if pid == 1 or pid == multiplayer.get_unique_id():
+			if pid == multiplayer.get_unique_id():
 				_apply_inventory(arr)
 			elif online:
 				_rpc_inventory.rpc_id(pid, arr)
@@ -133,12 +113,39 @@ func _flush(delta: float) -> void:
 		_env_timer = 1.0
 		if online and Net.client_count() > 0:
 			_rpc_env.rpc(env)
-	_soil_timer -= delta
-	if _soil_timer <= 0.0:
-		_soil_timer = 6.0
-		if online and Net.client_count() > 0:
-			_rpc_soil.rpc(_quantize(terrain.moist), _quantize(terrain.grass), terrain.tilled)
-		Events.soil_changed.emit()
+
+
+func send_ops_now() -> void:
+	if _ops.size() > 0:
+		if Net.is_online() and Net.client_count() > 0:
+			_rpc_ops.rpc(_ops)
+		_ops = []
+
+
+# ---------------------------------------------------------------------------
+# Blocks (host)
+# ---------------------------------------------------------------------------
+
+func block(c: Vector3i) -> int:
+	return vox.get_id(c.x, c.y, c.z)
+
+
+func block_meta(c: Vector3i) -> int:
+	return vox.get_m(c.x, c.y, c.z)
+
+
+func set_block(c: Vector3i, id: int, m: int = 0) -> void:
+	if not VoxelData.in_bounds(c.x, c.y, c.z):
+		return
+	var old_h := vox.column_height(c.x, c.z)
+	vox.set_block(c.x, c.y, c.z, id, m)
+	if is_host():
+		_ops.append(["b", c, id, m])
+	Events.block_changed.emit(c, old_h)
+
+
+func set_block_meta(c: Vector3i, m: int) -> void:
+	set_block(c, block(c), m)
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +160,16 @@ func spawn(t: String, xf: Transform3D, d: Dictionary = {}) -> int:
 	next_id += 1
 	var e := {"id": id, "t": t, "xf": xf, "d": d}
 	entities[id] = e
+	_index(e)
 	_ops.append(["s", {"id": id, "t": t, "xf": xf, "d": d.duplicate(true)}])
 	Events.entity_spawned.emit(id)
 	return id
+
+
+func spawn_be(t: String, c: Vector3i, d: Dictionary = {}) -> int:
+	## A block entity occupying cell c.
+	d["cell"] = c
+	return spawn(t, Transform3D(Basis(), Vector3(c)), d)
 
 
 func update(id: int, changes: Dictionary) -> void:
@@ -182,10 +196,34 @@ func set_xf(id: int, xf: Transform3D) -> void:
 func despawn(id: int) -> void:
 	if not entities.has(id):
 		return
+	_unindex(entities[id])
 	entities.erase(id)
 	if is_host():
 		_ops.append(["r", id])
 	Events.entity_removed.emit(id)
+
+
+func _index(e: Dictionary) -> void:
+	var d: Dictionary = e["d"]
+	if d.has("cell"):
+		be_at[d["cell"]] = e["id"]
+
+
+func _unindex(e: Dictionary) -> void:
+	var d: Dictionary = e["d"]
+	if d.has("cell") and be_at.get(d["cell"], -1) == e["id"]:
+		be_at.erase(d["cell"])
+
+
+func _reindex() -> void:
+	be_at.clear()
+	for e in entities.values():
+		_index(e)
+
+
+func be(c: Vector3i) -> Dictionary:
+	var id := int(be_at.get(c, -1))
+	return entities.get(id, {}) if id >= 0 else {}
 
 
 func get_entity(id: int) -> Dictionary:
@@ -213,21 +251,14 @@ func entities_near(pos: Vector3, radius: float, t: String = "") -> Array:
 	var out: Array = []
 	var r2 := radius * radius
 	for e in entities.values():
-		if (t == "" or e["t"] == t) and e["xf"].origin.distance_squared_to(pos) <= r2:
+		if (t == "" or e["t"] == t) and (e["xf"].origin as Vector3).distance_squared_to(pos) <= r2:
 			out.append(e)
 	return out
 
 
-# ---------------------------------------------------------------------------
-# Terrain (host)
-# ---------------------------------------------------------------------------
-
-func terrain_edited(rect: Rect2i) -> void:
-	if rect.size == Vector2i.ZERO:
-		return
-	if is_host() and Net.is_online() and Net.client_count() > 0:
-		_rpc_terrain.rpc(terrain.patch(rect))
-	Events.terrain_changed.emit(rect)
+func cell_free(c: Vector3i) -> bool:
+	## Nothing in this cell: no block (or only one that can be replaced) and no block entity.
+	return Blocks.is_replaceable(block(c)) and not be_at.has(c)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +293,7 @@ func on_player_joined(pid: int, player_name: String) -> Dictionary:
 		info["yaw"] = rec.get("yaw", 0.0)
 		info["new"] = false
 		guide_states[pid] = rec.get("guide", {})
-		info["guide"] = guide_states[pid]   # so a returning client gets its guide progress back
+		info["guide"] = guide_states[pid]
 	inventories[pid] = inv
 	stats[pid] = st
 	mark_inventory(pid)
@@ -271,6 +302,8 @@ func on_player_joined(pid: int, player_name: String) -> Dictionary:
 
 
 func on_player_left(pid: int, player_name: String, pos: Vector3, yaw: float) -> void:
+	if actions:
+		actions.close_inventory(pid)
 	store_player_record(pid, player_name, pos, yaw)
 	inventories.erase(pid)
 	stats.erase(pid)
@@ -285,18 +318,19 @@ func store_player_record(pid: int, player_name: String, pos: Vector3, yaw: float
 		"stats": stats.get(pid, default_stats()).duplicate(true),
 		"pos": pos, "yaw": yaw,
 		"guide": guide_states.get(pid, {}),
-		"spawn": stats.get(pid, {}).get("bed", -1),
 	}
 
 
 func default_stats() -> Dictionary:
-	return {"health": 1.0, "hunger": 0.85, "thirst": 0.8, "stamina": 1.0, "warmth": 0.75,
-		"body_water_l": 0.0, "waste_nutr": 0.0, "bed": -1, "alive": true}
+	return {"health": 1.0, "hunger": 0.8, "thirst": 0.8, "warmth": 0.85, "bed": Vector3i(-1, -1, -1), "alive": true}
 
 
 func spawn_point(pid: int) -> Vector3:
-	var p := TerrainData.SPAWN_POS + Vector2(cos(pid * 1.7), sin(pid * 1.7)) * 0.9 * float(pid % 4)
-	return Vector3(p.x, terrain.height(p.x, p.y) + 0.1, p.y)
+	var p := IslandGen.SPAWN + Vector3(cos(pid * 1.7), 0.0, sin(pid * 1.7)) * 1.2 * float(pid % 4)
+	var y := vox.rest_height(Vector3(p.x, p.y + 6.0, p.z))
+	if y == -INF:
+		return IslandGen.SPAWN
+	return Vector3(p.x, y + 0.02, p.z)
 
 
 # ---------------------------------------------------------------------------
@@ -307,9 +341,15 @@ func spawn_point(pid: int) -> Vector3:
 func _rpc_ops(ops: Array) -> void:
 	for op in ops:
 		match op[0]:
+			"b":
+				var c: Vector3i = op[1]
+				var old_h := vox.column_height(c.x, c.z)
+				vox.set_block(c.x, c.y, c.z, int(op[2]), int(op[3]))
+				Events.block_changed.emit(c, old_h)
 			"s":
 				var e: Dictionary = op[1]
 				entities[e["id"]] = e
+				_index(e)
 				Events.entity_spawned.emit(e["id"])
 			"u":
 				var id: int = op[1]
@@ -324,29 +364,15 @@ func _rpc_ops(ops: Array) -> void:
 					Events.entity_changed.emit(op[1], ["xf"])
 			"r":
 				if entities.has(op[1]):
+					_unindex(entities[op[1]])
 					entities.erase(op[1])
 					Events.entity_removed.emit(op[1])
-
-
-@rpc("authority", "call_remote", "reliable")
-func _rpc_terrain(p: Dictionary) -> void:
-	var rect := terrain.apply_patch(p)
-	Events.terrain_changed.emit(rect)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _rpc_env(e: Dictionary) -> void:
 	env = e
 	Events.env_changed.emit()
-
-
-@rpc("authority", "call_remote", "reliable")
-func _rpc_soil(moist_q: PackedByteArray, grass_q: PackedByteArray, tilled: PackedByteArray) -> void:
-	_dequantize(moist_q, terrain.moist)
-	_dequantize(grass_q, terrain.grass)
-	if tilled.size() == terrain.tilled.size():
-		terrain.tilled = tilled
-	Events.soil_changed.emit()
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -369,21 +395,6 @@ func _apply_stats(st: Dictionary) -> void:
 	Events.stats_changed.emit()
 
 
-func _quantize(arr: PackedFloat32Array) -> PackedByteArray:
-	var out := PackedByteArray()
-	out.resize(arr.size())
-	for i in arr.size():
-		out[i] = clampi(int(arr[i] * 255.0 + 0.5), 0, 255)
-	return out
-
-
-func _dequantize(src: PackedByteArray, dst: PackedFloat32Array) -> void:
-	if src.size() != dst.size():
-		return
-	for i in src.size():
-		dst[i] = src[i] / 255.0
-
-
 # ---------------------------------------------------------------------------
 # Snapshot (late join)
 # ---------------------------------------------------------------------------
@@ -391,11 +402,12 @@ func _dequantize(src: PackedByteArray, dst: PackedFloat32Array) -> void:
 func build_snapshot() -> Dictionary:
 	return {
 		"name": world_name, "seed": world_seed, "entities": entities, "next_id": next_id,
-		"terrain": terrain.to_dict(), "env": env, "discoveries": discoveries,
+		"vox": vox.to_dict(), "env": env, "discoveries": discoveries,
 	}
 
 
 func send_snapshot(pid: int) -> void:
+	send_ops_now()
 	_rpc_snapshot.rpc_id(pid, build_snapshot())
 
 
@@ -405,8 +417,9 @@ func _rpc_snapshot(snap: Dictionary) -> void:
 	world_name = snap["name"]
 	world_seed = snap["seed"]
 	entities = snap["entities"]
+	_reindex()
 	next_id = snap["next_id"]
-	terrain.from_dict(snap["terrain"])
+	vox.from_dict(snap["vox"])
 	env = snap["env"]
 	discoveries = snap["discoveries"]
 	running = true
@@ -491,11 +504,35 @@ func _rpc_hint(hint_id: String) -> void:
 	Events.hint.emit(hint_id)
 
 
+func open_chooser(pid: int, kind: String, c: Vector3i) -> void:
+	## Host: ask a player to pick what to make from the work they just set down.
+	if pid == multiplayer.get_unique_id():
+		Events.open_chooser.emit(kind, c)
+	elif Net.is_online():
+		send_ops_now()
+		_rpc_chooser.rpc_id(pid, kind, c)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_chooser(kind: String, c: Vector3i) -> void:
+	Events.open_chooser.emit(kind, c)
+
+
 func fx(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 	## Host: play a one-shot effect (sound/particles) for everyone.
 	_play_fx(kind, pos, params)
 	if is_host() and Net.is_online() and Net.client_count() > 0:
 		_rpc_fx.rpc(kind, pos, params)
+
+
+func fx_except(pid: int, kind: String, pos: Vector3, params: Dictionary = {}) -> void:
+	## Host: an effect the acting player already played locally.
+	if pid != multiplayer.get_unique_id():
+		_play_fx(kind, pos, params)
+	if is_host() and Net.is_online():
+		for p in Net.players:
+			if p != pid and p != multiplayer.get_unique_id():
+				_rpc_fx.rpc_id(p, kind, pos, params)
 
 
 @rpc("authority", "call_remote", "unreliable")
@@ -507,47 +544,6 @@ func _play_fx(kind: String, pos: Vector3, params: Dictionary) -> void:
 	var fxn := get_tree().get_first_node_in_group("fx")
 	if fxn:
 		fxn.play(kind, pos, params)
-
-
-func open_craft(pid: int, eid: int) -> void:
-	if Net.is_online():
-		# the workpiece must exist on their side before its close-up opens
-		_send_ops_now()
-		_rpc_open_craft.rpc_id(pid, eid)
-
-
-func _send_ops_now() -> void:
-	if _ops.size() > 0:
-		if Net.is_online() and Net.client_count() > 0:
-			_rpc_ops.rpc(_ops)
-		_ops = []
-
-
-@rpc("authority", "call_remote", "reliable")
-func _rpc_open_craft(eid: int) -> void:
-	var cc := get_tree().get_first_node_in_group("crafting")
-	if cc:
-		cc.open(eid)
-
-
-func craft_result(pid: int, eid: int, text: String, kind: String) -> void:
-	if pid == multiplayer.get_unique_id():
-		_apply_craft_result(eid, text, kind)
-	elif Net.is_online():
-		_rpc_craft_result.rpc_id(pid, eid, text, kind)
-
-
-@rpc("authority", "call_remote", "reliable")
-func _rpc_craft_result(eid: int, text: String, kind: String) -> void:
-	_apply_craft_result(eid, text, kind)
-
-
-func _apply_craft_result(eid: int, text: String, kind: String) -> void:
-	var cc := get_tree().get_first_node_in_group("crafting")
-	if cc:
-		cc.on_result(eid, text, kind)
-	else:
-		Events.toast.emit(text, kind)
 
 
 func discover(discovery_id: String, by_pid: int) -> void:
@@ -600,15 +596,13 @@ func save_world(players_live: Dictionary = {}) -> Error:
 	if not is_host() or not running:
 		return ERR_UNAVAILABLE
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
-	FireSim.store_runtime()
-	# refresh records of connected players
 	for pid in players_live:
 		var p: Dictionary = players_live[pid]
 		store_player_record(pid, p["name"], p["pos"], p["yaw"])
 	var data := {
 		"version": SAVE_VERSION,
 		"name": world_name, "seed": world_seed, "next_id": next_id,
-		"entities": entities, "terrain": terrain.to_dict(), "env": env, "pools": pools,
+		"entities": entities, "vox": vox.to_dict(), "env": env,
 		"discoveries": discoveries, "players": player_saves,
 		"saved_at": Time.get_datetime_string_from_system(),
 	}
@@ -636,33 +630,25 @@ func load_world(name: String) -> Error:
 	var data = f.get_var()
 	if not data is Dictionary or not data.has("version"):
 		return ERR_FILE_CORRUPT
-	data = _migrate(data)
+	if int(data["version"]) < SAVE_VERSION:
+		return ERR_FILE_UNRECOGNIZED   # an island from before the block world
 	reset()
 	world_name = data["name"]
 	world_seed = data["seed"]
 	next_id = data["next_id"]
 	entities = data["entities"]
-	terrain.from_dict(data["terrain"])
+	_reindex()
+	if not vox.from_dict(data["vox"]):
+		reset()
+		return ERR_FILE_CORRUPT
 	env = data["env"]
-	pools = data["pools"]
 	discoveries = data["discoveries"]
 	player_saves = data["players"]
 	running = true
 	return OK
 
 
-func _migrate(data: Dictionary) -> Dictionary:
-	var v := int(data["version"])
-	if v < 2:
-		data["pools"]["debris_stone_kg"] = data["pools"].get("debris_stone_kg", 0.0)
-	if v < 3:
-		data["pools"]["soil_organic_kg"] = data["pools"].get("soil_organic_kg", 40.0)
-	data["version"] = SAVE_VERSION
-	return data
-
-
 static func delete_save(name: String) -> void:
-	## Remove an island's save (and its listing) from disk.
 	var path := save_path(name)
 	for f in [path, path + ".meta", path + ".tmp"]:
 		if FileAccess.file_exists(f):
@@ -680,6 +666,7 @@ static func list_saves() -> Array:
 			if f:
 				var meta = JSON.parse_string(f.get_as_text())
 				if meta is Dictionary:
+					meta["old"] = int(meta.get("version", 0)) < SAVE_VERSION
 					out.append(meta)
 	out.sort_custom(func(a, b): return String(a.get("saved_at", "")) > String(b.get("saved_at", "")))
 	return out

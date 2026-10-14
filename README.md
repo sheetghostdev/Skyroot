@@ -1,138 +1,114 @@
 # Skyroot
 
-A first-person co-op survival and crafting game for 1–4 players, set on one small
-floating island above an endless sky.  Everything you will ever have is already on
-the island: stone in the outcrop, clay by the pond, one great tree, soil, grass and a
-few wild plants.  Nothing is spawned from nothing — you shape what is there.
+A co-op survival and crafting game for 1–4 players, set on a small floating island
+above the clouds.  It's a block world, heavily inspired by Vintage Story: you knap
+stone tools cell by cell on a grid, build fire pits stick by stick, shape clay pottery
+layer by layer, and fire it in a pit kiln you dig and cover yourself.
 
-Crafting is physical, not menu-driven: you knap stone by choosing where to strike it,
-twist fiber into cordage, bind heads to handles, knead clay with water and raise a pot
-on the ground with your hands, then fire it in a pit you build and cover.  Fires,
-charcoal mounds, drying pottery, compost heaps and crops are simulated processes that
-respond to how you set them up.
+Everything you need is already on the island: loose stones and flint, fallen sticks
+under the trees, tall grass, cattails at the pond, blue clay in its banks, wild
+turnips and flax, berry bushes and mushrooms.  Trees, berries, grass and mushrooms
+grow back; stone does not.
 
-Built with **Godot 4.7** (GDScript, Forward+ renderer, Jolt physics).
+Built with **Godot 4.7** (GDScript, Forward+ renderer).
 
 ## Running it
 
 1. Open the project folder in Godot 4.7 (`project.godot`) and press **Play**, or run
    `godot --path .` from this folder.
-2. **Play** starts or continues an island; leave *Open to friends* ticked to host co-op
-   over LAN or direct IP (port 7777 by default) — or open a solo island later from
-   the pause menu (**Open to friends now**).  Friends use **Join a friend** with the
-   host's address, which the pause menu shows.
+2. **Play** starts or continues an island; leave *Open to friends* ticked to host
+   co-op over LAN or direct IP (port 7777 by default) — or open a solo island later
+   from the pause menu (**Open to friends now**).  Friends use **Join a friend** with
+   the host's address, which the pause menu shows.
 
-Saves are kept per island in Godot's user folder (`user://saves/*.skyroot`); the host
-owns the save and autosaves every three minutes and on exit.
+The host owns the save (`user://saves/*.skyroot`), autosaves every three minutes and on
+exit.  Islands saved by the earlier smooth-terrain version can't be opened (the menu
+says so); that version is still in the git history at commit `5133eb4`.
 
 ## Controls
 
 | | |
 |---|---|
-| W A S D / mouse | move / look |
-| Shift, Ctrl (or C), Space | sprint, crouch, jump |
-| E | interact (pick up or use the thing in front of you; hold to keep going) |
-| Left / right mouse | primary / secondary action with what you hold (place, plant, strike...) |
-| Mouse wheel, 1–9 | choose what to hold |
-| Tab (or I) | what you carry |
-| H | the Survival Guide (also opens the tip on screen) |
-| B | build: pick a blueprint, set its frame down, then fit each part by hand |
+| W A S D, mouse | move, look |
+| Space, Ctrl, Shift | jump, sprint, sneak (sneaking, you can't walk off an edge) |
+| Left mouse (hold) | break what you look at; chip a knapping stone; remove clay |
+| Right mouse | use or place what you hold; hold it to eat, drink or work a bow drill |
+| Shift + right mouse | set things down on the ground: a stone to knap, clay to shape, a stick or dry grass to start a fire pit, anything else to leave there |
+| E (or Tab) | inventory and the 3 × 3 crafting grid |
+| H | the handbook: how-tos, your goals, a page for every item |
+| 1–9, mouse wheel | hotbar |
+| F | clay brush (1 × 1, 2 × 2, 3 × 3, copy the layer below) |
+| Q / Ctrl+Q | drop one / the stack |
 | V | first / third person (no extra reach in third person) |
-| Q | drop the held item (Ctrl+Q drops the stack) |
-| R | rotate something before placing it |
 | T | chat |
-| F5, F12, F1 | quick save (host), screenshot, hide the HUD |
-| Enter | finish close-up work (knapping, pottery...) |
-| X | dismiss the tip on screen for good |
-| Esc | close a panel / the island menu (the world doesn't pause - it's co-op) |
+| F1, F6, F12 | hide the HUD, quick save (host), screenshot |
+| Esc | close a panel / the island menu (the world doesn't pause — it's co-op) |
 
-The prompts beside the crosshair always show what E and the mouse buttons will do with
-what you hold right now.
+Under the crosshair it always says what you're looking at and what each mouse button
+will do with what you hold.  The goal in the top right walks you through the first
+steps.
 
-## What's in it
+## How things work
 
-* **The island** — smooth terrain with diggable pockets of soil and clay, a pond with a
-  real water level, an outcrop of loose stones, the great tree, grass that grows back,
-  wild tubers, fiber grass, wild grain, a berry bush and mushrooms on a mossy log.
-  Changes persist.
-* **Survival** — hunger, thirst, stamina, health and warmth.  Night is cold; fire,
-  walls, a roof and staying dry help.  You can carry about 45 kg, and a heavy load
-  slows you down.  Falling off the edge is final for what you carry; dying on the
-  island leaves a satchel you can recover.
-* **Physical crafting** — knapping (blade, axe head, digging blade, judged by the actual
-  shape you made), cordage, hafting, clay preparation, pottery (a lathe profile you
-  pull and thin; bowl, cup or jar; rain slumps it, and thin or uneven walls crack in the fire), drying, pit firing,
-  log splitting into boards or firewood, the fire drill.
-* **Fire** — a physical fire model: tinder, kindling and fuel heat each other; air,
-  moisture and enclosure decide whether a lay catches, roars, smolders or chars.  The
-  same evaluator runs campfires, cooking, pit kilns and charcoal mounds (seal it with
-  earth, leave vents, watch the smoke, seal it when it thins — open it hot and it burns
-  to ash).
-* **Farming and compost** — till, plant, water; crops grow from the soil's water and
-  nutrients and the air's carbon.  Compost heaps rot according to their mix of greens
-  and browns, moisture, air and the heat they make; turn them, water them, take the
-  finished compost back to the soil.
-* **Construction** — platforms, posts and braces, railings, ladders, wattle walls,
-  doorways, thatch roofs, shelves and sleeping mats.  Frames are placed, then every part
-  is installed by hand.  Spans out over the abyss creak, and a piece that loses its
-  support groans and falls.  Taking things apart returns every part.
-* **Closed economy** — water, carbon (biomass), nutrients, clay, soil and stone are
-  conserved and audited by a ledger; see [docs/ECONOMY.md](docs/ECONOMY.md).
-* **Survival Guide** — 43 searchable entries with animated diagrams, contextual tips,
-  checklists you can pin to the screen, and an island journal of shared discoveries.
-* **Co-op** — 2–4 players, host-authoritative: everyone sees the same island, the
-  same fires and pots taking shape; nothing can be duplicated; a player who leaves gets
-  their belongings back when they return.
-
-## Tests
-
-`tools/run_tests.sh` runs everything below and prints a summary.
-
-Headless suites (each prints `ok` / `FAIL` lines and a summary; exit code 0 = pass):
-
-```
-godot --headless --path . res://tests/test_main.tscn -- --suite=all
-```
-
-Suites: `craft`, `survival`, `farm` (compost and crops), `fire`, `build`, `save`,
-`longrun` (ten in-game days with a forager: survival on island food alone, stability
-and exact conservation).  Every suite checks the material ledger.
-
-Multiplayer, as separate game instances on one machine:
-
-```
-tools/mp_test.sh     # host + client: shared world, no duplication, leave and rejoin
-OPEN_LATER=1 tools/mp_test.sh   # the same, with a solo island opened to friends mid-session
-tools/mp_crowd.sh    # four players at once; a fifth is told the island is full
-tools/mp_crash.sh    # a client is killed and restarts: back as themselves, with their things
-```
-
-Visual checks use `--shot=<png>` with xvfb (see `src/util/debug_shot.gd` for scene
-setups such as `--fire=mound`, `--compost=20`, `--build=hut`, `--panel=guide`).
+* **Knapping** — sneak-right-click a stone or flint onto flat ground and pick a shape
+  (knife blade, axe head, shovel head, hoe head).  The cells that must go are dark;
+  the shape stays bright.  Left-click chips one cell; hold and sweep to chip a row.
+  Chip into the shape three times and the stone splits.  Flint tools last longer.
+* **Tools** — put a head above a stick in the crafting grid.  Knives cut grass (dry
+  grass) and cattails/flax/ferns (fiber); axes fell whole trees; shovels dig fast;
+  hoes till.
+* **Fire pits** — sneak-right-click a stick onto the ground.  Each stick you add lies
+  across the last: two make an X, then a cross over it, up to eight.  Dry grass goes
+  in the middle underneath as tinder.  Hold right-click with a bow drill (twine + two
+  sticks) to light it.  Tinder lights the sticks, sticks light firewood laid on top;
+  firewood (a log split with an axe in the grid) burns for ninety minutes each.  Rain
+  drowns an open fire unless firewood is burning well.  Roast food on it; set a pot of
+  water on it with food in it for stew.
+* **Clay** — dig blue clay from the pond's banks.  Sneak-right-click it onto the
+  ground and choose a bowl, cooking pot, storage jar or bricks; build it up one layer
+  at a time (right-click adds, left-click removes, F changes the brush).
+* **Pit kiln** — dig a hole one block deep, set raw pottery in it, cover it with four
+  dry grass and six sticks, light it.  Three hours later it's fired.  In a pit nothing
+  cracks; on open ground some pieces do.
+* **Survival** — food, water, warmth and health.  Nights are cold: a fire, a roof and
+  walls keep you warm.  Dying leaves your things in a bag where you fell; falling into
+  the abyss loses them.  A straw bed (three thatch) lets you sleep through the night
+  (when everyone sleeps) and is where you wake.
+* **Farming** — till soil with a hoe, sow turnip or flax seeds from the wild plants.
+  Farmland near water grows faster.
+* **Co-op** — up to four players; the host's game holds the island and checks every
+  action, so nothing can be duplicated.  When someone leaves, their things go with them
+  and come back when they return.
 
 ## Project layout
 
 ```
-data/            items, blueprints, plants, guide entries/hints/discoveries (JSON)
-src/autoload/    Game (session), World (entities, replication, saves), Net, ItemDB,
-                 Guide, Settings, Sfx, Events
-src/sim/         host simulation and request handlers (fire, water, plants, compost,
-                 structures, survival, crafting, ledger)
-src/rules/       what the player can do to each kind of thing (prompts)
-src/entities/    views of world entities
-src/crafting/    crafting sessions (knapping, pottery...) and their geometry
-src/player/      local player, interaction, build placement, hands
-src/ui/          HUD, guide, inventory, build menu, menus
-src/world/       terrain, island view, sky, effects
-tools/           Blender model scripts, audio tools, multiplayer test scripts
-docs/            architecture, economy, art pipeline
+data/        blocks, items, crafting recipes, knapping and clay patterns, handbook, hints
+src/voxel/   block registry, block storage, chunk mesher (with skylight), renderer
+src/world/   island generator, game scene, sky, effects
+src/sim/     host rules: blocks, fire and kilns, crafting, farming, survival, weather
+src/player/  movement (box physics on the block grid), cameras, interaction, models
+src/entities views of block entities (fire pits, kilns, knapping, clay, items...)
+src/ui/      HUD, inventory, handbook, menus
+tools/art/   texture and icon generators (Python + Pillow)
+tests/       headless test suites;  tools/*.sh  multiplayer tests
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
+Textures and icons are drawn by code: `python3 tools/art/gen_blocks.py` and
+`python3 tools/art/gen_items.py` regenerate `assets/textures/`.
 
-## Credits
+## Tests
 
-Models are generated by the Blender scripts in `tools/blender` (see
-[docs/ARTPIPELINE.md](docs/ARTPIPELINE.md)).  Audio is CC0: curated from Kenney's packs
-or synthesized (see `assets/audio/CREDITS.md`).  Fonts are under the SIL Open Font
-License (`assets/fonts/LICENSE-OFL.txt`).
+```
+godot --headless --path . res://tests/test_main.tscn -- --suite=all
+tools/mp_test.sh      # host + client, leave and rejoin
+tools/mp_crowd.sh     # four players grabbing the same things; a fifth is turned away
+tools/mp_crash.sh     # a client crashes and comes straight back
+tools/run_tests.sh    # all of the above
+```
+
+The suites drive the real game through the same requests a client sends: breaking and
+placing blocks, felling trees, knapping, the crafting grid, clay forming, building and
+lighting fires, cooking, stew, pit kilns (in a pit and in the open, in the rain),
+hunger and cold, death and the bag you leave, farming and regrowth, saving and loading,
+and ten days on the island.

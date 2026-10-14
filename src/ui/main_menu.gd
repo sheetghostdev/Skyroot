@@ -73,7 +73,7 @@ func _ready() -> void:
 	_msg.offset_right = 900
 	_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_msg)
-	var foot := UITheme.label("v%s  ·  Co-op for 1-4 players  ·  H opens the Survival Guide in game" % ProjectSettings.get_setting("application/config/version"), 14, Color(UITheme.TEXT_DIM, 0.8))
+	var foot := UITheme.label("v%s  ·  Co-op for 1-4 players  ·  H opens the handbook in game" % ProjectSettings.get_setting("application/config/version"), 14, Color(UITheme.TEXT_DIM, 0.8))
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	foot.offset_left = 86
 	foot.offset_top = -46
@@ -104,7 +104,11 @@ func refresh() -> void:
 	if _saves_list:
 		_saves_list.clear()
 		for s in _saves:
-			_saves_list.add_item("%s   —   day %d   (%s)" % [s.get("name", "?"), int(s.get("day", 1)), String(s.get("saved_at", "")).replace("T", " ")])
+			if bool(s.get("old", false)):
+				var i := _saves_list.add_item("%s   —   from before the block world (can't be opened)" % s.get("name", "?"))
+				_saves_list.set_item_custom_fg_color(i, UITheme.TEXT_DIM)
+			else:
+				_saves_list.add_item("%s   —   day %d   (%s)" % [s.get("name", "?"), int(s.get("day", 1)), String(s.get("saved_at", "")).replace("T", " ")])
 		if _saves.size() > 0:
 			_saves_list.select(0)
 		else:

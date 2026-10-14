@@ -11,7 +11,7 @@ func _ready() -> void:
 	add_to_group("main")
 	get_window().title = "Skyroot"
 	if Game.cli.has("shot") or Game.cli.has("smoke") or Game.cli.has("perf"):
-		add_child(preload("res://src/util/debug_shot.gd").new())
+		add_child(load("res://src/util/debug_shot.gd").new())
 	if Game.cli.has("mptest"):
 		add_child(load("res://src/util/mp_test.gd").new())
 	if Game.cli.has("autostart"):

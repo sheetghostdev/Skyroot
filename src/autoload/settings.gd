@@ -16,7 +16,6 @@ var sfx_volume := 1.0
 var ambience_volume := 0.8
 var shadows_quality := 2        # 0 low .. 3 ultra
 var render_scale := 1.0
-var grass_density := 1.0
 var show_hints := true
 var fullscreen := false
 var vsync := true
@@ -29,17 +28,16 @@ const INPUTS := {
 	"move_left": ["k:A", "k:Left"],
 	"move_right": ["k:D", "k:Right"],
 	"jump": ["k:Space"],
-	"sprint": ["k:Shift"],
-	"crouch": ["k:Ctrl", "k:C"],
-	"interact": ["k:E"],
+	"sneak": ["k:Shift"],
+	"sprint": ["k:Ctrl"],
 	"primary": ["m:1"],
 	"secondary": ["m:2"],
-	"inventory": ["k:Tab", "k:I"],
+	"pick_block": ["m:3"],
+	"inventory": ["k:E", "k:Tab"],
 	"guide": ["k:H"],
-	"build": ["k:B"],
-	"camera_toggle": ["k:V"],
+	"tool_mode": ["k:F"],
+	"camera_toggle": ["k:V", "k:F5"],
 	"drop": ["k:Q"],
-	"rotate": ["k:R"],
 	"pause": ["k:Escape"],
 	"confirm": ["k:Enter", "k:Kp Enter"],
 	"chat": ["k:T"],
@@ -48,7 +46,7 @@ const INPUTS := {
 	"hotbar_1": ["k:1"], "hotbar_2": ["k:2"], "hotbar_3": ["k:3"],
 	"hotbar_4": ["k:4"], "hotbar_5": ["k:5"], "hotbar_6": ["k:6"],
 	"hotbar_7": ["k:7"], "hotbar_8": ["k:8"], "hotbar_9": ["k:9"],
-	"quick_save": ["k:F5"],
+	"quick_save": ["k:F6"],
 	"screenshot": ["k:F12"],
 	"toggle_hud": ["k:F1"],
 }
@@ -136,7 +134,7 @@ func save_settings() -> void:
 func _keys() -> Array:
 	return ["player_name", "last_ip", "port", "mouse_sensitivity", "invert_y", "fov", "head_bob",
 		"master_volume", "sfx_volume", "ambience_volume", "shadows_quality", "render_scale",
-		"grass_density", "show_hints", "fullscreen", "vsync", "ssao", "client_token"]
+		"show_hints", "fullscreen", "vsync", "ssao", "client_token"]
 
 
 func _default_name() -> String:

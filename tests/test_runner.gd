@@ -1,2282 +1,1037 @@
 extends Node
-## Automated gameplay tests.  Runs a real (solo-hosted) island and drives it
-## through the same requests a player's clicks produce.
-##   godot --headless --path . res://tests/test_main.tscn -- --suite=all|craft|survival|farm|fire|build|save|longrun
-##   (or several, comma-separated: --suite=farm,fire)
+## Headless test suites.  They drive the real game through the same requests
+## the client sends, then check the world.
+##
+##   godot --headless --path . res://tests/test_main.tscn -- --suite=core,blocks,craft,fire,kiln,survival,farm,save,longrun
+##   (--suite=all runs everything)
 
-var failures := 0
+const SUITES := ["core", "blocks", "craft", "fire", "kiln", "survival", "farm", "save", "longrun"]
+
 var passes := 0
+var fails := 0
+var a: Actions
 var lp: LocalPlayer
-var _log: PackedStringArray = []
+var pid := 1
+var _suite := ""
 
 
 func _ready() -> void:
+	var want: Array = []
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--suite="):
+			for s in arg.substr(8).split(","):
+				want.append(s)
+	if want.is_empty() or want.has("all"):
+		want = SUITES.duplicate()
+	await _start()
+	for s in want:
+		if not SUITES.has(s):
+			print("unknown suite ", s)
+			fails += 1
+			continue
+		_suite = s
+		print("== suite ", s)
+		await _fresh()
+		await call("suite_" + s)
+	print("RESULT %d passed, %d failed" % [passes, fails])
+	Game._teardown()
+	World.delete_save("TestIsland")
+	get_tree().quit(0 if fails == 0 else 1)
+
+
+func _start() -> void:
 	await get_tree().process_frame
-	var suite := String(Game.cli.get("suite", "all"))
-	var err := Game.start_world("solo", "AutoTest_%d" % (randi() % 100000), true)
+	DirAccess.make_dir_recursive_absolute(World.SAVE_DIR)
+	World.delete_save("TestIsland")
+	var err := Game.start_world("solo", "TestIsland", true)
 	if err != "":
-		print("START FAILED: ", err)
-		get_tree().quit(2)
-		return
-	await frames(10)
+		print("FAIL could not start: ", err)
+		fails += 1
+	for i in 5:
+		await get_tree().process_frame
+
+
+func _fresh() -> void:
+	## A brand-new island for every suite.
+	Game._teardown()
+	await get_tree().process_frame
+	Game.start_world("solo", "TestIsland", true)
+	for i in 3:
+		await get_tree().process_frame
+	a = World.actions
+	a.no_rate = true
 	lp = Game.game_world.local_player()
-	var suites: Array = ["craft", "survival", "farm", "fire", "build", "economy", "save", "longrun"] if suite == "all" else Array(suite.split(","))
-	Events.toast.connect(func(t, k): print("     [toast] ", t))
-	for s in suites:
-		if has_method("suite_" + s):
-			print("\n=== SUITE ", s, " ===")
-			# every suite starts from the same dice and a clear sky, so runs are repeatable
-			seed(20261014 + suites.find(s))
-			World.env["rain"] = 0.0
-			World.env["rain_target"] = 0.0
-			World.env["cloud"] = 0.2
-			await unload()
-			await call("suite_" + s)
-	print("\nRESULT: %d passed, %d failed" % [passes, failures])
-	for l in _log:
-		print(l)
-	# leave no test islands behind in the player's list
-	World.delete_save(World.world_name)
-	Sfx.shutdown()
-	await get_tree().create_timer(0.3).timeout
-	get_tree().quit(1 if failures > 0 else 0)
+	lp.set_physics_process(false)
+	lp.interactor.set_process(false)
+	Game.game_world.sim.set_process(false)
+	pid = Net.my_id()
+	clear_inv()
 
 
-func frames(n: int) -> void:
-	for i in n:
-		await get_tree().physics_frame
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-
-func check(cond: bool, msg: String) -> void:
+func check(cond: bool, msg: String) -> bool:
+	if OS.has_environment("TEST_VERBOSE"):
+		print("   %s %s" % ["ok  " if cond else "FAIL", msg])
 	if cond:
 		passes += 1
-		print("  ok   ", msg)
 	else:
-		failures += 1
-		print("  FAIL ", msg)
-		_log.append("FAIL: " + msg)
+		fails += 1
+		print("FAIL [%s] %s" % [_suite, msg])
+	return cond
 
 
 func inv() -> Inventory:
-	return World.inventory_of(Net.my_id())
+	return World.inventory_of(pid)
 
 
-var injected := Ledger.empty()
-
-
-func unload() -> void:
-	## Test-only: set aside everything carried (in a stash out of the way, still
-	## on the books) so each suite starts with free hands and a light pack.
-	var items: Array = []
-	for sl in inv().slots:
-		if not sl.is_empty():
-			items.append(sl.duplicate(true))
-	if items.is_empty():
-		return
+func clear_inv() -> void:
 	inv().clear()
-	World.mark_inventory(Net.my_id())
-	World.spawn("satchel", Transform3D(Basis(), Vector3(0, -40, 0)), {"items": items, "owner": "(test stash)"})
-	await frames(2)
+	World.mark_inventory(pid)
 
 
-func dropped_satchels() -> Array:
-	## Satchels left by a death (not the test's own stash).
-	return World.entities_of("satchel").filter(func(e): return String(e["d"].get("owner", "")) != "(test stash)")
+func give(id: String, n: int = 1, d: Dictionary = {}, slot: int = 0) -> void:
+	if not ItemDB.tool_info(id).is_empty() and not d.has("dur"):
+		d["dur"] = ItemDB.max_durability(id, d)
+	inv().set_slot(slot, Inventory.make(id, n, d))
+	World.mark_inventory(pid)
 
 
-func give(id: String, n: int = 1, d: Dictionary = {}) -> void:
-	## Test-only: conjure items.  Recorded so ledger checks can subtract them
-	## (only what actually fitted in the pack: the rest never existed).
-	var left := inv().add(id, n, d)
-	World.mark_inventory(Net.my_id())
-	Ledger._add(injected, Ledger.item_contrib(id, n - left, d))
-	if left > 0:
-		print("     (the pack was full: %d %s not given)" % [left, id])
+func count(id: String) -> int:
+	return inv().count(id)
 
 
-func slot_of(id: String) -> int:
-	return inv().find(id)
+func place_player(p: Vector3) -> void:
+	lp.global_position = p
+	Net.poses[pid] = {"p": p, "c": false, "m": "play"}
 
 
 func req(action: String, args: Dictionary = {}) -> void:
-	if not args.has("eye"):
-		args["eye"] = lp.eye_position()
 	World.request(action, args)
 
 
-func stand_near(p: Vector3, offset: Vector3 = Vector3(0, 0, 0.9)) -> void:
-	var q := p + offset
-	q.y = World.terrain.height(q.x, q.z) + 0.05
-	lp.global_position = q
-	lp.velocity = Vector3.ZERO
-	await frames(3)
+func top(x: int, z: int) -> Vector3i:
+	return Vector3i(x, World.vox.surface_y(x, z), z)
 
 
-func newest(t: String) -> Dictionary:
-	var best := {}
-	for e in World.entities.values():
-		if e["t"] == t and (best.is_empty() or int(e["id"]) > int(best["id"])):
-			best = e
-	return best
+func flat_spot(x: int, z: int) -> Vector3i:
+	## A solid block with open air above it, near (x, z): its cell.
+	for r in range(0, 8):
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var c := top(x + dx, z + dz)
+				if c.y < 0:
+					continue
+				var up := c + Vector3i.UP
+				if Blocks.is_solid(World.block(c)) and Blocks.is_opaque(World.block(c)) and World.block(up + Vector3i.UP) == 0 and not World.be_at.has(up):
+					if World.block(up) != 0:
+						World.set_block(up, 0)
+					return c
+	return Vector3i(-1, -1, -1)
 
 
-func flat_stone_top() -> Vector3:
-	var fs := newest("flat_stone")
-	var v: Node = Game.game_world.entities.view(int(fs["id"]))
-	var top: float = v.work_top()
-	return Vector3(fs["xf"].origin.x, top, fs["xf"].origin.z)
+func stand_near(c: Vector3i) -> void:
+	place_player(Vector3(c) + Vector3(1.5, 1.0, 0.5))
 
 
-func ledger() -> Dictionary:
-	var L := Ledger.compute()
-	for k in Ledger.KEYS:
-		L[k] = float(L[k]) - float(injected[k])
-	return L
+func items_near(p: Vector3, r: float, id: String) -> int:
+	var n := 0
+	for e in World.entities_near(p, r, "item"):
+		if String(e["d"]["i"]) == id:
+			n += int(e["d"]["n"])
+	return n
 
 
-func ledger_same(a: Dictionary, b: Dictionary, label: String, tol: Dictionary = {}) -> void:
-	for k in Ledger.KEYS:
-		var t := float(tol.get(k, (0.00002 if k == "nutr" else 0.0001) if k != "water" else 0.01))
-		var diff := absf(float(a[k]) - float(b[k]))
-		check(diff <= t, "%s: %s conserved (%.5f -> %.5f, diff %.6f)" % [label, k, a[k], b[k], diff])
+func pickup_all(p: Vector3) -> void:
+	## Walk over everything lying around p.
+	for e in World.entities_near(p, 6.0, "item"):
+		place_player((e["xf"] as Transform3D).origin)
+		a._pickup_t = 0.0
+		a._physics_process(0.2)
+
+
+func use_on(c: Vector3i, slot: int = 0, sneak := false, face := Vector3i.UP) -> void:
+	req("use", {"c": c, "face": face, "slot": slot, "sneak": sneak})
+
+
+func hours(h: float, step: float = 0.25) -> void:
+	## Let time pass (the host's systems, without the real-time clock).
+	var t := 0.0
+	while t < h - 1e-6:
+		var dh := minf(step, h - t)
+		World.env["t"] = float(World.env["t"]) + dh
+		Game.game_world.sim._tick(dh, dh * SimDriver.DAY_SECONDS / 24.0)
+		t += dh
+
+
+func real_seconds(s: float) -> void:
+	hours(s * 24.0 / SimDriver.DAY_SECONDS, 0.5 * 24.0 / SimDriver.DAY_SECONDS)
+
+
+func count_blocks(nm: String) -> int:
+	var id := Blocks.id_of(nm)
+	return World.vox.ids.count(id)
 
 
 # ---------------------------------------------------------------------------
-# Crafting
+# Core: the island, physics, raycasts
+# ---------------------------------------------------------------------------
+
+func suite_core() -> void:
+	check(count_blocks("stone") > 4000, "plenty of rock (%d)" % count_blocks("stone"))
+	check(count_blocks("water") >= 20, "a pond (%d water)" % count_blocks("water"))
+	check(count_blocks("clay") >= 15, "clay in the banks (%d)" % count_blocks("clay"))
+	check(count_blocks("log_oak") + count_blocks("log_birch") >= 50, "trees")
+	check(count_blocks("loose_stones") >= 24, "loose stones (%d)" % count_blocks("loose_stones"))
+	check(count_blocks("loose_flint") >= 4, "flint (%d)" % count_blocks("loose_flint"))
+	check(count_blocks("loose_sticks") >= 10, "fallen sticks (%d)" % count_blocks("loose_sticks"))
+	check(count_blocks("tallgrass") > 100, "tall grass")
+	check(count_blocks("reeds") >= 6, "cattails (%d)" % count_blocks("reeds"))
+	check(count_blocks("wild_turnip") >= 3 and count_blocks("wild_flax") >= 3, "wild crops")
+	check(count_blocks("berry_bush") >= 4, "berry bushes")
+	# the islet across the gap
+	check(World.vox.surface_y(53, 13) > 30, "the islet is there")
+	check(World.vox.surface_y(47, 19) < 0 or World.vox.surface_y(46, 20) < 0, "a gap between the islands")
+	# spawn is on solid ground
+	var sp := World.spawn_point(1)
+	var below := VoxelData.cell_of(sp - Vector3(0, 0.1, 0))
+	check(Blocks.is_solid(World.block(below)), "spawn stands on ground")
+	# raycast straight down
+	var hit := World.vox.raycast(sp + Vector3(0, 3, 0), Vector3.DOWN, 10.0)
+	check(not hit.is_empty() and hit["normal"] == Vector3i.UP, "raycast down hits the ground's top face")
+	# physics: drop onto the ground
+	var body := VoxelBody.new()
+	var p := sp + Vector3(0, 3, 0)
+	for i in 120:
+		var r := body.move(World.vox, p, Vector3(0, -0.2, 0), false)
+		p = r["pos"]
+	check(absf(p.y - sp.y) < 0.05 and body.on_ground, "a falling body lands on the ground (%.2f vs %.2f)" % [p.y, sp.y])
+	# a wall stops you
+	var c := VoxelData.cell_of(p)
+	World.set_block(c + Vector3i(1, 0, 0), Blocks.id_of("dirt"))
+	World.set_block(c + Vector3i(1, 1, 0), Blocks.id_of("dirt"))
+	var start := Vector3(c.x + 0.5, p.y, c.z + 0.5)
+	var q := start
+	for i in 20:
+		q = body.move(World.vox, q, Vector3(0.1, 0, 0), false)["pos"]
+	check(q.x <= c.x + 1.0 - 0.299, "walls stop you (%.3f)" % q.x)
+	# a low step (a straw bed) is climbed on its own
+	World.set_block(c + Vector3i(1, 0, 0), Blocks.id_of("straw_bed"))
+	World.set_block(c + Vector3i(1, 1, 0), 0)
+	q = start
+	for i in 20:
+		var r2 := body.move(World.vox, q, Vector3(0.1, -0.05, 0), false)
+		q = r2["pos"]
+	check(q.x > c.x + 1.2 and q.y > start.y + 0.25, "steps up onto a low block (%.2f, %.2f)" % [q.x, q.y])
+	# farmland (15/16 high) needs a jump
+	World.set_block(c + Vector3i(1, 0, 0), Blocks.id_of("farmland"))
+	q = start
+	for i in 20:
+		q = body.move(World.vox, q, Vector3(0.1, -0.05, 0), false)["pos"]
+	check(q.x < c.x + 1.0, "a full-height step needs a jump")
+	# sneaking at the edge, you don't fall
+	var edge := _find_edge()
+	if check(edge.x >= 0, "found an edge"):
+		var ep := Vector3(edge.x + 0.5, edge.y + 1.0, edge.z + 0.5)
+		var dir := _edge_dir(edge)
+		var e2 := ep
+		for i in 40:
+			var r3 := body.move(World.vox, e2, Vector3(dir.x, 0, dir.z) * 0.1 + Vector3(0, -0.05, 0), true)
+			e2 = r3["pos"]
+		check(e2.y > edge.y + 0.9, "sneaking keeps you on the edge")
+		var e3 := ep
+		for i in 60:
+			var r4 := body.move(World.vox, e3, Vector3(dir.x, 0, dir.z) * 0.1 + Vector3(0, -0.2, 0), false)
+			e3 = r4["pos"]
+		check(e3.y < edge.y, "walking normally, you go over")
+
+
+func _find_edge() -> Vector3i:
+	for x in range(32, 63):
+		var z := 32
+		if World.vox.surface_y(x, z) >= 0 and World.vox.surface_y(x + 1, z) < 0:
+			var c := top(x, z)
+			if World.block(c + Vector3i.UP) != 0:
+				World.set_block(c + Vector3i.UP, 0)
+			return c
+	return Vector3i(-1, -1, -1)
+
+
+func _edge_dir(_c: Vector3i) -> Vector3:
+	return Vector3(1, 0, 0)
+
+
+# ---------------------------------------------------------------------------
+# Blocks: breaking, placing, trees, drops
+# ---------------------------------------------------------------------------
+
+func suite_blocks() -> void:
+	var c := flat_spot(30, 36)
+	stand_near(c)
+	var id := World.block(c)
+	req("break", {"c": c, "slot": 0})
+	check(World.block(c) == 0, "soil breaks by hand")
+	var dirt_n := items_near(Vector3(c), 2.0, "dirt")
+	check(dirt_n == 1, "it drops soil (%d)" % dirt_n)
+	pickup_all(Vector3(c))
+	check(count("dirt") == 1, "walking over it picks it up")
+	stand_near(c)
+	req("place", {"c": c, "slot": inv().find("dirt"), "face": Vector3i.UP})
+	check(World.block(c) == Blocks.id_of("dirt"), "and it can be put back")
+	check(count("dirt") == 0, "using it up")
+	# not inside yourself
+	give("dirt", 3)
+	var me := VoxelData.cell_of(lp.global_position + Vector3(0, 0.5, 0))
+	req("place", {"c": me, "slot": 0, "face": Vector3i.UP})
+	check(World.block(me) != Blocks.id_of("dirt"), "can't place a block where you stand")
+	# trees need an axe, and come down whole
+	var tree := _find_tree()
+	if check(tree.x >= 0, "found a tree"):
+		stand_near(tree)
+		clear_inv()
+		req("break", {"c": tree, "slot": 0})
+		check(Blocks.has_flag(World.block(tree), "tree"), "a trunk won't break by hand")
+		var logs := _tree_logs(tree)
+		give("axe", 1, {"mat": "flint"})
+		var dur0 := int(inv().get_slot(0)["d"]["dur"])
+		req("break", {"c": tree, "slot": 0})
+		check(World.block(tree) == 0, "the axe fells it")
+		var left := 0
+		for y in range(tree.y, tree.y + 10):
+			if Blocks.has_flag(World.block(Vector3i(tree.x, y, tree.z)), "tree"):
+				left += 1
+		check(left == 0, "the whole trunk came down (%d left)" % left)
+		var dropped := items_near(Vector3(tree), 3.0, "log_oak") + items_near(Vector3(tree), 3.0, "log_birch")
+		check(dropped == logs, "every log drops (%d of %d)" % [dropped, logs])
+		check(int(inv().get_slot(0).get("d", {}).get("dur", dur0)) < dur0, "the axe wears")
+	# grass: nothing by hand, dry grass with a knife
+	var g := _find("tallgrass")
+	if check(g.x >= 0, "found tall grass"):
+		stand_near(g)
+		clear_inv()
+		req("break", {"c": g, "slot": 0})
+		check(World.block(g) == 0 and items_near(Vector3(g), 1.5, "dry_grass") == 0, "tall grass torn by hand gives nothing")
+		var g2 := _find("tallgrass")
+		stand_near(g2)
+		give("knife", 1, {"mat": "stone"})
+		var d0 := int(inv().get_slot(0)["d"]["dur"])
+		req("break", {"c": g2, "slot": 0})
+		check(items_near(Vector3(g2), 1.5, "dry_grass") == 1, "cut with a knife: dry grass")
+		check(int(inv().get_slot(0)["d"]["dur"]) == d0 - 1, "the knife wears a little")
+	# loose things
+	var ls := _find("loose_stones")
+	stand_near(ls)
+	clear_inv()
+	req("break", {"c": ls, "slot": 0})
+	check(items_near(Vector3(ls), 1.5, "stone") >= 1, "loose stones give stones")
+	var lf := _find("loose_flint")
+	stand_near(lf)
+	req("break", {"c": lf, "slot": 0})
+	check(items_near(Vector3(lf), 1.5, "flint") == 1, "flint nodules give flint")
+	# granite is too hard
+	var st := _find("stone")
+	stand_near(st)
+	req("break", {"c": st, "slot": 0})
+	check(World.block(st) == Blocks.id_of("stone"), "granite can't be broken with stone tools")
+	# gravel falls
+	var f := flat_spot(22, 26)
+	World.set_block(f + Vector3i(0, 1, 0), Blocks.id_of("dirt"))
+	World.set_block(f + Vector3i(0, 2, 0), Blocks.id_of("gravel"))
+	World.set_block(f + Vector3i(0, 3, 0), 0)
+	stand_near(f + Vector3i(0, 1, 0))
+	clear_inv()
+	req("break", {"c": f + Vector3i(0, 1, 0), "slot": 0})
+	check(World.block(f + Vector3i(0, 1, 0)) == Blocks.id_of("gravel"), "gravel falls into the gap")
+	# plants go with the ground under them
+	var pl := _find("flower_red")
+	if pl.x >= 0:
+		stand_near(pl)
+		req("break", {"c": pl + Vector3i.DOWN, "slot": 0})
+		check(World.block(pl) == 0, "a flower goes when the soil under it is dug")
+	# saplings need soil
+	give("sapling_oak", 2)
+	var rock := _find_top("stone")
+	if rock.x >= 0:
+		stand_near(rock)
+		req("place", {"c": rock + Vector3i.UP, "slot": 0, "face": Vector3i.UP})
+		check(World.block(rock + Vector3i.UP) != Blocks.id_of("sapling_oak"), "a sapling won't grow on rock")
+	var soil := flat_spot(26, 33)
+	stand_near(soil)
+	if Blocks.name_of(World.block(soil)) in ["grass", "dirt"]:
+		req("place", {"c": soil + Vector3i.UP, "slot": 0, "face": Vector3i.UP})
+		check(World.block(soil + Vector3i.UP) == Blocks.id_of("sapling_oak"), "a sapling planted in soil")
+	# logs placed against a wall lie sideways
+	give("log_oak", 2)
+	var w := flat_spot(34, 40)
+	place_player(Vector3(w) + Vector3(-1.5, 1.0, 0.5))
+	World.set_block(w + Vector3i(0, 1, 0), Blocks.id_of("dirt"))
+	req("place", {"c": w + Vector3i(1, 1, 0), "slot": 0, "face": Vector3i(1, 0, 0)})
+	check(World.block(w + Vector3i(1, 1, 0)) == Blocks.id_of("log_oak") and World.block_meta(w + Vector3i(1, 1, 0)) & 3 == 1, "a log placed on a side lies along that axis")
+	# out of reach
+	var far := flat_spot(20, 22)
+	place_player(Vector3(40, 46, 40))
+	clear_inv()
+	req("break", {"c": far, "slot": 0})
+	check(World.block(far) != 0, "can't break things far away")
+
+
+func _find(nm: String) -> Vector3i:
+	var id := Blocks.id_of(nm)
+	for z in range(10, 54):
+		for x in range(10, 54):
+			var h := World.vox.column_height(x, z)
+			for y in range(maxi(h - 12, 0), mini(h + 3, VoxelData.SY)):
+				if World.vox.get_id(x, y, z) == id:
+					return Vector3i(x, y, z)
+	return Vector3i(-1, -1, -1)
+
+
+func _find_top(nm: String) -> Vector3i:
+	var id := Blocks.id_of(nm)
+	for z in range(10, 54):
+		for x in range(10, 54):
+			var y := World.vox.surface_y(x, z)
+			if y >= 0 and World.vox.get_id(x, y, z) == id and World.block(Vector3i(x, y + 1, z)) == 0:
+				return Vector3i(x, y, z)
+	return Vector3i(-1, -1, -1)
+
+
+func _find_tree() -> Vector3i:
+	for p in IslandGen.OAKS:
+		for y in range(30, 60):
+			var c := Vector3i(p.x, y, p.y)
+			if Blocks.has_flag(World.block(c), "tree") and not Blocks.has_flag(World.block(c + Vector3i.DOWN), "tree"):
+				return c
+	return Vector3i(-1, -1, -1)
+
+
+func _tree_logs(base: Vector3i) -> int:
+	var n := 0
+	var y := base.y
+	while Blocks.has_flag(World.block(Vector3i(base.x, y, base.z)), "tree"):
+		n += 1
+		y += 1
+	return n
+
+
+# ---------------------------------------------------------------------------
+# Crafting: knapping, the grid, the inventory screen, clay
 # ---------------------------------------------------------------------------
 
 func suite_craft() -> void:
-	var L0 := ledger()
-	await test_knap_blade()
-	await test_knap_axe_and_haft()
-	await test_cordage()
-	await test_clay_and_pottery()
-	var L1 := ledger()
-	ledger_same(L0, L1, "crafting")
-	await test_outcrop()
-	var L2 := ledger()
-	ledger_same(L1, L2, "outcrop")
-	await test_wood()
-	ledger_same(L2, ledger(), "wood")
-
-
-func _tree() -> Dictionary:
-	return World.entities_of("tree")[0]
-
-
-func _under(part: String) -> void:
-	## Stand beneath a branch so it is within reach.
-	var v: Node = Game.game_world.entities.view(int(_tree()["id"]))
-	var tip: Vector3 = v.interaction_point(part)
-	var foot := Vector3(tip.x, 0, tip.z) + (Vector3(tip.x, 0, tip.z) - Vector3(_tree()["xf"].origin.x, 0, _tree()["xf"].origin.z)).normalized() * 0.4
-	foot.y = World.terrain.height(foot.x, foot.z) + 0.05
-	lp.global_position = foot
-	lp.velocity = Vector3.ZERO
-	await frames(2)
-
-
-func test_wood() -> void:
-	print("-- wood: a branch, a limb, the trunk, and a log split into boards")
-	give("blade", 1, {"seed": 5, "cuts": [], "q": 0.8, "stone_kg": 0.3, "dur": 1.0})
-	give("axe", 1, {"q": 0.85, "dur": 1.0, "bind": 0.9, "cords": 1, "head": {"stone_kg": 0.3}})
-	var tid := int(_tree()["id"])
-	var d: Dictionary = _tree()["d"]
-	var si := -1
-	for i in TreeSim.SMALL:
-		if float(d["sb"][i]) >= 0.98:
-			si = i
-			break
-	check(si != -1, "the tree has a grown branch to cut")
-	if si == -1:
-		return
-	await _under("sb:%d" % si)
-	var branches0 := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "branch").size()
-	for k in 8:
-		req("tree_cut", {"eid": tid, "part": "sb:%d" % si, "slot": slot_of("blade")})
-		await frames(1)
-	var branches := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "branch")
-	check(branches.size() == branches0 + 1, "a few cuts with the blade bring a branch down")
-	if branches.size() > branches0:
-		var b: Dictionary = branches[branches.size() - 1]
-		await stand_near(b["xf"].origin, Vector3(0, 0, 0.8))
-		for k in 4:
-			if World.has_entity(int(b["id"])):
-				req("process", {"eid": int(b["id"]), "slot": slot_of("blade")})
-				await frames(1)
-		check(not World.has_entity(int(b["id"])) and not items_near(b["xf"].origin, "stick", 1.2).is_empty(), "cut up into sticks, twigs and leaves")
-	# a limb needs an axe
-	var lj := -1
-	for j in TreeSim.LARGE:
-		if float(_tree()["d"]["lb"][j]) >= 0.98:
-			lj = j
-			break
-	if lj != -1:
-		await _under("lb:%d" % lj)
-		var limbs0 := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "limb").size()
-		req("tree_chop_limb", {"eid": tid, "part": "lb:%d" % lj, "slot": slot_of("blade")})
-		await frames(1)
-		check(float(_tree()["d"]["lhp"][lj]) >= 0.999, "a blade can't chop a limb")
-		for k in 14:
-			req("tree_chop_limb", {"eid": tid, "part": "lb:%d" % lj, "slot": slot_of("axe")})
-			await frames(1)
-		var limbs := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "limb")
-		check(limbs.size() == limbs0 + 1, "the axe takes a limb down")
-	# the trunk
-	var base: Vector3 = _tree()["xf"].origin
-	await stand_near(base, Vector3(1.3, 0, 0.0))
-	var blows := 0
-	while not bool(_tree()["d"].get("felled", false)) and blows < 60:
-		req("tree_fell", {"eid": tid, "slot": slot_of("axe")})
-		await frames(1)
-		blows += 1
-	check(bool(_tree()["d"].get("felled", false)), "the great tree comes down after %d blows" % blows)
-	check(World.discoveries.has("tree_felled"), "and the island journal remembers it")
-	var logs := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "log")
-	check(logs.size() >= 1, "it lies as %d logs" % logs.size())
-	if not logs.is_empty():
-		var lg: Dictionary = logs[0]
-		await stand_near(lg["xf"].origin, Vector3(0, 0, 1.0))
-		var lx: Transform3D = lg["xf"]
-		var boards0 := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) in ["board", "wood_piece", "firewood"]).size()
-		# strike down the middle, then keep splitting what comes off it
-		req("split", {"eid": int(lg["id"]), "pos": lx * Vector3(0, 0.16, 0), "slot": slot_of("axe")})
-		await frames(2)
-		for round in 6:
-			for e in World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "wood_piece"):
-				await stand_near(e["xf"].origin, Vector3(0, 0, 1.0))
-				req("split", {"eid": int(e["id"]), "pos": e["xf"] * Vector3(0, 0.08, 0), "slot": slot_of("axe")})
-				await frames(1)
-		var out := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) in ["board", "firewood"])
-		check(out.size() > 0, "splitting gives boards and firewood (%d pieces)" % out.size())
-	# the roots are alive
-	var bio0 := TreeSim.biomass(_tree()["d"])
-	await sim_hours(36.0)
-	check(TreeSim.biomass(_tree()["d"]) > bio0, "a sapling grows back from the roots (%.1f -> %.1f kg)" % [bio0, TreeSim.biomass(_tree()["d"])])
-
-
-func test_outcrop() -> void:
-	print("-- the outcrop: pry stones, break more loose, let the weather crack them free")
-	var oc: Dictionary = World.entities_of("outcrop")[0]
-	var oid := int(oc["id"])
-	var v: Node = Game.game_world.entities.view(oid)
-	var taken := 0
-	for i in 8:
-		if int(World.get_entity(oid)["d"]["loose"][i]) == 0:
-			continue
-		var at: Vector3 = v.interaction_point("loose:%d" % i)
-		var away := Vector3(at.x - oc["xf"].origin.x, 0, at.z - oc["xf"].origin.z).normalized()
-		await stand_near(at + away * 1.0, Vector3.ZERO)
-		var before := inv().count("stone")
-		req("outcrop_take", {"eid": oid, "idx": i})
-		await frames(1)
-		taken += inv().count("stone") - before
-	check(not World.get_entity(oid)["d"]["loose"].has(1), "every loose stone pried free (%d)" % taken)
-	var rock0 := float(World.get_entity(oid)["d"].get("rock", 0.0))
-	await stand_near(oc["xf"].origin, Vector3(1.6, 0, 0.6))
-	var blows := 0
-	while not World.get_entity(oid)["d"]["loose"].has(1) and blows < 12:
-		req("outcrop_break", {"eid": oid, "slot": slot_of("stone")})
-		await frames(1)
-		blows += 1
-	check(World.get_entity(oid)["d"]["loose"].has(1), "a stone breaks free of the rock after %d blows" % blows)
-	check(absf(rock0 - float(World.get_entity(oid)["d"]["rock"]) - ItemDB.unit_mass("stone")) < 1e-4, "it came out of the outcrop's own rock")
-	var n_loose := 0
-	for l in World.get_entity(oid)["d"]["loose"]:
-		n_loose += int(l)
-	for i in 8:
-		OutcropSim.tick(10.0)
-	var n2 := 0
-	for l in World.get_entity(oid)["d"]["loose"]:
-		n2 += int(l)
-	check(n2 == n_loose + 2, "and frost and sun crack more loose over the days (%d -> %d)" % [n_loose, n2])
-
-
-func _work() -> Dictionary:
-	## My newest work in progress (older ones may lie about from earlier tests).
-	var best := {}
-	for e in World.entities.values():
-		if e["t"] == "work" and int(e["d"].get("by", 0)) == Net.my_id() and (best.is_empty() or int(e["id"]) > int(best["id"])):
-			best = e
-	return best
-
-
-func auto_knap(target: String) -> Dictionary:
-	## A scripted knapper: heavy blows where stone sticks out past the outline,
-	## then light taps along the working edges from both faces.
-	var w := _work()
-	if w.is_empty():
-		return {}
-	var eid := int(w["id"])
-	req("work_op", {"eid": eid, "op": ["target", target]})
-	await frames(2)
-	var p := Knap.params(int(w["d"]["seed"]))
-	var tgt := Knap.target_poly(p, target)
-	for round_i in 6:
-		for step in 40:
-			w = World.get_entity(eid)
-			if w.is_empty():
-				return {}
-			var cuts: Array = w["d"]["cuts"]
-			var ang := step * TAU / 40.0
-			var dir := Vector2(cos(ang), sin(ang))
-			var edge := Knap.outline_point(p, cuts, dir)
-			var t_edge := _poly_reach(tgt, dir)
-			var excess := edge.length() - t_edge
-			if excess > 0.0025:
-				var power := clampf((excess - 0.001) / 0.016, 0.12, 0.65)
-				req("work_op", {"eid": eid, "op": ["strike", edge.x, edge.y, power]})
-				await frames(1)
-		# work the other face too (bifacial)
-		req("work_op", {"eid": eid, "op": ["flip"]})
-		await frames(2)
-	# sharpen the working edges from both faces
-	for face in 2:
-		w = World.get_entity(eid)
-		if w.is_empty():
-			return {}
-		for seg in Knap.TARGETS[target]["edge"]:
-			for k in 7:
-				w = World.get_entity(eid)
-				var pa := Vector2(seg[0][0] * p["a"] * 0.95, seg[0][1] * p["b"] * 0.95)
-				var pb := Vector2(seg[1][0] * p["a"] * 0.95, seg[1][1] * p["b"] * 0.95)
-				var q := pa.lerp(pb, (k + 0.5) / 7.0)
-				var e2 := Knap.outline_point(p, w["d"]["cuts"], q.normalized())
-				req("work_op", {"eid": eid, "op": ["strike", e2.x, e2.y, 0.05]})
-				await frames(1)
-		req("work_op", {"eid": eid, "op": ["flip"]})
-		await frames(2)
-	w = World.get_entity(eid)
-	return Knap.evaluate(int(w["d"]["seed"]), w["d"]["cuts"], target)
-
-
-func _poly_reach(poly: PackedVector2Array, dir: Vector2) -> float:
-	var r := 0.0
-	while r < 0.15 and Geometry2D.is_point_in_polygon(dir * (r + 0.001), poly):
-		r += 0.001
-	return r
-
-
-func test_knap_blade() -> void:
-	seed(1717)
-	print("-- knapping a blade")
-	give("stone", 2)
-	var top := flat_stone_top()
-	await stand_near(top, Vector3(0, 0, 0.8))
-	var s := slot_of("stone")
-	req("work_start", {"kind": "knap", "surface": int(newest("flat_stone")["id"]), "pos": top + Vector3(-0.1, 0, 0), "slot": s})
-	await frames(3)
-	var w := _work()
-	check(not w.is_empty(), "knapping workpiece created on the flat stone")
-	check(inv().count("stone") == 1, "one stone taken into the work, one kept as hammer")
-	var ev := await auto_knap("blade")
-	print("     evaluation: ", ev)
-	check(float(ev.get("q", 0.0)) > 0.35, "scripted knapping reaches a usable blade (q=%.2f)" % float(ev.get("q", 0.0)))
-	req("work_finish", {"eid": int(_work()["id"])})
-	await frames(3)
-	check(_work().is_empty(), "workpiece consumed on finish")
-	check(inv().count("blade") == 1 or inv().count("stone_head") == 1, "finished knapping yields a blade (or a shaped stone)")
-	check(World.pools.get("debris_stone_kg", 0.0) > 0.0, "knapping flakes accounted as debris")
-
-
-func test_knap_axe_and_haft() -> void:
-	print("-- knapping an axe head and hafting it")
-	seed(4242)
-	give("stone", 2)
-	var top := flat_stone_top()
-	await stand_near(top, Vector3(0, 0, 0.8))
-	req("work_start", {"kind": "knap", "surface": int(newest("flat_stone")["id"]), "pos": top + Vector3(0.12, 0, 0.0), "slot": slot_of("stone")})
-	await frames(3)
-	var ev := await auto_knap("axe")
-	print("     evaluation: ", ev)
-	req("work_finish", {"eid": int(_work()["id"])})
-	await frames(3)
-	var hi := inv().find_where(func(s): return s["i"] == "stone_head" and String(s["d"].get("shape", "")) == "axe")
-	check(hi >= 0, "axe head produced (q=%.2f)" % float(ev.get("q", 0.0)))
-	if hi < 0:
-		return
-	give("stick", 1)
-	give("cordage", 1)
-	req("work_start", {"kind": "haft", "surface": int(newest("flat_stone")["id"]), "pos": top + Vector3(-0.05, 0, -0.05), "slot": hi})
-	await frames(3)
-	var w := _work()
-	check(not w.is_empty() and String(w["d"]["kind"]) == "haft", "hafting workpiece created")
-	var eid := int(w["id"])
-	req("work_op", {"eid": eid, "op": ["seat", 0.205, 0.0, 0.05]})
-	await frames(2)
-	check(String(World.get_entity(eid)["d"]["stage"]) == "bind", "head seated on the handle")
-	for i in 16:
-		req("work_op", {"eid": eid, "op": ["wrap", 0.5]})
-	await frames(2)
-	for i in 5:
-		req("work_op", {"eid": eid, "op": ["tighten", 0.25]})
-	await frames(2)
-	req("work_finish", {"eid": eid})
-	await frames(3)
-	var ai := inv().find("axe")
-	check(ai >= 0, "a stone axe was assembled")
-	if ai >= 0:
-		print("     axe: ", inv().get_slot(ai)["d"].get("q"), " wraps ", inv().get_slot(ai)["d"].get("wraps"))
-
-
-func test_cordage() -> void:
-	print("-- twisting cordage")
-	give("fiber", 2)
-	var top := flat_stone_top()
-	await stand_near(top, Vector3(0, 0, 0.8))
-	var before := inv().count("cordage")
-	req("work_start", {"kind": "cordage", "surface": int(newest("flat_stone")["id"]), "pos": top + Vector3(0.0, 0, 0.12), "slot": slot_of("fiber")})
-	await frames(3)
-	var w := _work()
-	check(not w.is_empty(), "cordage workpiece created")
-	for i in 12:
-		req("work_op", {"eid": int(w["id"]), "op": ["twist", 0.1, 0.9]})
-		await frames(1)
-	await frames(2)
-	check(inv().count("cordage") == before + 1, "two fibers became one cordage")
-	# jerky, uneven strokes: the cord tends to come apart, and the fiber comes back
-	var fails := 0
-	for attempt in 5:
-		give("fiber", 2)
-		var fiber0 := inv().count("fiber")
-		var cord0 := inv().count("cordage")
-		req("work_start", {"kind": "cordage", "surface": int(newest("flat_stone")["id"]), "pos": top + Vector3(0.0, 0, 0.12), "slot": slot_of("fiber")})
-		await frames(3)
-		var w2 := _work()
-		if w2.is_empty():
-			continue
-		for i in 12:
-			req("work_op", {"eid": int(w2["id"]), "op": ["twist", 0.1, 0.05]})
-			await frames(1)
-		await frames(2)
-		if inv().count("cordage") == cord0 and inv().count("fiber") == fiber0:
-			fails += 1
-	check(fails >= 1, "an uneven twist comes apart and gives the fiber back (%d of 5)" % fails)
-
-
-func test_clay_and_pottery() -> void:
-	print("-- preparing clay and shaping a bowl")
-	give("clay", 2, {"moist": 0.17})
-	var bank := Vector3(TerrainData.POND_CENTER.x + 1.7, 0, TerrainData.POND_CENTER.y + 0.6)
-	bank.y = World.terrain.height(bank.x, bank.z)
-	await stand_near(bank, Vector3(0.4, 0, 0.4))
-	req("work_start", {"kind": "clay_prep", "surface": -1, "pos": bank, "slot": slot_of("clay")})
-	await frames(3)
-	var w := _work()
-	check(not w.is_empty(), "clay preparation started beside the pond")
-	if w.is_empty():
-		return
-	var eid := int(w["id"])
-	var pond0 := float(World.env["pond_l"])
-	for i in 6:
-		req("work_op", {"eid": eid, "op": ["water"]})
-	await frames(2)
-	check(float(World.env["pond_l"]) < pond0, "water for the clay came out of the pond")
-	for i in 9:
-		req("work_op", {"eid": eid, "op": ["knead", 0.9]})
-	await frames(2)
-	print("     clay: ", World.get_entity(eid)["d"])
-	req("work_finish", {"eid": eid})
-	await frames(3)
-	check(inv().count("clay_prepared") == 2, "two lumps of prepared clay")
-	# shape a bowl from one lump
-	var ps := slot_of("clay_prepared")
-	inv().get_slot(ps)  # noqa
-	req("work_start", {"kind": "pottery", "surface": -1, "pos": bank + Vector3(0.3, 0, 0), "slot": ps})
-	await frames(3)
-	w = _work()
-	check(not w.is_empty() and String(w["d"]["kind"]) == "pottery", "pottery workpiece created")
-	eid = int(w["id"])
-	var vol0 := float(w["d"]["pot"]["vol"])
-	for i in 8:
-		req("work_op", {"eid": eid, "op": ["hollow", 0.1 * (i + 1), 0.25 + 0.06 * i, 0.0]})
-	for i in 6:
-		req("work_op", {"eid": eid, "op": ["shape", 0.7, -0.0015, 0.0]})
-	for i in 6:
-		req("work_op", {"eid": eid, "op": ["smooth", 0.5, 0.8, 0.0]})
-	await frames(3)
-	var pot: Dictionary = World.get_entity(eid)["d"]["pot"]
-	var st := Pottery.stats(pot)
-	print("     pot stats: kind=%s cap=%.3f wall=%.4f floor=%.4f" % [st["kind"], st["capacity_l"], st["wall_mean"], st["floor_t"]])
-	check(absf(Pottery.volume(pot) - vol0) < vol0 * 0.01, "clay volume conserved while shaping (%.4f vs %.4f)" % [Pottery.volume(pot), vol0])
-	check(bool(st["hollow"]) and float(st["capacity_l"]) > 0.05, "the lump became a hollow vessel")
-	req("work_finish", {"eid": eid})
-	await frames(3)
-	var potent := {}
-	for e in World.entities.values():
-		if e["t"] == "item" and String(e["d"]["i"]) == "pot":
-			potent = e
-	check(not potent.is_empty(), "a wet pot stands where it was made")
-	if not potent.is_empty():
-		print("     pot: ", Pottery.display_name(potent["d"]["x"]), " cap ", potent["d"]["x"].get("cap"))
+	var c := flat_spot(30, 36)
+	stand_near(c)
+	var up := c + Vector3i.UP
+	give("flint", 2)
+	use_on(c, 0, true)
+	var be := World.be(up)
+	check(not be.is_empty() and be["t"] == "knap", "sneak-right-click a flint onto the ground: a knapping stone")
+	check(count("flint") == 1, "the flint left the hand")
+	req("knap_choose", {"c": up, "r": "knife_blade"})
+	be = World.be(up)
+	check(String(be["d"]["r"]) == "knife_blade", "chose the knife blade")
+	var mask: PackedByteArray = ItemDB.knapping["knife_blade"]["mask"]
+	var chips := 0
+	for i in 256:
+		if ItemDB.stone_mask[i] == 1 and mask[i] == 0:
+			req("knap", {"c": up, "i": i})
+			chips += 1
+	check(World.be(up).is_empty(), "after %d chips the blade is done" % chips)
+	var bi := inv().find("knife_blade")
+	check(bi >= 0 and String(inv().get_slot(bi)["d"].get("mat", "")) == "flint", "a flint knife blade")
+	# chipping into the shape: warned twice, then the stone splits
+	use_on(c, 0, true)
+	req("knap_choose", {"c": up, "r": "axe_head"})
+	var amask: PackedByteArray = ItemDB.knapping["axe_head"]["mask"]
+	var inside: Array = []
+	for i in 256:
+		if amask[i] == 1:
+			inside.append(i)
+	req("knap", {"c": up, "i": inside[0]})
+	req("knap", {"c": up, "i": inside[1]})
+	check(not World.be(up).is_empty() and int(World.be(up)["d"]["miss"]) == 2, "two slips are survivable")
+	req("knap", {"c": up, "i": inside[2]})
+	check(World.be(up).is_empty() and count("flint") == 0, "the third splits the stone")
+	# the crafting grid
+	clear_inv()
+	inv().set_slot(Inventory.GRID + 1, Inventory.make("knife_blade", 1, {"mat": "stone", "q": 1.0}))
+	inv().set_slot(Inventory.GRID + 4, Inventory.make("stick", 1))
+	req("inv_click", {"slot": Actions.OUTPUT, "button": 0, "shift": false})
+	var cur := inv().get_slot(Inventory.CURSOR)
+	check(String(cur.get("i", "")) == "knife" and String(cur["d"].get("mat", "")) == "stone" and int(cur["d"].get("dur", 0)) == ItemDB.max_durability("knife", {"mat": "stone"}), "blade over stick makes a stone knife")
+	check(inv().is_empty_slot(Inventory.GRID + 1) and inv().is_empty_slot(Inventory.GRID + 4), "the ingredients are used")
+	req("inv_click", {"slot": 3, "button": 0})
+	check(inv().item_at(3) == "knife" and inv().is_empty_slot(Inventory.CURSOR), "put the knife down in a slot")
+	# anywhere in the grid
+	inv().set_slot(Inventory.GRID + 5, Inventory.make("axe_head", 1, {"mat": "flint"}))
+	inv().set_slot(Inventory.GRID + 8, Inventory.make("stick", 1))
+	check(String(a.craft_preview(inv()).get("i", "")) == "axe", "the pattern can sit anywhere in the grid")
+	req("inv_click", {"slot": Actions.OUTPUT, "button": 0, "shift": true})
+	check(count("axe") == 1, "shift-click crafts straight into the inventory")
+	# shapeless
+	clear_inv()
+	inv().set_slot(Inventory.GRID + 0, Inventory.make("plant_fiber", 1))
+	inv().set_slot(Inventory.GRID + 4, Inventory.make("plant_fiber", 1))
+	inv().set_slot(Inventory.GRID + 8, Inventory.make("plant_fiber", 1))
+	req("inv_click", {"slot": Actions.OUTPUT, "button": 0, "shift": true})
+	check(count("twine") == 1, "three fibers anywhere make twine")
+	inv().set_slot(Inventory.GRID + 2, Inventory.make("stick", 2))
+	inv().set_slot(Inventory.GRID + 3, Inventory.make("twine", 1))
+	inv().set_slot(Inventory.GRID + 6, Inventory.make("stick", 1))
+	inv().set_slot(Inventory.GRID + 7, Inventory.make("dirt", 1))
+	check(a.craft_preview(inv()).is_empty(), "not a bow drill with a stray extra stack")
+	inv().set_slot(Inventory.GRID + 7, {})
+	req("inv_click", {"slot": Actions.OUTPUT, "button": 0, "shift": true})
+	check(count("firestarter") == 1, "two sticks and twine make a bow drill")
+	# firewood with an axe: the axe stays and wears
+	clear_inv()
+	inv().set_slot(Inventory.GRID + 0, Inventory.make("log_oak", 3))
+	inv().set_slot(Inventory.GRID + 1, Inventory.make("axe", 1, {"mat": "flint", "dur": 10}))
+	req("inv_click", {"slot": Actions.OUTPUT, "button": 0, "shift": true})
+	check(count("firewood") == 12, "three logs split into twelve firewood (%d)" % count("firewood"))
+	check(int(inv().get_slot(Inventory.GRID + 1).get("d", {}).get("dur", 0)) == 7, "the axe lost three uses")
+	check(inv().is_empty_slot(Inventory.GRID + 0), "the logs are used")
+	# the inventory screen: pick up, split, shift, close
+	clear_inv()
+	give("stick", 10, {}, 0)
+	req("inv_click", {"slot": 0, "button": 1})
+	check(int(inv().get_slot(Inventory.CURSOR).get("n", 0)) == 5 and int(inv().get_slot(0)["n"]) == 5, "right click takes half")
+	req("inv_click", {"slot": 1, "button": 1})
+	check(int(inv().get_slot(1).get("n", 0)) == 1 and int(inv().get_slot(Inventory.CURSOR)["n"]) == 4, "right click puts one down")
+	req("inv_click", {"slot": Inventory.GRID + 4, "button": 0})
+	check(int(inv().get_slot(Inventory.GRID + 4).get("n", 0)) == 4, "the rest into the grid")
+	req("inv_click", {"slot": 0, "button": 0, "shift": true})
+	check(inv().is_empty_slot(0) and count("stick") == 6, "shift-click moves a stack from the hotbar into the backpack")
+	req("inv_close")
+	check(count("stick") == 10 and inv().is_empty_slot(Inventory.GRID + 4), "closing the screen puts the grid back in your inventory")
+	# clay forming: a bowl
+	clear_inv()
+	give("clay", 6)
+	stand_near(c)
+	use_on(c, 0, true)
+	be = World.be(up)
+	check(not be.is_empty() and be["t"] == "clay", "clay set down to shape")
+	req("clay_choose", {"c": up, "r": "bowl"})
+	var layers: Array = ItemDB.clayforming["bowl"]["layers"]
+	var total := 0
+	for l in layers.size():
+		var cells := PackedInt32Array()
+		for i in 256:
+			if (layers[l] as PackedByteArray)[i] == 1:
+				cells.append(i)
+		total += cells.size()
+		# one wrong cell, then take it away again
+		if l == 0:
+			req("clay", {"c": up, "cells": PackedInt32Array([0]), "add": true})
+			req("clay", {"c": up, "cells": PackedInt32Array([0]), "add": false})
+		req("clay", {"c": up, "cells": cells, "add": true})
+		if l < layers.size() - 1:
+			check(int(World.be(up)["d"]["layer"]) == l + 1, "layer %d done, on to the next" % (l + 1))
+	check(World.be(up).is_empty() and count("bowl_raw") == 1, "the bowl is shaped (%d cells)" % total)
+	var used := 6 - count("clay")
+	check(used == int(ceil(total / 32.0)), "it used %d lumps of clay (%d cells)" % [used, total])
+	# not enough clay: it stops and says so
+	clear_inv()
+	give("clay", 1)
+	use_on(c, 0, true)
+	req("clay_choose", {"c": up, "r": "jar"})
+	var jl: PackedByteArray = ItemDB.clayforming["jar"]["layers"][0]
+	var all := PackedInt32Array()
+	for i in 256:
+		if jl[i] == 1:
+			all.append(i)
+	req("clay", {"c": up, "cells": all, "add": true})
+	var placed := (World.be(up)["d"]["vox"] as PackedByteArray).count(1)
+	check(placed == 32, "one lump goes 32 cells far (%d)" % placed)
+	req("break", {"c": up, "slot": 0})
+	check(count("clay") == 1 and World.be(up).is_empty(), "picking it up gives the clay back")
 
 
 # ---------------------------------------------------------------------------
 # Fire
 # ---------------------------------------------------------------------------
 
-func ground(p: Vector2) -> Vector3:
-	return Vector3(p.x, World.terrain.height(p.x, p.y), p.y)
-
-
-func place(id: String, n: int, x: Dictionary, pos: Vector3) -> int:
-	## Test-only: conjure an item lying at pos (recorded for the ledger checks).
-	var eid: int = World.actions.spawn_item(id, n, x.duplicate(true), pos + Vector3(0, 0.25, 0))
-	Ledger._add(injected, Ledger.item_contrib(id, n, x))
-	return eid
-
-
-func run_fire(hours: float) -> void:
-	## Fast-forward the fires (the rest of the island keeps its own time).
-	var steps := int(ceil(hours / 0.01))
-	for i in steps:
-		FireSim.tick(0.01, 0.5)
-		if i % 8 == 0:
-			await get_tree().physics_frame
-
-
-func site_near(p: Vector3) -> Dictionary:
-	var sid := FireSim.site_at(p)
-	return World.get_entity(sid) if sid != -1 else {}
-
-
-func _count_near(p: Vector3, id: String, r: float) -> int:
-	var n := 0
-	for e in items_near(p, id, r):
-		n += int(e["d"].get("n", 1))
-	return n
-
-
-func items_near(p: Vector3, id: String, r: float = 0.8) -> Array:
-	var out: Array = []
-	for e in World.entities_near(p, r, "item"):
-		if String(e["d"].get("i", "")) == id:
-			out.append(e)
-	return out
-
-
-func ledger_parts() -> Dictionary:
-	## Debug: where the conserved quantities sit, by store.
-	var parts := {}
-	for k in World.pools:
-		if World.pools[k] is float or World.pools[k] is int:
-			parts["pool:" + k] = float(World.pools[k])
-	for e in World.entities.values():
-		var key := "ent:" + String(e["t"]) + ("" if e["t"] != "item" else ":" + String(e["d"].get("i", "")))
-		var c := Ledger.entity_contrib(e)
-		if not parts.has(key + ":c"):
-			parts[key + ":c"] = 0.0
-			parts[key + ":n"] = 0.0
-		parts[key + ":c"] += float(c["carbon"])
-		parts[key + ":n"] += float(c["nutr"])
-	var inv_c := 0.0
-	var inv_n := 0.0
-	for pid in World.inventories:
-		for sl in World.inventories[pid].slots:
-			if not sl.is_empty():
-				var c2 := Ledger.item_contrib(String(sl["i"]), int(sl["n"]), sl["d"])
-				inv_c += float(c2["carbon"])
-				inv_n += float(c2["nutr"])
-	parts["inv:c"] = inv_c
-	parts["inv:n"] = inv_n
-	parts["terrain:n"] = World.terrain.total_nutrients()
-	parts["inj:c"] = float(injected["carbon"])
-	parts["inj:n"] = float(injected["nutr"])
-	return parts
-
-
-func print_parts_diff(a: Dictionary, b: Dictionary) -> void:
-	var keys := a.keys()
-	for k in b:
-		if not keys.has(k):
-			keys.append(k)
-	for k in keys:
-		var d := float(b.get(k, 0.0)) - float(a.get(k, 0.0))
-		if absf(d) > 0.00005 and not String(k).contains("water"):
-			print("       %-40s %+.5f" % [k, d])
+func _firepit(c: Vector3i, sticks: int, tinder: int, logs: int = 0) -> Dictionary:
+	stand_near(c)
+	clear_inv()
+	give("stick", sticks + 1, {}, 0)
+	give("dry_grass", tinder + 1, {}, 1)
+	give("firewood", logs + 1, {}, 2)
+	use_on(c, 0, true)
+	var up := c + Vector3i.UP
+	for i in sticks - 1:
+		use_on(up, 0)
+	for i in tinder:
+		use_on(up, 1)
+	for i in logs:
+		use_on(up, 2)
+	return World.be(up)
 
 
 func suite_fire() -> void:
-	print("-- fire physics: reference arrangements")
-	for line in FireBench.run_all():
-		check(String(line).begins_with("ok"), String(line).substr(5))
-	var L0 := ledger()
-	await test_campfire()
-	var La := ledger()
-	ledger_same(L0, La, "campfire", {"water": 0.05})
-	await test_pit_firing()
-	var Lb := ledger()
-	ledger_same(La, Lb, "pit firing", {"water": 0.05})
-	await test_charcoal_mound()
-	var Lc := ledger()
-	ledger_same(Lb, Lc, "charcoal mound", {"water": 0.05})
-	await test_fire_drill()
-	var L1 := ledger()
-	ledger_same(Lc, L1, "fire drill", {"water": 0.05})
-
-
-func lay_campfire(c: Vector3, firewood: int = 3) -> int:
-	var tinder := place("straw", 3, {"moist": 0.08}, c)
-	place("twig", 6, {"moist": 0.1}, c + Vector3(0.07, 0, 0.03))
-	place("stick", 3, {"moist": 0.15}, c + Vector3(-0.06, 0, 0.05))
-	for i in firewood:
-		var a := i * TAU / maxf(firewood, 1)
-		place("firewood", 1, {"moist": 0.15}, c + Vector3(cos(a) * 0.13, 0, sin(a) * 0.13))
-	return tinder
-
-
-func test_campfire() -> void:
-	print("-- a campfire: tinder, kindling, sticks and firewood")
-	var c := ground(Vector2(-0.6, 2.4))
-	await stand_near(c, Vector3(0, 0, 1.2))
-	var tinder := lay_campfire(c)
-	await frames(4)
-	check(FireSim.ignite(tinder, 620.0), "the tinder takes the flame")
-	await run_fire(0.4)
-	var site := site_near(c)
-	check(not site.is_empty(), "a fire site formed around the lay")
-	if site.is_empty():
-		return
-	var sid := int(site["id"])
-	print("     after 24 min: ", FireSim.describe(site["d"]).replace("\n", " / "), "  T=", site["d"].get("T"), " heat=", site["d"].get("heat"), "kW")
-	check(bool(site["d"].get("lit", false)), "the fire is burning")
-	check(int(site["d"].get("peak", 0)) > 550, "it got hot (peak %d C)" % int(site["d"].get("peak", 0)))
-	var warm := Climate.temp_at(Game.game_world.get_world_3d(), c + Vector3(1.0, 0, 0), FireSim.heat_sources())
-	var cold := Climate.temp_at(Game.game_world.get_world_3d(), c + Vector3(1.0, 0, 0), [])
-	check(float(warm["temp"]) > float(cold["temp"]) + 3.0, "it warms someone a metre away (%.1f vs %.1f C)" % [warm["temp"], cold["temp"]])
-	# roast a tuber at the edge
-	var tub := place("tuber", 1, {}, c + Vector3(0.24, 0, -0.05))
-	var roasted_at := -1.0
-	for i in 20:
-		await run_fire(0.05)
-		var te := World.get_entity(tub)
-		if te.is_empty():
-			break
-		if String(te["d"]["i"]) == "tuber_roasted":
-			roasted_at = (i + 1) * 0.05
-			break
-	var tr := World.get_entity(tub)
-	print("     tuber: roasted after %.2f h, %s" % [roasted_at, tr["d"] if not tr.is_empty() else "gone"])
-	check(roasted_at > 0.15, "a tuber at the fire's edge roasted, taking its time (%.2f h)" % roasted_at)
-	if not tr.is_empty():
-		req("pickup", {"eid": tub})
-		await frames(2)
-	check(inv().count("tuber_roasted") == 1, "picked the roasted tuber out of the fire")
-	# two more, roasted together: all three share one slot in the pack
-	var more := [place("tuber", 1, {}, c + Vector3(0.24, 0, 0.06)), place("tuber", 1, {}, c + Vector3(-0.24, 0, 0.04))]
-	for i in 30:
-		await run_fire(0.05)
-		var done := true
-		for m in more:
-			if World.has_entity(m) and String(World.get_entity(m)["d"]["i"]) != "tuber_roasted":
-				done = false
-		if done:
-			break
-	for m in more:
-		if World.has_entity(m):
-			req("pickup", {"eid": m})
-			await frames(2)
-	var slots_used := 0
-	for sl in inv().slots:
-		if not sl.is_empty() and String(sl["i"]) == "tuber_roasted":
-			slots_used += 1
-	check(inv().count("tuber_roasted") == 3 and slots_used == 1, "roasted food stacks (%d tubers in %d slot)" % [inv().count("tuber_roasted"), slots_used])
-	# carry fire on a stick and light a second fire with it
-	give("stick", 1)
-	req("fire_torch", {"eid": sid, "slot": slot_of("stick")})
-	await frames(3)
-	check(inv().count("torch") == 1, "a stick lit from the fire becomes a burning stick")
-	var c2 := ground(Vector2(0.8, 3.3))
-	var straw2 := place("straw", 2, {"moist": 0.08}, c2)
-	place("twig", 6, {"moist": 0.1}, c2 + Vector3(0.05, 0, 0.02))
-	await frames(4)
-	await stand_near(c2, Vector3(0, 0, 1.0))
-	req("ignite", {"eid": straw2, "slot": slot_of("torch")})
-	await frames(3)
-	await run_fire(0.1)
-	var s2 := site_near(c2)
-	check(not s2.is_empty() and bool(s2["d"].get("lit", false)), "the burning stick lit a second fire")
-	# lay the burning stick in the new fire for a while, then take it back out
-	var hp0 := float(World.stats[Net.my_id()]["health"])
-	req("place", {"slot": slot_of("torch"), "xf": Transform3D(Basis(), c2 + Vector3(0.12, 0.03, 0.0))})
-	await frames(2)
-	var tid := -1
-	for e in items_near(c2, "torch"):
-		tid = int(e["id"])
-	check(tid != -1, "the burning stick lies in the second fire")
-	if tid != -1:
-		await run_fire(0.08)
-		var Lt := ledger()
-		req("pickup", {"eid": tid})
-		await frames(2)
-		var ts: Dictionary = inv().slots[slot_of("torch")] if slot_of("torch") != -1 else {}
-		check(not ts.is_empty() and not ts["d"].has("fm") and float(ts["d"].get("mass", 1.0)) < ItemDB.unit_mass("stick"),
-			"taken back out, it burns on in the hand with what the fire left of it")
-		check(float(World.stats[Net.my_id()]["health"]) >= hp0, "a burning stick is picked up by its cold end")
-		for i in 160:
-			FireSim._torches(60.0)
-		check(slot_of("torch") == -1, "...until it burns out")
-		ledger_same(Lt, ledger(), "a burning stick carried after a spell in the fire")
-	# let everything burn out
-	await run_fire(5.0)
-	site = World.get_entity(sid)
-	check(not site.is_empty(), "the fire pit remains after the fire")
-	if not site.is_empty():
-		var wood := 0
-		for e in items_near(c, "firewood"):
-			wood += 1
-			print("     left: ", e["d"])
-		var charred := items_near(c, "charred_wood")
-		print("     %d charred ends left" % charred.size())
-		print("     burnt out: ", FireSim.describe(site["d"]).replace("\n", " / "), "  ash_n=%.4f ash_c=%.4f" % [float(site["d"]["ash_n"]), float(site["d"]["ash_c"])])
-		check(not bool(site["d"].get("lit", false)), "the fire has gone out")
-		check(wood == 0, "no unburnt firewood is left: what's left is charred")
-		check(float(site["d"].get("ash_n", 0.0)) > 0.0, "ash holds the wood's minerals")
-
-
-func make_pot(moist: float) -> Dictionary:
-	var pot := Pottery.new_lump(Pottery.LUMP_L * 2.0, 0.22, 4242)
-	for i in 8:
-		Pottery.apply_op(pot, ["hollow", 0.1 * (i + 1), 0.25 + 0.06 * i, 0.0])
-	for i in 6:
-		Pottery.apply_op(pot, ["shape", 0.7, -0.0015, 0.0])
-	for i in 6:
-		Pottery.apply_op(pot, ["smooth", 0.5, 0.8, 0.0])
-	Pottery.finalize(pot)
-	pot["moist"] = moist
-	pot["state"] = Pottery.moisture_state(moist)
-	pot["risk"] = 0.02
-	return pot
-
-
-func test_pit_firing() -> void:
-	print("-- firing pottery: pots in the fuel, half buried in earth")
-	var c := ground(Vector2(3.0, 0.2))
-	await stand_near(c, Vector3(0, 0, 1.3))
-	var p1 := place("pot", 1, make_pot(0.03), c + Vector3(0.05, 0, 0.0))
-	var p2 := place("pot", 1, make_pot(0.03), c + Vector3(-0.08, 0, 0.06))
-	var tinder := lay_campfire(c, 6)
-	await frames(4)
-	FireSim.ignite(tinder, 620.0)
-	await run_fire(0.3)
-	var site := site_near(c)
-	check(not site.is_empty() and bool(site["d"].get("lit", false)), "the kiln fire is burning")
-	if site.is_empty():
-		return
-	var sid := int(site["id"])
-	# bank earth around the lower half
-	give("earth", 5)
-	var rr := FireSim.dome_radii(site["d"])
-	for i in 5:
-		var a := i * TAU / 5.0
-		var pos := c + Vector3(cos(a) * rr.x, 0.08, sin(a) * rr.x)
-		req("fire_cover", {"eid": sid, "pos": pos, "slot": slot_of("earth")})
-		await frames(2)
-	await frames(4)
-	site = World.get_entity(sid)
-	print("     enclosure %.2f, open %.3f m2" % [float(site["d"].get("encl", 0.0)), float(site["d"].get("open", 0.0))])
-	await run_fire(4.0)
-	var fired := 0
-	var cracked := 0
-	for pid in [p1, p2]:
-		var e := World.get_entity(pid)
-		if e.is_empty():
-			continue
-		var st := String(e["d"]["x"].get("state", ""))
-		print("     pot: %s  peak %d C" % [st, int(float(e["d"]["x"].get("fpk", 0.0)))])
-		if st == "fired":
-			fired += 1
-		elif st == "cracked":
-			cracked += 1
-	check(fired + cracked == 2 and fired >= 1, "the pots fired (%d fired, %d cracked)" % [fired, cracked])
-	# dig out the earth again
-	site = World.get_entity(sid)
-	var guard := 0
-	while not site.is_empty() and float(site["d"].get("shell_l", 0.0)) > 0.0 and guard < 12:
-		req("fire_uncover", {"eid": sid, "pos": c + Vector3(rr.x, 0.1, 0)})
-		await frames(2)
-		site = World.get_entity(sid)
-		guard += 1
-	check(site.is_empty() or float(site["d"].get("shell_l", 0.0)) <= 0.0, "the earth bank was dug away again")
-
-
-func test_charcoal_mound() -> void:
-	print("-- a charcoal mound: light it, cover it, vent it, seal it, wait")
-	var c := ground(Vector2(1.6, 4.0))
-	await stand_near(c, Vector3(0, 0, 1.4))
-	var tinder := place("straw", 3, {"moist": 0.08}, c)
-	place("twig", 6, {"moist": 0.1}, c + Vector3(0.05, 0, 0.0))
-	place("twig", 6, {"moist": 0.1}, c + Vector3(-0.05, 0, 0.02))
-	place("stick", 3, {"moist": 0.15}, c + Vector3(0.0, 0, 0.07))
-	place("stick", 3, {"moist": 0.15}, c + Vector3(0.0, 0, -0.07))
-	for i in 9:
-		var a := i * TAU / 9.0
-		var rad := 0.12 if i % 2 == 0 else 0.22
-		place("firewood", 1, {"moist": 0.2}, c + Vector3(cos(a) * rad, 0, sin(a) * rad))
-	await frames(4)
-	FireSim.ignite(tinder, 620.0)
-	await run_fire(0.5)
-	var site := site_near(c)
-	check(not site.is_empty() and bool(site["d"].get("lit", false)), "the woodpile is burning")
-	if site.is_empty():
-		return
-	var sid := int(site["id"])
-	var wood0 := 0.0
-	for e in World.entities_near(c, 1.0, "item"):
-		var x: Dictionary = e["d"].get("x", {})
-		wood0 += float(x.get("fm", 0.0))
-	# cover it all
-	give("earth", 18)
-	var guard := 0
-	while guard < 30 and inv().count("earth") > 0:
-		var d: Dictionary = World.get_entity(sid)["d"]
-		var worst := 0
-		var wc := 2.0
-		for k in FireSim.CELLS:
-			var cv := FireSim.coverage(d, k)
-			if cv < wc:
-				wc = cv
-				worst = k
-		if wc >= 0.999:
-			break
-		req("fire_cover", {"eid": sid, "pos": FireSim.cell_point(worst, d, c), "slot": slot_of("earth")})
-		await frames(2)
-		guard += 1
-	site = World.get_entity(sid)
-	check(FireSim.shell_coverage(site["d"]) > 0.995, "the pile is sealed under earth (%.0f%%, %.0f L)" % [FireSim.shell_coverage(site["d"]) * 100.0, float(site["d"]["shell_l"])])
-	# two vents at the base
-	give("stick", 1)
-	for k in [2, 10]:
-		req("fire_vent", {"eid": sid, "pos": FireSim.cell_point(k, site["d"], c), "slot": slot_of("stick")})
-		await frames(2)
-	site = World.get_entity(sid)
-	check(site["d"].get("vents", []).size() == 2, "two vents poked at the base")
-	for i in 5:
-		await run_fire(0.5)
-		site = World.get_entity(sid)
-		var wsum := 0.0
-		var csum := 0.0
-		for e in World.entities_near(c, 1.0, "item"):
-			var x: Dictionary = e["d"].get("x", {})
-			wsum += float(x.get("fm", 0.0))
-			csum += float(x.get("ch", 0.0))
-		print("       %.1fh: T=%s %s smoke=%s sc=%s wood %.2f char %.2f open %.4f" % [(i + 1) * 0.5, site["d"].get("T"), site["d"].get("phase"), site["d"].get("smoke"), site["d"].get("sc"), wsum, csum, float(site["d"].get("open", 0.0))])
-	print("     charring: ", FireSim.describe(site["d"]).replace("\n", " / "), "  T=", site["d"].get("T"))
-	check(String(site["d"].get("phase", "")) in ["charring", "steaming", "finishing"], "the mound smokes as it chars (%s)" % site["d"].get("phase"))
-	await run_fire(3.0)
-	# close the vents and let it cool
-	site = World.get_entity(sid)
-	for k in site["d"].get("vents", []).duplicate():
-		req("fire_cover", {"eid": sid, "pos": FireSim.cell_point(int(k), site["d"], c), "slot": slot_of("earth") if inv().count("earth") > 0 else 0})
-		await frames(2)
-	site = World.get_entity(sid)
-	check(site["d"].get("vents", []).is_empty() or inv().count("earth") == 0, "vents closed")
-	await run_fire(4.0)
-	site = World.get_entity(sid)
-	print("     sealed and cooled: ", FireSim.describe(site["d"]).replace("\n", " / "), "  T=", site["d"].get("T"))
-	# dig it open
-	var g2 := 0
-	while not site.is_empty() and float(site["d"].get("shell_l", 0.0)) > 0.0 and g2 < 40:
-		var d2: Dictionary = site["d"]
-		var best := 0
-		var bl := -1.0
-		for k in FireSim.CELLS:
-			var sh: Array = d2.get("shell", [])
-			if k < sh.size() and float(sh[k]) > bl:
-				bl = float(sh[k])
-				best = k
-		req("fire_uncover", {"eid": sid, "pos": FireSim.cell_point(best, d2, c)})
-		await frames(2)
-		site = World.get_entity(sid)
-		g2 += 1
-	var coal := 0
-	for e in items_near(c, "charcoal", 1.0):
-		coal += int(e["d"]["n"])
-	var charred := items_near(c, "charred_wood", 1.0).size()
-	for e in items_near(c, "charred_wood", 1.0):
-		var cx: Dictionary = e["d"]["x"]
-		print("       charred %s: wood %.3f char %.3f of %.2f" % [cx.get("from"), float(cx["fm"]), float(cx["ch"]), float(cx.get("m0", 0.0))])
-	var yield_kg := coal * ItemDB.unit_mass("charcoal")
-	print("     opened: %d charcoal (%.2f kg from %.1f kg of wood), %d pieces of charred wood" % [coal, yield_kg, wood0, charred])
-	check(coal >= 5, "the mound made charcoal")
-	check(yield_kg >= wood0 * 0.12, "a decent yield (%.0f%%)" % (yield_kg / maxf(wood0, 0.01) * 100.0))
-
-
-func test_fire_drill() -> void:
-	print("-- the fire drill: carve a hearth board, spin for an ember, tip it into tinder")
-	await unload()   # (the earlier fires leave a heavy pack: the drill set must fit back in it)
-	var c := ground(Vector2(-1.3, 0.2))
-	await stand_near(c, Vector3(0, 0, 0.9))
-	give("blade", 1, {"seed": 7, "cuts": [], "q": 0.7, "stone_kg": 0.3, "dur": 1.0})
-	var stick_e := place("stick", 1, {"moist": 0.12}, c)
-	await frames(3)
-	for i in 4:
-		req("process", {"eid": stick_e, "slot": slot_of("blade")})
-		await frames(2)
-	var boards := items_near(c, "hearth_board")
-	check(boards.size() == 1, "a stick carved into a hearth board")
-	if boards.is_empty():
-		return
-	give("stick", 1)
-	give("straw", 2, {"moist": 0.1})
-	req("work_start", {"kind": "fire_drill", "board": int(boards[0]["id"]), "pos": boards[0]["xf"].origin, "slot": slot_of("stick")})
-	await frames(3)
-	var w := _work()
-	check(not w.is_empty() and String(w["d"].get("kind", "")) == "fire_drill", "the drill is set up")
-	if w.is_empty():
-		return
-	var eid := int(w["id"])
-	for i in 420:
-		req("work_op", {"eid": eid, "op": ["spin", 1.0, 0.05]})
-		await get_tree().physics_frame
-		if float(World.get_entity(eid)["d"].get("ember", 0.0)) > 0.0:
-			break
-	check(float(World.get_entity(eid)["d"].get("ember", 0.0)) > 0.0, "spinning made an ember (heat %.2f)" % float(World.get_entity(eid)["d"].get("heat", 0.0)))
-	req("work_finish", {"eid": eid})
-	await frames(4)
-	await run_fire(0.005)
-	# (two bundles of straw alone flare and burn out within minutes - that's tinder)
-	var site := site_near(c)
-	check(not site.is_empty() and float(site["d"].get("flame", 0.0)) > 0.0, "the ember lit the tinder")
-	check(inv().count("hearth_board") == 1 and inv().count("stick") >= 1, "the drill set comes back to hand")
-
-
-func suite_drill() -> void:
-	await test_fire_drill()
-
-
-func suite_camp() -> void:
-	await test_campfire()
-
-
-func suite_pit() -> void:
-	await test_pit_firing()
-
-
-func suite_mound() -> void:
-	await test_charcoal_mound()
-
-
-func suite_mtime() -> void:
-	var t0 := Time.get_ticks_msec()
-	await test_charcoal_mound()
-	print("mound test took %d ms" % (Time.get_ticks_msec() - t0))
-
-
-# ---------------------------------------------------------------------------
-# Construction
-# ---------------------------------------------------------------------------
-
-func structures() -> Array:
-	return World.entities_of("structure")
-
-
-func build_frame(bp: String, xf: Transform3D, sy: float = 1.0) -> int:
-	var before := structures().size()
-	req("build_place", {"bp": bp, "xf": xf, "sy": sy})
-	await frames(2)
-	if structures().size() == before:
-		return -1
-	var newest_s := newest("structure")
-	return int(newest_s["id"])
-
-
-func complete(eid: int) -> void:
-	## Bring every part the frame still needs and fit it.
-	var e := World.get_entity(eid)
-	var parts: Array = ItemDB.blueprint(String(e["d"]["bp"])).get("parts", [])
-	for i in range(int(e["d"]["installed"]), parts.size()):
-		var id := String(parts[i]).get_slice("|", 0)
-		if inv().count(id) < 1:
-			give(id, 1)
-		req("build_install", {"eid": eid, "slot": slot_of(id)})
-		await frames(1)
-
-
-func edge_spot() -> Dictionary:
-	## A flattish place just inside the island's rim, and the direction out.
-	var best := {}
-	for k in 16:
-		var a := k * TAU / 16.0
-		var dir := Vector2(cos(a), sin(a))
-		var r := 0.0
-		while r < 12.0 and World.terrain.is_inside(dir.x * r, dir.y * r):
-			r += 0.05
-		var c := dir * (r - 1.15)
-		var hs: Array = []
-		for o in [Vector2.ZERO, Vector2(0.9, 0.9), Vector2(-0.9, 0.9), Vector2(0.9, -0.9), Vector2(-0.9, -0.9)]:
-			hs.append(World.terrain.height(c.x + o.x, c.y + o.y))
-		var spread: float = hs.max() - hs.min()
-		var near_tree := c.distance_to(TerrainData.TREE_POS) < 3.0 or c.distance_to(TerrainData.OUTCROP_POS) < 3.2 or c.distance_to(TerrainData.POND_CENTER) < 3.0
-		if not near_tree and (best.is_empty() or spread < float(best["spread"])):
-			best = {"c": c, "dir": dir, "spread": spread, "top": hs.max()}
-	return best
-
-
-func suite_build() -> void:
-	var L0 := ledger()
-	var spot := edge_spot()
-	var c: Vector2 = spot["c"]
-	var dir: Vector2 = spot["dir"]
-	var yaw := atan2(dir.x, dir.y)
-	var basis := Basis(Vector3.UP, yaw)
-	print("-- building at the rim (%.1f, %.1f), ground spread %.2f m" % [c.x, c.y, float(spot["spread"])])
-	var origin := Vector3(c.x, float(spot["top"]) + 0.04, c.y)
-	await stand_near(origin, Vector3(-dir.x * 1.8, 0, -dir.y * 1.8))
-	var a_id := await build_frame("platform", Transform3D(basis, origin))
-	check(a_id != -1, "a platform frame was placed on the ground")
-	if a_id == -1:
-		return
-	check(int(World.get_entity(a_id)["d"]["installed"]) == 0, "the frame starts empty")
-	req("build_install", {"eid": a_id, "slot": 0})
-	await frames(1)
-	check(int(World.get_entity(a_id)["d"]["installed"]) == 0, "nothing goes in without the right material")
-	await complete(a_id)
-	var a := World.get_entity(a_id)
-	check(StructureSim.is_complete(a["d"]), "every part installed by hand: the platform is finished")
-	await frames(3)
-	var hit := lp.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin + Vector3(0.3, 1.0, 0.2), origin + Vector3(0.3, -1.0, 0.2), EntityView.LAYER_STRUCT))
-	check(not hit.is_empty(), "the finished deck is solid underfoot")
-	# out over the abyss
-	var out := basis.z
-	var b_xf := Transform3D(basis, origin + out * 2.0)
-	var b_id := await build_frame("platform", b_xf)
-	check(b_id != -1, "a second platform can reach out over the edge")
-	await complete(b_id)
-	# walk out onto the new deck to keep building
-	lp.global_position = origin + out * 1.6 + Vector3(0, 0.1, 0)
-	lp.velocity = Vector3.ZERO
-	await frames(3)
-	var b_parts := int(World.get_entity(b_id)["d"]["installed"])
-	req("build_dismantle", {"eid": b_id})
-	await frames(2)
-	check(int(World.get_entity(b_id)["d"]["installed"]) == b_parts, "nobody can pull a deck out from under their own feet")
-	var c_xf := Transform3D(basis, origin + out * 4.0)
-	var c_id := await build_frame("platform", c_xf)
-	check(c_id != -1, "a third one is allowed, with a warning")
-	if c_id == -1:
-		return
-	await complete(c_id)
-	StructureSim.tick(0.1)
-	await frames(2)
-	check(float(World.get_entity(c_id)["d"].get("stress", 0.0)) == 0.5, "two steps out it creaks (stress %.1f)" % float(World.get_entity(c_id)["d"].get("stress", 0.0)))
-	check(float(World.get_entity(b_id)["d"].get("stress", 0.0)) == 0.0, "one step out holds fine")
-	var d_id := await build_frame("platform", Transform3D(basis, origin + out * 6.0))
-	check(d_id == -1, "a fourth one out is refused: nothing would hold it")
-	# a railing along the far edge, and a mat to sleep on
-	var r_id := await build_frame("railing", Transform3D(basis.rotated(Vector3.UP, 0.0), origin + out * 0.93))
-	check(r_id != -1, "a railing frame along an edge")
-	if r_id != -1:
-		await complete(r_id)
-	var m_id := await build_frame("sleeping_mat", Transform3D(basis, origin + Vector3(0.3, 0.0, 0.0) - out * 0.4))
-	check(m_id != -1, "a sleeping mat on the deck")
-	if m_id != -1:
-		await complete(m_id)
-		req("bed_set", {"eid": m_id})
-		await frames(2)
-		check(int(World.stats[Net.my_id()].get("bed", -1)) == m_id, "sleeping on the mat makes it home")
-	# take the far platform apart: every part comes back (what's too heavy to
-	# carry is set down at your feet)
-	var carried0 := inv().count("board")
-	var near0 := _count_near(lp.global_position, "board", 1.5)
-	var guard := 0
-	while World.has_entity(c_id) and guard < 20:
-		req("build_dismantle", {"eid": c_id})
-		await frames(1)
-		guard += 1
-	await frames(3)
-	var carried := inv().count("board") - carried0
-	var set_down := _count_near(lp.global_position, "board", 1.5) - near0
-	check(not World.has_entity(c_id), "the far platform came apart")
-	check(carried + set_down == 6, "its six boards came back (%d in the pack, %d set down at my feet)" % [carried, set_down])
-	check(inv().carried_kg() <= Actions.CARRY_KG + 0.001, "and nobody carries more than they can (%.1f kg)" % inv().carried_kg())
-	# things left lying on the decks come down with them
-	var on_a := place("stone", 1, {}, origin + Vector3(0.3, 0.3, 0.2))
-	# (dropped right on the line between two boards)
-	var on_b := place("stone", 1, {}, b_xf.origin + out * 0.6 + Vector3(0, 0.3, 0))
-	await frames(2)
-	var a_rest: Vector3 = World.get_entity(on_a)["xf"].origin if on_a != -1 else Vector3.ZERO
-	check(on_a != -1 and a_rest.y > World.terrain.height(a_rest.x, a_rest.z) + 0.08, "a stone set down on the deck lies on its boards")
-	check(on_b != -1 and absf(World.get_entity(on_b)["xf"].origin.y - b_xf.origin.y) < 0.1, "a stone dropped between two boards doesn't fall through the gap")
-	# now pull the grounded platform out from under the other one
-	await stand_near(origin - out * 2.6, Vector3.ZERO)
-	var lost0 := float(World.pools.get("lost_carbon", 0.0))
-	guard = 0
-	while World.has_entity(a_id) and guard < 20:
-		req("build_dismantle", {"eid": a_id})
-		await frames(1)
-		guard += 1
-	StructureSim.mark_dirty()
-	StructureSim.tick(0.1)
-	await frames(2)
-	check(float(World.get_entity(b_id)["d"].get("stress", 0.0)) >= 1.0, "without its support, the outer platform groans")
-	for i in 30:
-		StructureSim.tick(0.5)
-		await frames(1)
-	check(not World.has_entity(b_id), "...and then it falls")
-	var lost := float(World.pools.get("lost_carbon", 0.0)) - lost0
-	check(lost > 1.0, "what hung over the abyss fell into it (%.1f kg of wood)" % lost)
-	await frames(2)
-	var floating := 0
-	for e in World.entities_near(b_xf.origin, 3.5, "item"):
-		var p: Vector3 = e["xf"].origin
-		if World.terrain.is_inside(p.x, p.z) and p.y > World.terrain.height(p.x, p.z) + 0.4:
-			floating += 1
-			print("     (left hanging: %s at %s, %.2f m above the ground)" % [String(e["d"]["i"]), p, p.y - World.terrain.height(p.x, p.z)])
-	check(floating == 0, "nothing is left hanging in mid-air (%d)" % floating)
-	if on_a != -1 and World.has_entity(on_a):
-		var pa: Vector3 = World.get_entity(on_a)["xf"].origin
-		var above := pa.y - World.terrain.height(pa.x, pa.z)
-		check(above < 0.15, "the stone on the deck came down to the ground when the deck was taken apart (%.2f m up)" % above)
-	else:
-		check(false, "the stone on the grounded deck is still on the island")
-	check(on_b != -1 and not World.has_entity(on_b), "the stone on the outer deck went over the edge with it")
-	await frames(3)
-	var L1 := ledger()
-	ledger_same(L0, L1, "construction")
-	await test_hut()
-	ledger_same(L1, ledger(), "hut")
-
-
-func test_hut() -> void:
-	print("-- a hut: deck, three walls and a doorway, a thatch roof")
-	var spot := clear_soil_spot()
-	if spot == Vector3.INF:
-		check(false, "found flat ground for a hut")
-		return
-	var basis := Basis(Vector3.UP, 0.4)
-	var origin := spot + Vector3(0, 0.04, 0)
-	# the deck sits on the ground: lift it to the highest corner so it isn't buried
-	for c in [Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(1, 0, -1), Vector3(-1, 0, -1)]:
-		var w: Vector3 = origin + basis * (c as Vector3) * 0.95
-		origin.y = maxf(origin.y, World.terrain.height(w.x, w.z) + 0.04)
-	await stand_near(origin, basis.z * 2.6)
-	var deck := await build_frame("platform", Transform3D(basis, origin))
-	check(deck != -1, "a deck on the ground")
-	if deck == -1:
-		return
-	await complete(deck)
-	var ids: Array = [deck]
-	# walls on three sides (they stand on the deck), a doorway on the fourth
-	var sides := [[basis.z, 0.0, "doorway"], [-basis.z, 0.0, "wall"], [basis.x, PI * 0.5, "wall"], [-basis.x, PI * 0.5, "wall"]]
-	for sd in sides:
-		var at: Vector3 = origin + (sd[0] as Vector3) * 0.93
-		var wid := await build_frame(String(sd[2]), Transform3D(basis.rotated(Vector3.UP, float(sd[1])), at))
-		check(wid != -1, "%s frame on the deck edge" % String(sd[2]))
-		if wid != -1:
-			await complete(wid)
-			ids.append(wid)
-	# the roof rests on the wall tops
-	lp.global_position = origin + Vector3(0, 0.2, 0)
-	lp.velocity = Vector3.ZERO
-	await frames(3)
-	var roof := await build_frame("roof", Transform3D(basis, origin + Vector3(0, 2.2, 0)))
-	check(roof != -1, "a thatch roof frame sits on the walls")
-	if roof == -1:
-		return
-	await complete(roof)
-	ids.append(roof)
-	StructureSim.mark_dirty()
-	StructureSim.tick(0.1)
-	await frames(3)
-	var all_ok := true
-	for i in ids:
-		var d: Dictionary = World.get_entity(int(i))["d"]
-		if not StructureSim.is_complete(d) or float(d.get("stress", 0.0)) > 0.0:
-			all_ok = false
-	check(all_ok, "everything is finished and nothing creaks")
-	var inside := origin + Vector3(0, 0.3, 0)
-	check(Shelter.roof_above(lp.get_world_3d(), inside + Vector3(0, 1.4, 0)), "there is a roof overhead inside")
-	var cover := Shelter.wall_cover(lp.get_world_3d(), inside + Vector3(0, 1.0, 0))
-	check(cover >= 0.6, "and walls all round (%.0f%%)" % (cover * 100.0))
-	World.env["t"] = float(World.day()) * 24.0 + 26.0
-	World.env["wind"] = Vector2(3.0, 1.0)
-	var outside := origin + basis.z * 4.0
-	outside.y = World.terrain.height(outside.x, outside.z) + 0.1
-	var t_in := float(Climate.temp_at(lp.get_world_3d(), inside)["temp"])
-	var t_out := float(Climate.temp_at(lp.get_world_3d(), outside)["temp"])
-	print("     2 am in the wind: %.1f C outside, %.1f C inside" % [t_out, t_in])
-	check(t_in > t_out + 3.0, "the hut keeps the night wind off")
-	# taking the roof down gives every part back
-	var before := inv().count("straw")
-	var guard := 0
-	while World.has_entity(roof) and guard < 30:
-		req("build_dismantle", {"eid": roof})
-		await frames(1)
-		guard += 1
-	check(not World.has_entity(roof) and inv().count("straw") == before + 8, "the roof comes apart into its eight bundles of straw and the rest")
-
-
-# ---------------------------------------------------------------------------
-# Farming & compost
-# ---------------------------------------------------------------------------
-
-func clear_soil_spot(avoid: Array = []) -> Vector3:
-	## Flat open soil away from the tree, pond, rocks, plants and anything in `avoid`.
-	var t := World.terrain
-	var best := Vector3.INF
-	var best_score := INF
-	for ix in range(-10, 11):
-		for iz in range(-10, 11):
-			var x := ix * 0.5
-			var z := iz * 0.5
-			if not t.is_inside(x, z) or t.layer_at(x, z) != "soil":
-				continue
-			var p := ground(Vector2(x, z))
-			var ok := true
-			for e in World.entities_near(p, 1.6):
-				if String(e["t"]) != "item":
-					ok = false
-			for q in avoid:
-				if (q as Vector3).distance_to(p) < 2.0:
-					ok = false
-			# keep away from the rim
-			for i in 8:
-				var a := i * TAU / 8.0
-				if not t.is_inside(x + cos(a) * 1.6, z + sin(a) * 1.6):
-					ok = false
-			if not ok:
-				continue
-			var slope := absf(t.height(x + 0.3, z) - t.height(x - 0.3, z)) + absf(t.height(x, z + 0.3) - t.height(x, z - 0.3))
-			var score := slope + p.distance_to(lp.global_position) * 0.02
-			if score < best_score:
-				best_score = score
-				best = p
-	return best
-
-
-func heaps() -> Array:
-	return World.entities_of("compost")
-
-
-func me() -> Dictionary:
-	return World.stats.get(Net.my_id(), {})
-
-
-func test_bad_requests() -> void:
-	print("-- broken or hostile requests change nothing")
-	var L0 := ledger()
-	give("stone", 3)
-	give("stick", 2)
-	var items0 := World.entities_of("item").size()
-	var s_stone := slot_of("stone")
-	req("inv_drop_slot", {"slot": s_stone, "n": -5})
-	await frames(2)
-	check(inv().count("stone") == 3 and World.entities_of("item").size() == items0, "dropping a negative number of stones conjures none")
-	var s_stick := slot_of("stick")
-	var last := inv().slots.size() - 1
-	var last0: Dictionary = inv().slots[last].duplicate(true)
-	req("inv_split", {"from": s_stick, "to": -1})
-	req("inv_split", {"from": s_stick, "to": inv().slots.size()})
-	await frames(1)
-	check(inv().count("stick") == 2 and inv().slots[last] == last0, "splitting into a slot that doesn't exist does nothing")
-	# a clay workpiece kneaded with a nonsense number
-	give("clay", 2, {"moist": 0.3})
-	var spot := clear_soil_spot()
-	await stand_near(spot, Vector3(0, 0, 0.8))
-	req("work_start", {"kind": "clay_prep", "surface": -1, "pos": spot, "slot": slot_of("clay")})
-	await frames(2)
-	var w := _work()
-	check(not w.is_empty() and String(w["d"]["kind"]) == "clay_prep", "a lump of clay to knead")
-	if not w.is_empty():
-		req("work_op", {"eid": int(w["id"]), "op": ["knead", NAN]})
-		req("work_op", {"eid": int(w["id"]), "op": ["knead", INF]})
-		await frames(1)
-		check(is_finite(float(World.pools.get("atmo_water_l", 0.0))) and is_finite(float(World.get_entity(int(w["id"]))["d"]["moist"])),
-			"kneading with NaN or infinity is refused (the air's water is still a number)")
-		req("work_cancel", {"eid": int(w["id"])})
-		await frames(1)
-	var hp := float(me()["health"])
-	req("hurt", {"amount": NAN, "cause": "fall"})
-	req("place", {"slot": slot_of("stone"), "xf": Transform3D(Basis(), Vector3(NAN, 0, 0))})
-	req("build_place", {"bp": "platform", "xf": Transform3D(Basis(), lp.global_position + Vector3(0, 0, 2)), "sy": NAN})
-	req("pickup", {"eid": "not an id"})
-	req("dig", {"pos": "here", "slot": 0})
-	await frames(2)
-	check(is_finite(float(me()["health"])) and float(me()["health"]) == hp, "a NaN hurt is ignored")
-	check(inv().count("stone") == 3, "placing something at NaN is refused")
-	req("guide_state", {"state": {"read": ["fire", 42, "x".repeat(500)], "junk": {"a": 1}, "pinned": "fire"}})
-	await frames(1)
-	var gs: Dictionary = World.guide_states.get(Net.my_id(), {})
-	check(gs.get("read", []) == ["fire"] and not gs.has("junk") and gs.get("pinned", []) == [], "only entry ids are kept from a guide-progress update (%s)" % str(gs))
-	ledger_same(L0, ledger(), "broken requests")
-
-
-# ---------------------------------------------------------------------------
-# The island's books in less-travelled corners (QA round 2)
-# ---------------------------------------------------------------------------
-
-const TIGHT := {"water": 0.01, "carbon": 0.0001, "nutr": 0.00001, "clay": 0.0001, "soil": 0.0001, "stone": 0.0001}
-
-
-func suite_economy() -> void:
-	Game.game_world.sim.set_process(false)   # (the island's own clock waits while each case is measured)
-	await test_wood_in_fire()
-	await test_cut_regrown()
-	await test_dig_grass()
-	await test_rim_and_abyss()
-	await test_knead_and_midair()
-	Game.game_world.sim.set_process(true)
-	await test_island_renews()
-
-
-func test_wood_in_fire() -> void:
-	print("-- split wood and burning wood")
-	give("axe", 1, {"q": 0.85, "dur": 1.0, "bind": 0.9, "cords": 1, "head": {"stone_kg": 0.3}})
-	give("blade", 1, {"seed": 5, "cuts": [], "q": 0.8, "stone_kg": 0.3, "dur": 1.0})
-	var c := ground(Vector2(-0.6, 2.4))
-	await stand_near(c, Vector3(0, 0, 1.4))
-	var lg := place("log", 1, {"moist": 0.42}, c)
-	await frames(3)
-	var lx: Transform3D = World.get_entity(lg)["xf"]
-	for i in 12:
-		if not World.has_entity(lg):
-			break
-		req("split", {"eid": lg, "pos": lx * Vector3(0, 0.16, 0), "slot": slot_of("axe")})
-		await frames(2)
-	var pieces := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "wood_piece" and e["xf"].origin.distance_to(c) < 1.5)
-	check(pieces.size() >= 1, "a log split into pieces of split wood")
-	if pieces.is_empty():
-		return
-	var wp: Dictionary = pieces[0]
-	var at: Vector3 = wp["xf"].origin + Vector3(0.0, 0.0, 0.32)
-	at.y = World.terrain.height(at.x, at.z)
-	await stand_near(at, Vector3(0, 0, 1.2))
-	var L0 := ledger()
-	var tinder := lay_campfire(at, 2)
-	await frames(4)
-	FireSim.ignite(tinder, 620.0)
-	await run_fire(0.03)
-	var we := World.get_entity(int(wp["id"]))
-	check(not we.is_empty() and absf(float(we["d"]["x"].get("fm", 0.0)) + float(we["d"]["x"].get("ch", 0.0)) - float(we["d"]["x"].get("mass", 0.0))) < 0.5,
-		"a piece of split wood in a fire burns its own weight, not a standard one")
-	ledger_same(L0, ledger(), "split wood in a fire", {"water": 0.05})
-	# a branch lying in the flames can't be cut up (or a burning log split)
-	var br := place("branch", 1, {"moist": 0.2}, at + Vector3(0.03, 0, -0.02))
-	await frames(2)
-	await run_fire(0.05)
-	var L1 := ledger()
-	for i in 4:
-		req("process", {"eid": br, "slot": slot_of("blade")})
-		await frames(1)
-	check(World.has_entity(br), "a branch burning in the fire can't be cut up where it lies")
-	var burning: Array = World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "wood_piece" and e["d"].get("x", {}).has("fm"))
-	if not burning.is_empty():
-		req("split", {"eid": int(burning[0]["id"]), "pos": burning[0]["xf"].origin, "slot": slot_of("axe")})
-		await frames(1)
-		check(World.has_entity(int(burning[0]["id"])), "nor split wood that's in the fire split again")
-	ledger_same(L1, ledger(), "working wood that's in a fire", TIGHT)
-	await run_fire(6.0)
-	ledger_same(L0, ledger(), "a fire of split wood, burnt out", {"water": 0.05})
-
-
-func test_cut_regrown() -> void:
-	print("-- cutting what has only just grown back")
-	var tid := int(_tree()["id"])
-	if bool(_tree()["d"].get("felled", false)):
-		print("     (the tree was felled earlier: skipped)")
-		return
-	var d: Dictionary = _tree()["d"]
-	var si := 0
-	# (set up before the books are read, moving matter rather than conjuring it)
-	d["store"] = float(d.get("store", 0.0)) + (1.0 - float(d["sb"][si])) * TreeSim.SMALL_KG - 0.015 * TreeSim.SMALL_KG
-	d["sb"][si] = 0.985
-	var top := maxf(0.0, 1.0 - float(d["store"]))
-	World.pools["atmo_carbon_kg"] = float(World.pools["atmo_carbon_kg"]) - top
-	d["store"] = float(d["store"]) + top
-	await _under("sb:%d" % si)
-	var L0 := ledger()
-	for k in 10:
-		if float(_tree()["d"]["sb"][si]) < 0.5:
-			break
-		req("tree_cut", {"eid": tid, "part": "sb:%d" % si, "slot": slot_of("blade")})
-		await frames(1)
-	check(float(_tree()["d"]["sb"][si]) == 0.0, "a branch that's 98.5% grown back can be cut")
-	ledger_same(L0, ledger(), "cutting a branch the moment it's grown back (the reserve pays the rest)", TIGHT)
-	# with nothing in reserve it has to wait
-	d = _tree()["d"]
-	d["store"] = float(d["store"]) + (1.0 - float(d["sb"][1])) * TreeSim.SMALL_KG - 0.015 * TreeSim.SMALL_KG
-	d["sb"][1] = 0.985
-	World.pools["atmo_carbon_kg"] = float(World.pools["atmo_carbon_kg"]) + float(d["store"])
-	d["store"] = 0.0
-	await _under("sb:1")
-	for k in 10:
-		req("tree_cut", {"eid": tid, "part": "sb:1", "slot": slot_of("blade")})
-		await frames(1)
-	check(float(_tree()["d"]["sb"][1]) > 0.9, "...unless the tree has nothing in reserve to finish it")
-	# fell the tree: what comes off it holds no more minerals than it had
-	var base: Vector3 = _tree()["xf"].origin
-	await stand_near(base, Vector3(1.3, 0, 0.0))
-	var L1 := ledger()
-	var blows := 0
-	while not bool(_tree()["d"].get("felled", false)) and blows < 80:
-		req("tree_fell", {"eid": tid, "slot": slot_of("axe")})
-		await frames(1)
-		blows += 1
-	check(bool(_tree()["d"].get("felled", false)), "the tree is felled")
-	check(float(World.pools.get("tree_nutr", 0.0)) >= 0.0, "its wood took no more minerals than the tree held (%.4f left)" % float(World.pools.get("tree_nutr", 0.0)))
-	ledger_same(L1, ledger(), "felling", TIGHT)
-
-
-func test_dig_grass() -> void:
-	print("-- digging grassy ground")
-	var spot := clear_soil_spot()
-	await stand_near(spot, Vector3(0, 0, 0.9))
-	give("digger", 1, {"q": 0.8, "dur": 1.0, "bind": 0.8, "cords": 1, "head": {"stone_kg": 0.25}})
-	var L0 := ledger()
-	req("dig", {"pos": spot, "slot": slot_of("digger")})
-	await frames(2)
-	var spot2 := clear_soil_spot([spot])
-	await stand_near(spot2, Vector3(0, 0, 0.9))
-	for i in 4:
-		req("dig", {"pos": spot2, "slot": -1})
-		await frames(1)
-	ledger_same(L0, ledger(), "digging into grass (the torn grass goes into the soil)", TIGHT)
-	while slot_of("earth") != -1:
-		req("fill", {"pos": spot2, "slot": slot_of("earth")})
-		await frames(1)
-
-
-func test_rim_and_abyss() -> void:
-	print("-- at the rim and over the edge")
-	var spot := edge_spot()
-	var c: Vector2 = spot["c"]
-	var dir: Vector2 = spot["dir"]
-	var r := 0.0
-	while World.terrain.is_inside(c.x + dir.x * r, c.y + dir.y * r):
-		r += 0.02
-	var mc := ground(c + dir * (r - 0.3))
-	await stand_near(mc, Vector3(-dir.x * 0.7, 0, -dir.y * 0.7))
-	for i in 5:
-		var a := i * TAU / 5.0
-		place("firewood", 1, {"moist": 0.2}, mc + Vector3(cos(a) * 0.1, 0, sin(a) * 0.1))
-	await frames(3)
-	var fw := items_near(mc, "firewood", 0.6)
-	give("earth", 6)
-	var aim := Vector3(mc.x + dir.x * 0.9, mc.y + 0.1, mc.z + dir.y * 0.9)
-	var L0 := ledger()
-	var sid := -1
-	for i in 6:
-		req("fire_cover", {"eid": sid if sid != -1 else int(fw[0]["id"]), "pos": aim, "slot": slot_of("earth")})
-		await frames(1)
-		sid = FireSim.site_at(mc)
+	var c := flat_spot(30, 36)
+	var up := c + Vector3i.UP
+	var be := _firepit(c, 1, 0)
+	check(not be.is_empty() and be["t"] == "firepit" and int(be["d"]["sticks"]) == 1, "a stick on the ground starts a fire pit")
+	clear_inv()
+	give("stick", 12, {}, 0)
 	for i in 10:
-		if sid == -1 or not World.has_entity(sid) or float(World.get_entity(sid)["d"].get("shell_l", 0.0)) <= 0.0:
-			break
-		req("fire_uncover", {"eid": sid, "pos": aim})
-		await frames(1)
-	ledger_same(L0, ledger(), "earth packed on and dug off a pile at the very rim", TIGHT)
-	# minerals set free over the abyss are lost (on the books), not vanished
-	var lost0 := float(World.pools.get("lost_nutr", 0.0))
-	var L1 := ledger()
-	World.pools["lost_nutr"] = lost0
-	TerrainActions.add_nutrients(Vector3(dir.x * 40.0, 0.0, dir.y * 40.0), 0.01)
-	check(absf(float(World.pools["lost_nutr"]) - lost0 - 0.01) < 1e-9, "minerals freed out over the abyss go over the edge")
-	World.pools["lost_nutr"] = lost0   # (undo the test's own conjuring)
-	ledger_same(L1, ledger(), "nothing else moved", TIGHT)
-	# a board slice a hair lighter than a board makes no board out of nothing
-	var a: Actions = World.actions
-	var poly := PackedVector2Array([Vector2(-0.16, -0.025), Vector2(0.16, -0.025), Vector2(0.16, 0.025), Vector2(-0.16, 0.025)])
-	var area := Geo.polygon_area(poly)
-	var len := TreeActions.BOARD_M3 / area
-	var ids0 := World.entities.keys()
-	var slice_kg := ItemDB.unit_mass("board") - 0.004
-	var said: float = TreeActions._classify_piece(a, poly, area, len, 0.16, Vector2.ZERO, slice_kg, 0.3, mc + Vector3(0, 0.3, 0), Basis())
-	var made := 0.0
-	for id in World.entities.keys():
-		if not id in ids0:
-			var e: Dictionary = World.entities[id]
-			made += float(Ledger.entity_contrib(e)["carbon"])
-			World.despawn(int(id))   # (test pieces)
-	check(made <= slice_kg + 1e-9 and absf(made - said) < 1e-9, "a slice a few grams short of a board yields no more wood than it has (%.3f kg from %.3f)" % [made, slice_kg])
-
-
-func test_knead_and_midair() -> void:
-	print("-- kneading dry clay; working in mid-air")
-	give("clay", 4, {"moist": 0.17})
-	await stand_near(flat_stone_top(), Vector3(0, 0, 0.8))
-	req("work_start", {"kind": "clay_prep", "surface": int(newest("flat_stone")["id"]), "pos": flat_stone_top(), "slot": slot_of("clay")})
-	await frames(3)
-	var w := _work()
-	check(not w.is_empty() and String(w["d"]["kind"]) == "clay_prep", "clay on the anvil stone")
-	if not w.is_empty():
-		var L0 := ledger()
-		for i in 160:
-			req("work_op", {"eid": int(w["id"]), "op": ["knead", 1.0]})
-			if i % 20 == 0:
-				await frames(1)
-		var m := float(World.get_entity(int(w["id"]))["d"]["moist"])
-		check(m >= 0.0, "kneading never takes clay past bone dry (%.3f)" % m)
-		req("work_cancel", {"eid": int(w["id"])})
-		await frames(2)
-		ledger_same(L0, ledger(), "kneading dry clay", TIGHT)
-	var spot := edge_spot()
-	var c: Vector2 = spot["c"]
-	var dir: Vector2 = spot["dir"]
-	var r := 0.0
-	while World.terrain.is_inside(c.x + dir.x * r, c.y + dir.y * r):
-		r += 0.02
-	var rim := c + dir * (r - 0.25)
-	await stand_near(ground(rim), Vector3.ZERO)
-	var pos := Vector3(rim.x + dir.x * 1.1, World.terrain.height(rim.x, rim.y) + 0.9, rim.y + dir.y * 1.1)
-	give("fiber", 2)
-	var works0 := World.entities_of("work").size()
-	req("work_start", {"kind": "cordage", "surface": -1, "pos": pos, "slot": slot_of("fiber")})
-	await frames(3)
-	check(World.entities_of("work").size() == works0, "work can't be started in mid-air past the rim")
-
-
-func test_island_renews() -> void:
-	print("-- the island renews itself")
-	# the mossy log, eaten bare, grows mushrooms again
-	var m: Dictionary = World.entities_of("mushrooms")[0]
-	# (the log's wood goes to the soil's humus and the caps' minerals into the log: nothing conjured away)
-	var caps0 := 0.0
-	for cp in m["d"]["caps"]:
-		caps0 += float(cp)
-	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + float(m["d"]["substrate"]) + caps0 * ItemDB.unit_mass("mushroom")
-	m["d"]["nutr"] = float(m["d"].get("nutr", 0.0)) + caps0 * ItemDB.nutrients("mushroom")
-	m["d"]["substrate"] = 0.0
-	m["d"]["caps"] = [0.0, 0.0, 0.0, 0.0]
-	var L0 := ledger()
-	await sim_hours(36.0, 0.25)
-	var caps := 0.0
-	for cp in World.get_entity(int(m["id"]))["d"]["caps"]:
-		caps += float(cp)
-	check(float(World.get_entity(int(m["id"]))["d"]["substrate"]) > 0.1 and caps > 0.5, "a mossy log eaten bare grows mushrooms again (substrate %.2f kg, caps %.2f)" % [float(World.get_entity(int(m["id"]))["d"]["substrate"]), caps])
-	ledger_same(L0, ledger(), "a day and a half of mushrooms, humus and the soil breathing", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
-	# soaked ground drains to the pond (soaked with water taken from the pond, not conjured)
-	var t := World.terrain
-	var cl := WaterSim.cell_l()
-	var wet := clear_soil_spot()
-	var moved := 0.0
-	for k in t.cells_in_radius(Vector2(wet.x, wet.z), 1.5):
-		if t.is_pond_cell(k) or moved >= 300.0:
-			continue
-		var l := maxf(0.0, 0.95 - t.moist[k]) * cl
-		t.moist[k] += l / cl
-		moved += l
-	World.env["pond_l"] = float(World.env["pond_l"]) - moved
-	var L1 := ledger()
-	var back := WaterSim.drain(t, 6.0)
-	World.env["pond_l"] = float(World.env["pond_l"]) + back
-	check(moved > 50.0 and back > moved * 0.05, "soaked ground drains back to the pond (%.0f L of %.0f L in 6 h)" % [back, moved])
-	ledger_same(L1, ledger(), "draining", {"water": 0.01})
-	# leaves left on the ground rot into it
-	var spot := clear_soil_spot()
-	var lv := place("leaves", 1, {}, spot)
-	await frames(2)
-	World.get_entity(lv)["d"]["rot"] = 95.0
-	var L2 := ledger()
-	await sim_hours(4.0, 0.25, false)
-	check(not World.has_entity(lv), "leaves lying on the ground rot away")
-	ledger_same(L2, ledger(), "rotting leaves", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
-
-
-func suite_survival() -> void:
-	await test_bad_requests()
-	var L0 := ledger()
-	print("-- needs fall over time")
-	var st := me()
-	st["hunger"] = 0.9
-	st["thirst"] = 0.9
-	var h0 := float(st["hunger"])
-	var t0 := float(st["thirst"])
-	await sim_hours(6.0, 0.25, false)
-	st = me()
-	var dh := h0 - float(st["hunger"])
-	var dt := t0 - float(st["thirst"])
-	print("     6 h: hunger -%.3f, thirst -%.3f" % [dh, dt])
-	check(dh > 6.0 / Survival.HUNGER_HOURS * 0.8 and dh < 6.0 / Survival.HUNGER_HOURS * 1.8, "hunger falls at about its stated rate")
-	check(dt > 6.0 / Survival.THIRST_HOURS * 0.8 and dt < 6.0 / Survival.THIRST_HOURS * 2.0, "thirst falls faster than hunger")
-	print("-- drinking from the pond")
-	var pc := TerrainData.POND_CENTER
-	var bank := Vector2(pc.x, pc.y) + Vector2(TerrainData.POND_RADII.x + 0.5, 0.0)
-	lp.global_position = ground(bank) + Vector3(0, 0.1, 0)
-	lp.velocity = Vector3.ZERO
-	await frames(3)
-	var pond0 := float(World.env["pond_l"])
-	var th0 := float(me()["thirst"])
-	req("drink_pond", {})
-	await frames(1)
-	var drunk := (float(me()["thirst"]) - th0) * Survival.BODY_WATER_L
-	check(drunk > 0.05, "cupped hands bring a mouthful (%.2f L)" % drunk)
-	check(absf((pond0 - float(World.env["pond_l"])) - drunk) < 1e-4, "and exactly that much leaves the pond")
-	print("-- eating")
-	give("berries", 3)
-	var hu0 := float(me()["hunger"])
+		use_on(up, 0)
+	be = World.be(up)
+	check(int(be["d"]["sticks"]) == 8 and count("stick") == 5, "up to eight sticks (%d, %d left)" % [int(be["d"]["sticks"]), count("stick")])
+	give("firestarter", 1, {}, 3)
+	req("ignite", {"c": up, "slot": 3})
+	check(not bool(World.be(up)["d"]["lit"]), "no tinder: it won't light")
+	give("dry_grass", 4, {}, 1)
+	for i in 4:
+		use_on(up, 1)
+	check(int(World.be(up)["d"]["tinder"]) == 3, "three handfuls of tinder at most")
+	var dur0 := int(inv().get_slot(3)["d"]["dur"])
+	req("ignite", {"c": up, "slot": 3})
+	be = World.be(up)
+	check(bool(be["d"]["lit"]), "the bow drill lights it")
+	check(int(inv().get_slot(3)["d"]["dur"]) == dur0 - 1, "the bow drill wears")
+	check(a.fire.heat_sources().size() == 1, "it gives off heat")
+	# warmth (once the sticks have caught)
+	hours(0.3)
+	var near := Climate.temp_at(Vector3(up) + Vector3(1.2, 0, 0.5), a.fire.heat_sources())
+	var far := Climate.temp_at(Vector3(up) + Vector3(9, 0, 0), a.fire.heat_sources())
+	check(float(near["temp"]) > float(far["temp"]) + 6.0, "warm next to it (%.1f vs %.1f)" % [float(near["temp"]), float(far["temp"])])
+	# it burns: tinder, then sticks, then out
+	check(String(World.be(up)["d"]["phase"]) == "sticks", "the sticks catch")
+	hours(FireActs.STICK_H * 8.0 + 0.3)
+	be = World.be(up)
+	check(not bool(be["d"]["lit"]) and bool(be["d"]["ash"]) and int(be["d"]["sticks"]) == 0, "eight sticks burn down to ash")
+	# relight with logs on top: they last
+	be = _firepit(c, 0, 0)
+	clear_inv()
+	give("stick", 4, {}, 0)
+	give("dry_grass", 1, {}, 1)
+	give("firewood", 2, {}, 2)
+	give("firestarter", 1, {}, 3)
 	for i in 3:
-		req("eat", {"slot": slot_of("berries")})
-		await frames(1)
-	check(float(me()["hunger"]) > hu0 + 0.09, "berries are a little food")
-	print("-- cold nights, warm fires")
-	World.env["t"] = float(World.day()) * 24.0 + 27.0   # 3 am tomorrow
-	var night := Climate.temp_at(lp.get_world_3d(), lp.global_position)
-	var fire := Climate.temp_at(lp.get_world_3d(), lp.global_position, [{"pos": lp.global_position + Vector3(1.0, 0.3, 0), "kw": 12.0}])
-	print("     3 am: %.1f C in the open, %.1f C beside a fire" % [float(night["temp"]), float(fire["temp"])])
-	check(float(night["temp"]) < 10.0, "nights are cold up here")
-	check(float(fire["temp"]) > float(night["temp"]) + 8.0, "a fire warms you")
-	print("-- falling into the abyss")
-	give("stone", 2)
-	give("clay", 3, {"moist": 0.2})
-	var lost_c0 := float(World.pools.get("lost_clay", 0.0))
-	var dir := (Vector2(lp.global_position.x, lp.global_position.z)).normalized()
-	var r := 0.0
-	while World.terrain.is_inside(dir.x * r, dir.y * r) and r < 14.0:
-		r += 0.1
-	lp.global_position = Vector3(dir.x * (r + 3.0), lp.global_position.y, dir.y * (r + 3.0))
-	lp.velocity = Vector3.ZERO
-	var guard := 0
-	while bool(me().get("alive", true)) and guard < 600:
-		await frames(1)
-		guard += 1
-	check(not bool(me().get("alive", true)), "stepping off the edge is fatal (%.1f s)" % (guard / 60.0))
-	check(inv().count("stone") == 0 and inv().count("clay") == 0, "everything carried is gone")
-	check(float(World.pools.get("lost_clay", 0.0)) > lost_c0, "and recorded as lost to the abyss")
-	req("respawn", {})
-	await frames(3)
-	check(bool(me().get("alive", false)), "you wake on the island again")
-	var sp := World.spawn_point(Net.my_id())
-	check(lp.global_position.distance_to(sp) < 3.0, "at the spawn point")
-	check(absf(float(me()["health"]) - 0.6) < 0.05, "weakened (health %.2f)" % float(me()["health"]))
-	print("-- dying in the middle of close-up work")
-	give("clay", 2, {"moist": 0.17})
-	await stand_near(flat_stone_top(), Vector3(0, 0, 0.8))
-	req("work_start", {"kind": "clay_prep", "surface": int(newest("flat_stone")["id"]), "pos": flat_stone_top(), "slot": slot_of("clay")})
-	await frames(4)
-	var cc := get_tree().get_first_node_in_group("crafting")
-	check(cc != null and cc.is_open(), "kneading clay up close")
-	Survival.damage(Net.my_id(), 2.0, "cold")
-	await frames(3)
-	check(cc != null and not cc.is_open(), "death ends the close-up")
-	req("respawn", {})
-	await frames(30)
-	check(lp.mode == "play" and lp.active_camera().current, "and you wake looking through your own eyes")
-	print("-- dying on the island leaves your things behind")
-	give("cordage", 2)
-	give("stone", 1)
-	var where := lp.global_position
-	Survival.damage(Net.my_id(), 2.0, "burn")
-	await frames(2)
-	var satchels := dropped_satchels()
-	check(satchels.size() == 1, "a satchel of belongings lies where you fell")
-	req("respawn", {})
-	await frames(3)
-	if not satchels.is_empty():
-		var sat: Dictionary = satchels[0]
-		await stand_near(sat["xf"].origin, Vector3(0, 0, 0.8))
-		req("satchel_take", {"eid": int(sat["id"])})
-		await frames(2)
-		check(inv().count("cordage") == 2 and inv().count("stone") == 1, "and you can get it all back")
-		check(dropped_satchels().is_empty(), "the empty satchel is gone")
-	await test_vessel_and_drying()
-	var L1 := ledger()
-	ledger_same(L0, L1, "survival", {"water": 0.05})
-
-
-func _vessel_slot() -> int:
-	for i in inv().slots.size():
-		var sl: Dictionary = inv().slots[i]
-		if not sl.is_empty() and String(sl["i"]) == "pot" and String(sl["d"].get("tag", "")) == "vessel_test":
-			return i
-	return -1
-
-
-func test_vessel_and_drying() -> void:
-	print("-- a fired pot carries water; a wet pot dries in the sun and gets rained on")
-	var pot := make_pot(0.02)
-	pot["state"] = "fired"
-	pot["q"] = 0.7
-	pot["tag"] = "vessel_test"
-	give("pot", 1, pot)
-	var pc := TerrainData.POND_CENTER
-	lp.global_position = ground(Vector2(pc.x, pc.y) + Vector2(TerrainData.POND_RADII.x + 0.5, 0.0)) + Vector3(0, 0.1, 0)
-	lp.velocity = Vector3.ZERO
-	await frames(3)
-	# (the island's clock is held for a moment so the pond doesn't also evaporate meanwhile)
-	Game.game_world.sim.set_process(false)
-	var pond0 := float(World.env["pond_l"])
-	req("fill_vessel", {"slot": _vessel_slot()})
-	await frames(2)
-	var w := float(inv().get_slot(_vessel_slot())["d"].get("water", 0.0))
-	check(w > 0.05 and absf((pond0 - float(World.env["pond_l"])) - w) < 1e-4, "the pot holds %.2f L, taken from the pond" % w)
-	Game.game_world.sim.set_process(true)
-	check(World.discoveries.has("first_water_vessel"), "the first water vessel is in the journal")
-	me()["thirst"] = 0.5
-	req("drink_vessel", {"slot": _vessel_slot()})
-	await frames(1)
-	var w2 := float(inv().get_slot(_vessel_slot())["d"].get("water", 0.0))
-	check(w2 < w and float(me()["thirst"]) > 0.5, "drinking from it")
-	req("fill_vessel", {"slot": _vessel_slot()})
-	await frames(1)
-	var spot := clear_soil_spot()
-	await stand_near(spot, Vector3(0, 0, 0.9))
-	var soil0 := World.terrain.total_soil_water_l()
-	req("pour", {"pos": spot, "slot": _vessel_slot()})
-	await frames(1)
-	check(World.terrain.total_soil_water_l() > soil0, "pouring waters the soil")
-	# drying: a wet pot set out in a sunny, dry day
-	World.env["t"] = float(World.day()) * 24.0 + 24.0 + 9.0
-	var wet := make_pot(0.22)
-	var pid := place("pot", 1, wet, spot + Vector3(0.8, 0, 0))
-	await frames(2)
-	var m0 := float(World.get_entity(pid)["d"]["x"]["moist"])
-	await sim_hours(8.0, 0.25)
-	var m1 := float(World.get_entity(pid)["d"]["x"]["moist"])
-	print("     moisture %.3f -> %.3f over 8 h of a dry day" % [m0, m1])
-	# a fresh pot takes about a day to dry; a third of a day takes a good bite out of it
-	check(m1 < m0 - 0.03, "a wet pot dries in the open on a dry day")
-	World.env["rain"] = 0.9
-	World.env["rain_target"] = 0.9
-	await sim_hours(2.0, 0.25)
-	var m2 := float(World.get_entity(pid)["d"]["x"]["moist"])
-	check(m2 > m1, "rain wets it again (%.3f -> %.3f)" % [m1, m2])
+		use_on(up, 0)
+	use_on(up, 1)
+	use_on(up, 2)
+	use_on(up, 2)
+	req("ignite", {"c": up, "slot": 3})
+	check(bool(World.be(up)["d"]["lit"]), "lit again on its ashes")
+	hours(FireActs.STICK_H * 3.0 + 0.4)
+	var fd: Dictionary = World.be(up)["d"]
+	check(bool(fd["lit"]) and String(fd["phase"]) == "logs", "the firewood has caught (lit %s, %s, sticks %.2f h, logs %.2f h)" % [fd["lit"], fd["phase"], float(fd["sf"]), float(fd["lf"])])
+	hours(FireActs.LOG_H * 2.0 + 0.3)
+	check(not bool(World.be(up)["d"]["lit"]), "and burned down after ~%.1f hours" % (FireActs.LOG_H * 2.0))
+	# logs on tinder alone won't catch
+	var c2 := flat_spot(24, 30)
+	var up2 := c2 + Vector3i.UP
+	stand_near(c2)
+	clear_inv()
+	give("dry_grass", 2, {}, 0)
+	give("firewood", 2, {}, 1)
+	give("firestarter", 1, {}, 2)
+	use_on(c2, 0, true)
+	use_on(up2, 1)
+	req("ignite", {"c": up2, "slot": 2})
+	check(not bool(World.be(up2)["d"]["lit"]), "tinder and firewood without sticks won't light")
+	# rain drowns an open fire, not a sheltered one
+	World.env["rain"] = 1.0
+	World.env["rain_target"] = 1.0
+	clear_inv()
+	give("stick", 3, {}, 0)
+	give("firestarter", 1, {}, 2)
+	use_on(up2, 0)
+	use_on(up2, 0)
+	req("ignite", {"c": up2, "slot": 2})
+	check(not bool(World.be(up2)["d"]["lit"]), "can't light an open fire in the rain")
+	World.env["rain"] = 0.0
+	req("ignite", {"c": up2, "slot": 2})
+	check(bool(World.be(up2)["d"]["lit"]), "lit while it's dry")
+	World.env["rain"] = 1.0
+	real_seconds(FireActs.RAIN_OUT_S + 2.0)
+	check(not bool(World.be(up2)["d"]["lit"]), "then the rain puts it out")
+	# under a roof
+	var c3 := flat_spot(36, 34)
+	var up3 := c3 + Vector3i.UP
+	World.set_block(up3 + Vector3i(0, 3, 0), Blocks.id_of("dirt"))
+	World.env["rain"] = 0.0
+	_firepit(c3, 3, 1)
+	give("firestarter", 1, {}, 3)
+	req("ignite", {"c": up3, "slot": 3})
+	World.env["rain"] = 1.0
+	real_seconds(FireActs.RAIN_OUT_S + 2.0)
+	check(bool(World.be(up3)["d"]["lit"]), "a fire under cover keeps burning in the rain")
 	World.env["rain"] = 0.0
 	World.env["rain_target"] = 0.0
-	# an underfired pot holds water, but it seeps away into the ground
-	var weak := make_pot(0.0)
-	weak["state"] = "fired"
-	weak["fq"] = 0.45
-	weak["water"] = 0.2
-	var wid := place("pot", 1, weak, spot + Vector3(-0.8, 0, 0))
-	await frames(2)
-	await sim_hours(4.0, 0.25)
-	var left := float(World.get_entity(wid)["d"]["x"].get("water", 0.0))
-	check(left < 0.17, "an underfired pot seeps (%.3f L left of 0.200)" % left)
-	check(Pottery.describe(World.get_entity(wid)["d"]["x"]).contains("Underfired"), "and says so")
+	# cooking
+	clear_inv()
+	give("mushroom", 2, {}, 0)
+	give("stick", 6, {}, 1)
+	for i in 5:
+		use_on(up3, 1)
+	use_on(up3, 0)
+	check((World.be(up3)["d"]["food"] as Array).size() == 1, "a mushroom on the fire")
+	real_seconds(23.0)
+	var food: Array = World.be(up3)["d"]["food"]
+	check(food.size() == 1 and String(food[0]["i"]) == "mushroom_roasted", "it roasts")
+	use_on(up3, 5)
+	check(count("mushroom_roasted") == 1, "taken off with an empty hand")
+	use_on(up3, 0)
+	real_seconds(22.0 * 2.8)
+	food = World.be(up3)["d"]["food"]
+	check(food.size() == 1 and String(food[0]["i"]) == "charred_food", "left too long, it chars")
+	use_on(up3, 5)
+	# torches
+	clear_inv()
+	give("torch", 3, {}, 0)
+	use_on(up3, 0)
+	check(inv().item_at(0) == "torch_lit" and count("torch_lit") == 3, "torches lit at the fire")
+	var c4 := flat_spot(28, 28)
+	var up4 := c4 + Vector3i.UP
+	stand_near(c4)
+	give("stick", 2, {}, 1)
+	give("dry_grass", 1, {}, 2)
+	use_on(c4, 1, true)
+	use_on(up4, 1)
+	use_on(up4, 2)
+	use_on(up4, 0)
+	check(bool(World.be(up4)["d"]["lit"]), "a burning torch lights a fire pit at once")
+	# stew
+	stand_near(c3)
+	clear_inv()
+	give("pot", 1, {"w": 3}, 0)
+	give("turnip", 2, {}, 1)
+	give("bowl", 2, {}, 2)
+	var sticks := Inventory.make("stick", 8)
+	inv().set_slot(3, sticks)
+	for i in 4:
+		use_on(up3, 3)
+	use_on(up3, 0)
+	check(not (World.be(up3)["d"]["pot"] as Dictionary).is_empty(), "a pot of water on the fire")
+	use_on(up3, 1)
+	use_on(up3, 1)
+	real_seconds(FireActs.STEW_S + 2.0)
+	var pot: Dictionary = World.be(up3)["d"]["pot"]
+	check(int(pot.get("stew", 0)) >= 2, "stew (%d portions)" % int(pot.get("stew", 0)))
+	use_on(up3, 2)
+	var bowl_slot := -1
+	for i in Inventory.MAIN:
+		var bs := inv().get_slot(i)
+		if not bs.is_empty() and String(bs["i"]) == "bowl" and String(bs["d"].get("c", "")) == "stew":
+			bowl_slot = i
+	check(bowl_slot >= 0, "ladled into a bowl")
+	World.stats[pid]["hunger"] = 0.2
+	if bowl_slot >= 0:
+		var tmp := inv().get_slot(bowl_slot)
+		inv().set_slot(bowl_slot, inv().get_slot(4))
+		inv().set_slot(4, tmp)
+		req("eat", {"slot": 4})
+		check(float(World.stats[pid]["hunger"]) > 0.45, "a bowl of stew is a meal")
+	# standing in a fire hurts
+	check(a.fire.burning_at(Vector3(up3) + Vector3(0.5, 0.05, 0.5)) > 0.0, "standing in the fire burns")
+	# taking a cold pit apart gives the fuel back
+	var c5 := flat_spot(20, 34)
+	_firepit(c5, 4, 2)
+	clear_inv()
+	req("break", {"c": c5 + Vector3i.UP, "slot": 0})
+	check(count("stick") == 4 and count("dry_grass") == 2, "a cold fire pit comes apart into its sticks and tinder")
 
 
-func keep_fed() -> void:
-	## Long fast-forwards: the test player drinks pond water and eats tubers so
-	## they don't starve (real transfers, so the ledger still balances).
-	var pid := Net.my_id()
-	var st: Dictionary = World.stats.get(pid, {})
-	if st.is_empty() or not st.get("alive", true):
-		return
-	if float(st["thirst"]) < 0.6:
-		var want := (0.9 - float(st["thirst"])) * Survival.BODY_WATER_L
-		var take := minf(want, float(World.env["pond_l"]))
-		World.env["pond_l"] = float(World.env["pond_l"]) - take
-		Survival.drink(pid, take)
-	if float(st["hunger"]) < 0.6:
-		give("tuber_roasted", 2)
-		for i in 2:
-			req("eat", {"slot": slot_of("tuber_roasted")})
+# ---------------------------------------------------------------------------
+# Pit kiln
+# ---------------------------------------------------------------------------
+
+func _kiln(c: Vector3i, item: String, n: int) -> Vector3i:
+	## Set n raw pieces down in cell c (whose floor is c + DOWN) and build a kiln over them.
+	stand_near(c)
+	clear_inv()
+	give(item, n, {}, 0)
+	give("dry_grass", 5, {}, 1)
+	give("stick", 7, {}, 2)
+	give("firestarter", 1, {}, 3)
+	use_on(c + Vector3i.DOWN, 0, true)
+	for i in n - 1:
+		use_on(c, 0, true)
+	return c
 
 
-func sim_hours(hours: float, step: float = 0.25, feed: bool = true) -> void:
-	## Fast-forward the whole island (water, plants, compost, survival...).
-	var sim = Game.game_world.sim
-	var n := int(ceil(hours / step))
-	for i in n:
-		World.env["t"] = float(World.env["t"]) + step
-		sim._tick(step, 0.5)
-		if feed:
-			keep_fed()
-		if i % 6 == 0:
-			await get_tree().physics_frame
+func suite_kiln() -> void:
+	# a pit: dig a hole one deep
+	var g := flat_spot(30, 36)
+	World.set_block(g, 0)
+	var c := g
+	_kiln(c, "bowl_raw", 4)
+	var be := World.be(c)
+	check(not be.is_empty() and be["t"] == "ground" and int(be["d"]["items"][0]["n"]) == 4, "four raw bowls set down in the pit")
+	use_on(c, 1)
+	be = World.be(c)
+	check(be["t"] == "kiln" and int(be["d"]["grass"]) == 1, "dry grass over them: a pit kiln")
+	use_on(c, 2)
+	check(int(World.be(c)["d"]["sticks"]) == 0, "sticks only after the grass")
+	for i in 4:
+		use_on(c, 1)
+	check(int(World.be(c)["d"]["grass"]) == 4, "four grass at most")
+	for i in 7:
+		use_on(c, 2)
+	check(int(World.be(c)["d"]["sticks"]) == 6, "six sticks")
+	req("ignite", {"c": c, "slot": 3})
+	be = World.be(c)
+	check(bool(be["d"]["lit"]) and int(be["d"]["enc"]) == 4, "lit, walled in on all four sides")
+	hours(FireActs.KILN_H + 0.3)
+	be = World.be(c)
+	check(not be.is_empty() and be["t"] == "ground", "burned down")
+	var bowls := 0
+	var shards := 0
+	for s in be["d"].get("items", []):
+		if String(s["i"]) == "bowl":
+			bowls += int(s["n"])
+		if String(s["i"]) == "potsherd":
+			shards += int(s["n"])
+	check(bowls == 4 and shards == 0, "in a pit, all four fire without a crack (%d, %d)" % [bowls, shards])
+	clear_inv()
+	use_on(c, 0)
+	check(count("bowl") == 4, "take the bowls out")
+	check(World.be(c).is_empty(), "and the ash with them")
+	# on open ground some crack
+	var o := flat_spot(24, 28) + Vector3i.UP
+	_kiln(o, "brick_raw", 16)
+	use_on(o, 1)
+	for i in 3:
+		use_on(o, 1)
+	for i in 6:
+		use_on(o, 2)
+	req("ignite", {"c": o, "slot": 3})
+	check(int(World.be(o)["d"]["enc"]) <= 1, "this one stands in the open")
+	hours(FireActs.KILN_H + 0.3)
+	var cracked := 0
+	var bricks := 0
+	for s in World.be(o)["d"].get("items", []):
+		if String(s["i"]) == "potsherd":
+			cracked += int(s["n"])
+		if String(s["i"]) == "brick":
+			bricks += int(s["n"])
+	check(cracked > 0 and bricks > 0 and cracked + bricks == 16, "in the open some crack (%d of 16)" % cracked)
+	# rain on an open kiln
+	var r := flat_spot(36, 40) + Vector3i.UP
+	_kiln(r, "bowl_raw", 1)
+	use_on(r, 1)
+	for i in 3:
+		use_on(r, 1)
+	for i in 6:
+		use_on(r, 2)
+	req("ignite", {"c": r, "slot": 3})
+	World.env["rain"] = 1.0
+	real_seconds(FireActs.RAIN_OUT_S * 1.5 + 2.0)
+	be = World.be(r)
+	check(be["t"] == "kiln" and not bool(be["d"]["lit"]) and int(be["d"]["grass"]) == 0, "rain puts out an open kiln")
+	World.env["rain"] = 0.0
 
 
-func test_tree_seed() -> void:
-	print("-- planting a tree seed")
-	var spot := Vector3.INF
-	var best := -1.0
-	for ix in range(-10, 11):
-		for iz in range(-10, 11):
-			var x := ix * 0.5
-			var z := iz * 0.5
-			if not World.terrain.is_inside(x, z) or World.terrain.layer_at(x, z) != "soil":
-				continue
-			var p := ground(Vector2(x, z))
-			if World.terrain.soil[World.actions.cell_index_at(p)] < 0.1:
-				continue
-			var near := 99.0
-			for e in World.entities.values():
-				if String(e["t"]) != "item":
-					near = minf(near, Vector2(e["xf"].origin.x - x, e["xf"].origin.z - z).length())
-			if near > 2.7 and near > best:
-				best = near
-				spot = p
-	check(spot != Vector3.INF, "found room for a young tree")
-	if spot == Vector3.INF:
-		return
-	await stand_near(spot, Vector3(0, 0, 0.9))
-	give("seed_tree", 1)
-	var L0 := ledger()
-	var trees0 := World.entities_of("tree").size()
-	req("plant", {"pos": spot, "slot": slot_of("seed_tree")})
-	await frames(2)
-	check(World.entities_of("tree").size() == trees0 + 1, "a tree seed planted in open soil becomes a seedling")
-	ledger_same(L0, ledger(), "planting a tree", {"nutr": 0.00002})
+# ---------------------------------------------------------------------------
+# Survival
+# ---------------------------------------------------------------------------
+
+func suite_survival() -> void:
+	var st: Dictionary = World.stats[pid]
+	place_player(World.spawn_point(pid))
+	World.env["t"] = 24.0 + 12.0
+	var h0 := float(st["hunger"])
+	var t0 := float(st["thirst"])
+	hours(6.0)
+	check(float(st["hunger"]) < h0 - 0.1 and float(st["thirst"]) < t0 - 0.15, "hungry and thirsty after six hours")
+	give("berries", 5)
+	var h1 := float(st["hunger"])
+	req("eat", {"slot": 0})
+	check(float(st["hunger"]) > h1 and count("berries") == 4, "eating berries")
+	# drink at the pond
+	var w := _find("water")
+	place_player(Vector3(w) + Vector3(1.5, 1.5, 0.5))
+	var t1 := float(st["thirst"])
+	clear_inv()
+	req("drink", {"c": w})
+	check(float(st["thirst"]) > t1, "drinking from the pond")
+	# a cold night in the open
+	place_player(World.spawn_point(pid))
+	World.env["t"] = 24.0 * 2 + 1.0
+	st["warmth"] = 0.8
+	var tmp := Climate.temp_at(World.spawn_point(pid))
+	check(float(tmp["temp"]) < 9.0, "it's cold at night (%.1f C)" % float(tmp["temp"]))
+	hours(3.0)
+	check(float(st["warmth"]) < 0.55, "warmth drains away in the open (%.2f)" % float(st["warmth"]))
+	# by a fire it comes back
+	var c := flat_spot(30, 36)
+	_firepit(c, 6, 2, 2)
+	give("firestarter", 1, {}, 3)
+	req("ignite", {"c": c + Vector3i.UP, "slot": 3})
+	place_player(Vector3(c) + Vector3(1.7, 1.0, 0.5))
+	var w0 := float(st["warmth"])
+	hours(1.0)
+	check(float(st["warmth"]) > w0 + 0.2, "warming up by the fire (%.2f -> %.2f)" % [w0, float(st["warmth"])])
+	# death leaves a bag; respawn; take it back
+	clear_inv()
+	give("knife", 1, {"mat": "flint"}, 0)
+	give("stick", 7, {}, 1)
+	place_player(World.spawn_point(pid) + Vector3(2, 0, 0))
+	Survival.damage(pid, 2.0, "fall")
+	check(not bool(st["alive"]), "dead")
+	var bags := World.entities_of("satchel")
+	check(bags.size() == 1 and (bags[0]["d"]["items"] as Array).size() == 2, "a bag with your things where you fell")
+	check(inv().all_stacks().is_empty(), "nothing left on you")
+	req("break", {"c": Vector3i(30, 44, 30), "slot": 0})
+	req("respawn")
+	check(bool(st["alive"]) and float(st["health"]) > 0.5, "you wake up")
+	if not bags.is_empty():
+		var bp: Vector3 = (bags[0]["xf"] as Transform3D).origin
+		place_player(bp + Vector3(1, 0, 0))
+		req("satchel", {"eid": int(bags[0]["id"])})
+		check(count("stick") == 7 and count("knife") == 1 and World.entities_of("satchel").is_empty(), "everything back from the bag")
+	# the abyss keeps what it takes
+	give("flint", 3, {}, 2)
+	Survival.die(pid, "abyss")
+	check(World.entities_of("satchel").is_empty(), "no bag after falling into the abyss")
+	req("respawn")
 
 
-func test_grass_cutting() -> void:
-	print("-- cutting grass")
-	var spot := clear_soil_spot()
-	await stand_near(spot, Vector3(0, 0, 0.9))
-	give("blade", 1, {"seed": 9, "cuts": [], "q": 0.7, "stone_kg": 0.3, "dur": 1.0})
-	var L0 := ledger()
-	var g0 := inv().count("grass")
-	for i in 16:
-		var p := spot + Vector3((i % 4) * 0.35 - 0.5, 0, (i / 4) * 0.35 - 0.5)
-		p.y = World.terrain.height(p.x, p.z)
-		req("cut_grass", {"pos": p, "slot": slot_of("blade")})
-		await frames(1)
-	check(inv().count("grass") > g0, "a blade cuts grass into handfuls (%d)" % (inv().count("grass") - g0))
-	ledger_same(L0, ledger(), "cutting grass")
-
+# ---------------------------------------------------------------------------
+# Farming and the island's slow life
+# ---------------------------------------------------------------------------
 
 func suite_farm() -> void:
-	await test_grass_cutting()
-	await test_tree_seed()
-	var L0 := ledger()
-	await test_compost()
-	var L1 := ledger()
-	ledger_same(L0, L1, "compost", {"water": 0.05})
-	await test_crops()
-	var L2 := ledger()
-	ledger_same(L1, L2, "crops", {"water": 0.05})
-
-
-func test_compost() -> void:
-	print("-- compost heap")
-	var spot := clear_soil_spot()
-	check(spot != Vector3.INF, "found open soil for a heap")
-	if spot == Vector3.INF:
-		return
-	await stand_near(spot, Vector3(0, 0, 1.1))
-	give("leaves", 8)
-	give("grass", 10)
-	give("straw", 16)
-	give("fiber", 6)
-	give("food_scraps", 4)
-	give("stick", 1)
-	req("compost_start", {"pos": spot, "slot": slot_of("leaves")})
-	await frames(2)
-	check(heaps().size() == 1, "holding leaves, E on bare soil starts a heap")
-	if heaps().is_empty():
-		return
-	var hid := int(heaps()[0]["id"])
-	req("compost_start", {"pos": spot + Vector3(0.6, 0, 0), "slot": slot_of("leaves")})
-	await frames(2)
-	check(heaps().size() == 1, "a second heap right beside it is refused")
-	# whatever greens and browns we carry (earlier suites may have left a scrap or two)
-	var want_g := ItemDB.unit_mass("leaves")
-	var want_b := 0.0
-	for id in ["leaves", "grass", "food_scraps"]:
-		want_g += inv().count(id) * ItemDB.unit_mass(id)
-	for id in ["straw", "fiber"]:
-		want_b += inv().count(id) * ItemDB.unit_mass(id)
-	for id in ["leaves", "grass", "straw", "fiber", "food_scraps"]:
-		while slot_of(id) != -1:
-			req("compost_add", {"eid": hid, "slot": slot_of(id)})
-			await frames(1)
-	var d: Dictionary = World.get_entity(hid)["d"]
-	check(absf(float(d["g"]) - want_g) < 0.001 and absf(float(d["b"]) - want_b) < 0.001, "greens %.2f kg and browns %.2f kg went in" % [float(d["g"]), float(d["b"])])
-	req("compost_add", {"eid": hid, "slot": slot_of("stick")})
-	await frames(1)
-	check(slot_of("stick") != -1, "wood isn't accepted - it would take years")
-	var f := CompostSim.factors(World.get_entity(hid)["d"])
-	print("     mix: %.0f%% browns, wetness %.2f, activity %.2f" % [float(f["browns"]) * 100.0, float(f["wet"]), float(f["act"])])
-	check(float(f["wet"]) > 0.35 and float(f["wet"]) < 0.7, "fresh greens make it damp, not dry or soggy (%.2f)" % float(f["wet"]))
-	await sim_hours(14.0)
-	d = World.get_entity(hid)["d"]
-	print("     after 14 h: %.1f C, air %.2f, rotting %.2f kg, compost %.2f kg" % [float(d["T"]), float(d["air"]), CompostSim.raw(d), float(d["hu"])])
-	check(float(d["T"]) > Climate.base_temp() + 15.0, "a working heap heats itself (%.0f C)" % float(d["T"]))
-	check(float(d["air"]) < 0.6, "and uses up its air (%.2f)" % float(d["air"]))
-	var air0 := float(d["air"])
-	for i in 3:
-		req("compost_turn", {"eid": hid, "slot": -1})
-		await frames(1)
-	check(float(World.get_entity(hid)["d"]["air"]) > air0 + 0.5, "turning it lets air back in")
-	await sim_hours(30.0)
-	d = World.get_entity(hid)["d"]
-	var rotted := 1.0 - CompostSim.raw(d) / (want_g + want_b)
-	print("     after 44 h: %.0f%% rotted, %.2f kg compost, %d ready, %.2f L free water" % [rotted * 100.0, float(d["hu"]), CompostSim.ready_count(d), float(d["w"])])
-	check(rotted > 0.6, "most of a well-kept heap rots within two days (%.0f%%)" % (rotted * 100.0))
-	check(CompostSim.ready_count(d) >= 2, "finished compost is ready (%d)" % CompostSim.ready_count(d))
-	var n_ready := CompostSim.ready_count(d)
-	for i in n_ready:
-		req("compost_take", {"eid": hid, "slot": -1})
-		await frames(1)
-	check(inv().count("compost") == n_ready, "took %d compost" % n_ready)
-	check(World.discoveries.has("first_compost"), "the island journal records the first compost")
-	# a heap of browns alone hardly rots
-	var spot2 := clear_soil_spot([spot])
-	await stand_near(spot2, Vector3(0, 0, 1.1))
-	give("straw", 20)
-	req("compost_start", {"pos": spot2, "slot": slot_of("straw")})
-	await frames(2)
-	var h2 := -1
-	for e in heaps():
-		if int(e["id"]) != hid:
-			h2 = int(e["id"])
-	check(h2 != -1, "a second heap, all straw")
-	if h2 != -1:
-		while slot_of("straw") != -1:
-			req("compost_add", {"eid": h2, "slot": slot_of("straw")})
-			await frames(1)
-		var m0 := CompostSim.raw(World.get_entity(h2)["d"])
-		await sim_hours(20.0)
-		var dry: Dictionary = World.get_entity(h2)["d"]
-		var r2 := 1.0 - CompostSim.raw(dry) / m0
-		check(r2 < 0.12, "dry browns alone barely rot (%.0f%% in 20 h)" % (r2 * 100.0))
-		check(CompostSim.describe(dry).contains("dry") or CompostSim.describe(dry).contains("browns"), "and the heap says why")
-		req("compost_spread", {"eid": h2, "slot": -1})
-		await frames(2)
-		check(not World.has_entity(h2), "spreading a heap returns it to the soil")
-	# spread what's left of the first one too
-	await stand_near(spot, Vector3(0, 0, 1.1))
-	if World.has_entity(hid):
-		req("compost_spread", {"eid": hid, "slot": -1})
-		await frames(2)
-	# work the compost into the soil
-	var nutr0 := World.terrain.total_nutrients()
-	req("fertilize", {"pos": spot + Vector3(0.6, 0, 0), "slot": slot_of("compost")})
-	await frames(1)
-	check(World.terrain.total_nutrients() > nutr0 + CompostSim.unit_nutr() * 0.99, "compost worked into the soil feeds it")
-
-
-func test_crops() -> void:
-	print("-- growing tubers")
-	var spot := clear_soil_spot()
-	if spot == Vector3.INF:
-		check(false, "found soil for a crop")
-		return
-	await stand_near(spot, Vector3(0, 0, 1.0))
-	give("digger", 1, {"q": 0.8, "dur": 1.0, "bind": 0.8, "cords": 1, "head": {"stone_kg": 0.25}})
-	give("tuber", 1)
-	req("plant", {"pos": spot, "slot": slot_of("tuber")})
-	await frames(1)
-	check(World.entities_of("plant").filter(func(e): return e["xf"].origin.distance_to(spot) < 0.3).is_empty(), "nothing grows in untilled ground")
-	req("till", {"pos": spot, "slot": slot_of("digger")})
-	await frames(2)
-	var k: int = World.actions.cell_index_at(spot)
-	check(World.terrain.tilled[k] == 1, "the digging tool tills the soil")
-	req("plant", {"pos": spot, "slot": slot_of("tuber")})
-	await frames(2)
-	var plants := World.entities_of("plant").filter(func(e): return e["xf"].origin.distance_to(spot) < 0.3)
-	check(plants.size() == 1, "a tuber planted in tilled soil")
-	if plants.is_empty():
-		return
-	var pid := int(plants[0]["id"])
-	# keep it watered: the soil under it stays moist
-	for day in 5:
-		for c in World.terrain.cells_in_radius(Vector2(spot.x, spot.z), 0.4):
-			if World.terrain.moist[c] < 0.4:
-				var add := (0.4 - World.terrain.moist[c]) * WaterSim.cell_l()
-				var take := minf(add, float(World.env["pond_l"]))
-				World.env["pond_l"] = float(World.env["pond_l"]) - take
-				World.terrain.moist[c] += take / WaterSim.cell_l()
-		await sim_hours(24.0, 0.5)
-		var pd: Dictionary = World.get_entity(pid)["d"]
-		print("     day %d: growth %.2f, thirst %.2f, hunger %.2f, vigour %.2f" % [day + 1, float(pd.get("g", 0.0)), float(pd.get("thirst", 0.0)), float(pd.get("hunger", 0.0)), float(pd.get("vig", 1.0))])
-		if float(pd.get("g", 0.0)) >= 1.0:
+	var c := flat_spot(26, 36)
+	if Blocks.name_of(World.block(c)) != "grass":
+		World.set_block(c, Blocks.id_of("grass"))
+	stand_near(c)
+	give("hoe", 1, {"mat": "stone"}, 0)
+	give("seeds_turnip", 3, {}, 1)
+	use_on(c, 0)
+	check(Blocks.name_of(World.block(c)) == "farmland", "a hoe tills grass into farmland")
+	use_on(c, 1)
+	var crop := c + Vector3i.UP
+	check(Blocks.name_of(World.block(crop)) == "crop_turnip" and World.block_meta(crop) == 0, "turnips sown")
+	for i in 300:
+		a.farm.tick(2.0)
+		if World.block_meta(crop) >= 3:
 			break
-	var g := float(World.get_entity(pid)["d"].get("g", 0.0))
-	check(g >= 1.0, "watered, it ripens in a few days (growth %.2f)" % g)
-	var before := inv().count("tuber")
-	req("harvest", {"eid": pid, "slot": -1})
-	await frames(2)
-	var got := inv().count("tuber") - before
-	check(got >= 3, "dug up %d tubers" % got)
+	check(World.block_meta(crop) == 3, "they grow to ripeness")
+	clear_inv()
+	req("break", {"c": crop, "slot": 0})
+	pickup_all(Vector3(crop))
+	check(count("turnip") >= 2 and count("seeds_turnip") >= 1, "harvest: turnips and seed (%d, %d)" % [count("turnip"), count("seeds_turnip")])
+	# berries come back
+	var b := _find("berry_bush")
+	stand_near(b)
+	clear_inv()
+	World.set_block_meta(b, 1)
+	use_on(b, 0, false, Vector3i(1, 0, 0))
+	check(count("berries") >= 2 and World.block_meta(b) == 0, "berries picked")
+	for i in 300:
+		a.farm.tick(2.0)
+		if World.block_meta(b) == 1:
+			break
+	check(World.block_meta(b) == 1, "the bush fruits again")
+	# a sapling grows into a tree
+	var s := flat_spot(22, 36)
+	World.set_block(s, Blocks.id_of("grass"))
+	for o in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		for y in range(1, 9):
+			if World.block(s + o + Vector3i(0, y, 0)) != 0 and not Blocks.has_flag(World.block(s + o + Vector3i(0, y, 0)), "leaves"):
+				World.set_block(s + o + Vector3i(0, y, 0), 0)
+	World.set_block(s + Vector3i.UP, Blocks.id_of("sapling_oak"))
+	for i in 600:
+		a.farm.tick(2.0)
+		if Blocks.has_flag(World.block(s + Vector3i.UP), "tree"):
+			break
+	check(Blocks.has_flag(World.block(s + Vector3i.UP), "tree") and World.block_meta(s + Vector3i.UP) & BlockActs.NATURAL, "the sapling became a tree")
+	# filling a bowl
+	var w := _find("water")
+	place_player(Vector3(w) + Vector3(1.5, 1.5, 0.5))
+	clear_inv()
+	give("bowl", 1, {}, 0)
+	use_on(w, 0)
+	check(String(inv().get_slot(0)["d"].get("c", "")) == "water", "a bowl filled at the pond")
+	var st: Dictionary = World.stats[pid]
+	st["thirst"] = 0.3
+	req("eat", {"slot": 0})
+	check(float(st["thirst"]) > 0.55 and String(inv().get_slot(0)["d"].get("c", "")) == "", "drinking from the bowl")
+	# a bed
+	var bc := flat_spot(32, 40)
+	stand_near(bc)
+	give("straw_bed", 1, {}, 1)
+	req("place", {"c": bc + Vector3i.UP, "slot": 1, "face": Vector3i.UP})
+	check(Blocks.name_of(World.block(bc + Vector3i.UP)) == "straw_bed", "a straw bed placed")
+	req("bed_set", {"c": bc + Vector3i.UP})
+	check(World.stats[pid]["bed"] == bc + Vector3i.UP, "it's where you'll wake")
 
 
 # ---------------------------------------------------------------------------
-# Persistence
+# Saving and loading
 # ---------------------------------------------------------------------------
-
-func world_snapshot() -> Dictionary:
-	var types := {}
-	for e in World.entities.values():
-		types[e["t"]] = int(types.get(e["t"], 0)) + 1
-	var items := {}
-	for s in inv().slots:
-		if not s.is_empty():
-			items[s["i"]] = int(items.get(s["i"], 0)) + int(s["n"])
-	var hsum := 0.0
-	var t := World.terrain
-	for k in t.inside.size():
-		if t.inside[k]:
-			hsum += t.rock[k] + t.clay[k] + t.soil[k] + t.moist[k] * 0.01 + t.nutr[k] + float(t.tilled[k])
-	return {"types": types, "inv": items, "disc": World.discoveries.duplicate(), "next_id": World.next_id,
-		"pond": snappedf(float(World.env.get("pond_l", 0.0)), 0.001), "soil": snappedf(World.terrain.total_soil_l(), 0.001),
-		"clay": snappedf(World.terrain.total_clay_l(), 0.001), "hsum": snappedf(hsum, 0.001), "t": snappedf(float(World.env["t"]), 0.0001)}
-
-
-func reload_world() -> String:
-	## Save, leave to nothing, and load the same island again.
-	var name := World.world_name
-	var err := Game.save()
-	if err != OK:
-		return "save failed: " + error_string(err)
-	Game._teardown()
-	await frames(3)
-	var e2 := Game.start_world("solo", name, false)
-	if e2 != "":
-		return e2
-	await frames(12)
-	lp = Game.game_world.local_player()
-	return ""
-
 
 func suite_save() -> void:
-	print("-- save and reload")
-	give("stone", 3)
-	give("cordage", 2)
-	give("clay", 4, {"moist": 0.22})
-	var spot := clear_soil_spot()
-	await stand_near(spot, Vector3(0, 0, 1.0))
-	give("leaves", 5)
-	req("compost_start", {"pos": spot, "slot": slot_of("leaves")})
-	await frames(2)
-	var hid := -1
-	for e in heaps():
-		hid = int(e["id"])
-	while slot_of("leaves") != -1 and hid != -1:
-		req("compost_add", {"eid": hid, "slot": slot_of("leaves")})
-		await frames(1)
-	await sim_hours(2.0)
-	World.discover("first_compost", Net.my_id())
-	Guide.mark_read("composting")
-	World.request("guide_state", {"state": Guide.export_state()})
-	await frames(2)
-	var heap_before: Dictionary = World.get_entity(hid)["d"].duplicate(true) if hid != -1 else {}
-	var S0 := world_snapshot()
-	var L0 := ledger()
-	var err := await reload_world()
-	check(err == "", "saved, left, and loaded the island again (%s)" % (err if err != "" else "ok"))
-	if err != "":
-		return
-	check(FileAccess.file_exists(World.save_path(World.world_name)), "the save file is on disk")
-	var S1 := world_snapshot()
-	for k in S0:
-		if k == "t":
-			# the clock keeps running for the few frames around the save
-			check(float(S1[k]) >= float(S0[k]) and float(S1[k]) - float(S0[k]) < 0.05, "the time of day survived the reload")
-		else:
-			check(str(S0[k]) == str(S1[k]), "%s survived the reload" % k)
-	ledger_same(L0, ledger(), "reload")
-	if hid != -1:
-		check(World.has_entity(hid) and absf(float(World.get_entity(hid)["d"]["g"]) - float(heap_before["g"])) < 1e-6, "the compost heap is exactly as it was")
-	check(Guide.read.has("composting"), "your guide progress came back with you")
-	# again, to be sure nothing doubles up
-	var err2 := await reload_world()
-	check(err2 == "", "and a second time")
-	var S2 := world_snapshot()
-	check(str(S2["inv"]) == str(S0["inv"]), "no item was duplicated across two reloads")
-	check(str(S2["types"]) == str(S0["types"]), "no entity was duplicated across two reloads")
-	ledger_same(L0, ledger(), "second reload")
-	# the island keeps running after a load
-	if hid != -1 and World.has_entity(hid):
-		var g0 := float(World.get_entity(hid)["d"]["g"])
-		await sim_hours(2.0)
-		check(float(World.get_entity(hid)["d"]["g"]) < g0, "the heap keeps rotting after the reload")
-	# a fire saved mid-burn is still burning when the island loads again
-	print("-- a campfire across a save")
-	var fc := clear_soil_spot([spot])
-	await stand_near(fc, Vector3(0, 0, 1.2))
-	var tinder := lay_campfire(fc, 3)
-	await frames(2)
-	FireSim.ignite(tinder, 620.0)
-	await run_fire(0.25)
-	var s0 := site_near(fc)
-	check(not s0.is_empty() and float(s0["d"].get("flame", 0.0)) > 0.0, "the campfire is burning before the save")
-	var T0 := float(FireSim._runtime(s0)["T"]) if not s0.is_empty() else 0.0
-	var scorched0 := bool(FireSim._runtime(s0).get("scorched", false)) if not s0.is_empty() else false
-	var L2 := ledger()
-	var err3 := await reload_world()
-	check(err3 == "", "saved and reloaded with the fire lit")
-	var s1 := site_near(fc)
-	check(not s1.is_empty(), "the fire site came back")
-	if not s1.is_empty():
-		var rt1 := FireSim._runtime(s1)
-		check(absf(float(rt1["T"]) - T0) < 1.0, "at the same heat (%.0f C before, %.0f C after)" % [T0, float(rt1["T"])])
-		check(bool(rt1.get("scorched", false)) == scorched0, "and the ground under it stays scorched (not torn up again)")
-	ledger_same(L2, ledger(), "fire across a reload", {"water": 0.05})
-	await run_fire(0.1)
-	var s2 := site_near(fc)
-	check(not s2.is_empty() and float(s2["d"].get("flame", 0.0)) > 0.0, "and it is still burning afterwards (flame %.2f)" % (float(s2["d"].get("flame", 0.0)) if not s2.is_empty() else 0.0))
-	await run_fire(3.0)
-	ledger_same(L2, ledger(), "the reloaded fire burning down", {"water": 0.05})
+	var c := flat_spot(30, 36)
+	_firepit(c, 4, 1)
+	var g := flat_spot(26, 30) + Vector3i.UP
+	stand_near(g + Vector3i.DOWN)
+	give("bowl", 2, {}, 0)
+	use_on(g + Vector3i.DOWN, 0, true)
+	World.set_block(Vector3i(30, 50, 30), Blocks.id_of("brick_block"))
+	clear_inv()
+	give("knife", 1, {"mat": "flint", "dur": 33}, 4)
+	give("berries", 9, {}, 5)
+	var t := World.hours()
+	var n_ent := World.entities.size()
+	check(Game.save() == OK, "saved")
+	var data := World.build_snapshot()
+	check(World.load_world("TestIsland") == OK, "loaded")
+	World.on_player_joined(pid, Settings.player_name)
+	check(World.block(Vector3i(30, 50, 30)) == Blocks.id_of("brick_block"), "a placed block is still there")
+	check(not World.be(c + Vector3i.UP).is_empty() and int(World.be(c + Vector3i.UP)["d"]["sticks"]) == 4, "the fire pit is still there")
+	check(not World.be(g).is_empty() and World.be(g)["t"] == "ground", "the bowl left on the ground too")
+	check(World.entities.size() == n_ent, "the same things in the world (%d / %d)" % [World.entities.size(), n_ent])
+	check(absf(World.hours() - t) < 0.01, "the same time of day")
+	var kn := inv().get_slot(4)
+	check(String(kn.get("i", "")) == "knife" and int(kn["d"]["dur"]) == 33 and count("berries") == 9, "your inventory came back")
+	# an island from before the block world can't be opened
+	var old := FileAccess.open(World.save_path("OldIsland"), FileAccess.WRITE)
+	old.store_var({"version": 3, "name": "OldIsland"})
+	old.close()
+	check(World.load_world("OldIsland") == ERR_FILE_UNRECOGNIZED, "an old island is recognised and refused")
+	World.delete_save("OldIsland")
+	World.load_world("TestIsland")
+	World.on_player_joined(pid, Settings.player_name)
 
 
 # ---------------------------------------------------------------------------
-# Ten days: stability, conservation, and can the island feed someone?
+# Ten days on the island
 # ---------------------------------------------------------------------------
-
-var _bot := {}
-
-
-func _go(p: Vector3, off: Vector3 = Vector3(0.0, 0.0, 0.9)) -> void:
-	var q := p + off
-	q.y = World.terrain.height(q.x, q.z) + 0.05
-	lp.global_position = q
-	lp.velocity = Vector3.ZERO
-
-
-func _eat_real() -> bool:
-	## Eat the best thing carried; returns false if there's nothing to eat.
-	for id in ["tuber_roasted", "mushroom_roasted", "tuber", "mushroom", "berries"]:
-		if id == "tuber" and inv().count("tuber") <= int(_bot.get("keep_seed", 0)):
-			continue
-		var sl := slot_of(id)
-		if sl != -1:
-			var h0 := float(me()["hunger"])
-			req("eat", {"slot": sl})
-			_bot["real"] = float(_bot.get("real", 0.0)) + (float(me()["hunger"]) - h0)
-			return true
-	return false
-
-
-func forage_step() -> void:
-	## A sensible islander: gather what's ripe, replant, water the plot, eat and drink.
-	var pid := Net.my_id()
-	var st := me()
-	if st.is_empty() or not st.get("alive", true):
-		req("respawn", {})
-		_bot["deaths"] = int(_bot.get("deaths", 0)) + 1
-		return
-	for e in World.entities_of("plant"):
-		if float(e["d"].get("g", 0.0)) >= 1.0:
-			_go(e["xf"].origin)
-			var sp := String(e["d"].get("sp", ""))
-			var tool_slot := slot_of("blade") if sp != "tuber" else -1
-			req("harvest", {"eid": int(e["id"]), "slot": tool_slot})
-			_bot["harvests"] = int(_bot.get("harvests", 0)) + 1
-	for e in World.entities_of("bush"):
-		if float(e["d"].get("berries", 0.0)) >= 0.5:
-			_go(e["xf"].origin, Vector3(0.0, 0.0, 1.0))
-			req("pick_berries", {"eid": int(e["id"])})
-	for e in World.entities_of("mushrooms"):
-		var caps: Array = e["d"].get("caps", [])
-		for i in caps.size():
-			if float(caps[i]) >= 0.6:
-				_go(e["xf"].origin, Vector3(0.0, 0.0, 0.9))
-				req("pick_mushroom", {"eid": int(e["id"]), "idx": i})
-	# replant: keep a plot of tubers going
-	var plot: Array = _bot.get("plot", [])
-	var crops := World.entities_of("plant").filter(func(e): return String(e["d"].get("sp", "")) == "tuber" and not bool(e["d"].get("wild", false)))
-	for spot in plot:
-		var taken := false
-		for c in crops:
-			if (c["xf"].origin as Vector3).distance_to(spot) < 0.3:
-				taken = true
-		if not taken and inv().count("tuber") > 1:
-			_go(spot)
-			var k: int = World.actions.cell_index_at(spot)
-			if World.terrain.tilled[k] != 1:
-				req("till", {"pos": spot, "slot": slot_of("digger")})
-			req("plant", {"pos": spot, "slot": slot_of("tuber")})
-	# water the plot from the pond (as a vessel would carry it)
-	for spot in plot:
-		for c in World.terrain.cells_in_radius(Vector2(spot.x, spot.z), 0.4):
-			if World.terrain.moist[c] < 0.38:
-				var add := (0.42 - World.terrain.moist[c]) * WaterSim.cell_l()
-				var take := minf(add, maxf(0.0, float(World.env["pond_l"]) - 50.0))
-				World.env["pond_l"] = float(World.env["pond_l"]) - take
-				World.terrain.moist[c] += take / WaterSim.cell_l()
-				_bot["watered"] = float(_bot.get("watered", 0.0)) + take
-	# drink
-	if float(st["thirst"]) < 0.6:
-		var want := (0.95 - float(st["thirst"])) * Survival.BODY_WATER_L
-		var take2 := minf(want, maxf(0.0, float(World.env["pond_l"]) - 20.0))
-		World.env["pond_l"] = float(World.env["pond_l"]) - take2
-		Survival.drink(pid, take2)
-	# eat
-	var guard := 0
-	while float(me()["hunger"]) < 0.55 and guard < 12:
-		guard += 1
-		if not _eat_real():
-			# nothing gathered to eat: note the shortfall and eat from outside (test only)
-			give("tuber_roasted", 1)
-			var h0 := float(me()["hunger"])
-			req("eat", {"slot": slot_of("tuber_roasted")})
-			_bot["short"] = float(_bot.get("short", 0.0)) + (float(me()["hunger"]) - h0)
-
 
 func suite_longrun() -> void:
-	print("-- ten days on the island")
-	var L0 := ledger()
-	give("blade", 1, {"seed": 3, "cuts": [], "q": 0.7, "stone_kg": 0.3, "dur": 1.0})
-	give("digger", 1, {"q": 0.8, "dur": 1.0, "bind": 0.8, "cords": 1, "head": {"stone_kg": 0.25}})
-	var plot: Array = []
-	var avoid: Array = []
-	var base := clear_soil_spot()
-	for i in 6:
-		var p := base + Vector3((i % 3) * 0.6, 0, (i / 3) * 0.6)
-		p.y = World.terrain.height(p.x, p.z)
-		plot.append(p)
-	_bot = {"plot": plot, "keep_seed": 2}
-	var e0 := World.entities.size()
-	var tick_us := 0
+	var st: Dictionary = World.stats[pid]
+	var c := flat_spot(30, 36)
+	place_player(Vector3(c) + Vector3(1.7, 1.0, 0.5))
+	var t0 := Time.get_ticks_msec()
 	var ticks := 0
-	var sim = Game.game_world.sim
+	var max_tick := 0
 	for day in 10:
-		for hour in 24:
-			var Lh := ledger()
-			var Ph := ledger_parts()
-			for half in 2:
-				World.env["t"] = float(World.env["t"]) + 0.5
-				var t0 := Time.get_ticks_usec()
-				sim._tick(0.5, 0.5)
-				tick_us += Time.get_ticks_usec() - t0
-				ticks += 1
-			var Lm := ledger()
-			if absf(float(Lm["nutr"]) - float(Lh["nutr"])) > 0.00005 or absf(float(Lm["carbon"]) - float(Lh["carbon"])) > 0.0005:
-				print("     !! day %d hour %d: the island's tick moved nutr %+.5f carbon %+.4f" % [day + 1, hour, float(Lm["nutr"]) - float(Lh["nutr"]), float(Lm["carbon"]) - float(Lh["carbon"])])
-				print_parts_diff(Ph, ledger_parts())
-			var Pm := ledger_parts()
-			forage_step()
-			var Lf := ledger()
-			if absf(float(Lf["nutr"]) - float(Lm["nutr"])) > 0.00005 or absf(float(Lf["carbon"]) - float(Lm["carbon"])) > 0.0005:
-				print("     !! day %d hour %d: foraging moved nutr %+.5f carbon %+.4f" % [day + 1, hour, float(Lf["nutr"]) - float(Lm["nutr"]), float(Lf["carbon"]) - float(Lm["carbon"])])
-				print_parts_diff(Pm, ledger_parts())
-			if hour % 4 == 0:
-				await get_tree().physics_frame
-		var items := World.entities_of("item").size()
-		var crops := World.entities_of("plant").size()
-		var tree: Dictionary = World.entities_of("tree")[0]["d"] if not World.entities_of("tree").is_empty() else {}
-		print("     day %2d: pond %6.0f L  air %5.0f L  rain %.1f  tree %5.0f kg  plants %d  items %d  food: gathered %.2f short %.2f  harvests %d  carried tubers %d" % [
-			day + 1, float(World.env["pond_l"]), float(World.pools["atmo_water_l"]), float(World.env.get("rain", 0.0)),
-			TreeSim.biomass(tree) if not tree.is_empty() else 0.0, crops, items, float(_bot.get("real", 0.0)), float(_bot.get("short", 0.0)),
-			int(_bot.get("harvests", 0)), inv().count("tuber")])
-	var avg_ms := tick_us / 1000.0 / maxf(1.0, ticks)
-	print("     average island tick: %.2f ms (every 0.5 s of play)" % avg_ms)
-	check(bool(me().get("alive", false)) and int(_bot.get("deaths", 0)) == 0, "the islander is alive after ten days")
-	var real := float(_bot.get("real", 0.0))
-	var short := float(_bot.get("short", 0.0))
-	var share := real / maxf(0.001, real + short)
-	print("     the island supplied %.0f%% of the food eaten (%.2f gathered, %.2f from outside)" % [share * 100.0, real, short])
-	check(share > 0.9, "the island alone can feed one person who forages and farms (%.0f%%)" % (share * 100.0))
-	check(float(World.env["pond_l"]) > 100.0, "the pond hasn't run dry")
-	check(float(World.pools["atmo_water_l"]) < WaterSim.ATMO_CAPACITY * 1.5, "the air doesn't hoard the water")
-	check(World.entities.size() < e0 + 250, "the world doesn't fill up with clutter (%d -> %d things)" % [e0, World.entities.size()])
-	check(avg_ms < 25.0, "the island's simulation stays cheap (%.2f ms per tick)" % avg_ms)
-	ledger_same(L0, ledger(), "ten days", {"water": 0.1})
-
-
-func suite_drift() -> void:
-	## Debug: does anything create or destroy matter while the island just runs?
-	for round in 3:
-		var L0 := ledger()
-		var P0 := ledger_parts()
-		await sim_hours(12.0)
-		var L1 := ledger()
-		ledger_same(L0, L1, "12 idle hours (round %d)" % round, {"water": 0.05})
-		print_parts_diff(P0, ledger_parts())
-
-
-func suite_start() -> void:
-	## Debug: what a brand-new island offers in its first minutes.
-	for e in World.entities_of("plant"):
-		print("     %-6s g=%.2f wild=%s at %s" % [e["d"]["sp"], float(e["d"]["g"]), str(e["d"].get("wild", false)), str(e["xf"].origin)])
-	for e in World.entities_of("bush"):
-		print("     bush berries=%.2f" % float(e["d"].get("berries", 0.0)))
-	for e in World.entities_of("mushrooms"):
-		print("     mushrooms caps=%s" % str(e["d"].get("caps", [])))
-
-
-func suite_pond() -> void:
-	var t := World.terrain
-	print("pond capacity %.1f L, pond_l %.1f L, level %.3f, bed at centre %.3f" % [t.pond_capacity(), float(World.env.get("pond_l", -1)), Game.game_world.island.water_level(), t.height(TerrainData.POND_CENTER.x, TerrainData.POND_CENTER.y)])
-	print("water visible: ", Game.game_world.island.water_mi.visible, " pos ", Game.game_world.island.water_mi.global_position)
+		for step in 48:
+			# a sensible islander: eats and drinks when low, keeps warm by a fire at night
+			if float(st["hunger"]) < 0.4:
+				Survival.eat(pid, {"hunger": 0.3}, false)
+			if float(st["thirst"]) < 0.4:
+				Survival.drink(pid, 0.5)
+			if World.is_night() and World.be(c + Vector3i.UP).is_empty():
+				_firepit(c, 6, 2, 4)
+				give("firestarter", 1, {}, 3)
+				req("ignite", {"c": c + Vector3i.UP, "slot": 3})
+				place_player(Vector3(c) + Vector3(1.7, 1.0, 0.5))
+			elif not World.is_night() and not World.be(c + Vector3i.UP).is_empty() and not bool(World.be(c + Vector3i.UP)["d"]["lit"]):
+				req("break", {"c": c + Vector3i.UP, "slot": 0})
+			var tt := Time.get_ticks_msec()
+			hours(0.5, 0.5)
+			max_tick = maxi(max_tick, Time.get_ticks_msec() - tt)
+			ticks += 1
+	check(bool(st["alive"]), "alive after ten days (health %.2f)" % float(st["health"]))
+	check(World.day() >= 11, "it's day %d" % World.day())
+	check(max_tick < 50, "one simulation step takes at most %d ms" % max_tick)
+	print("   10 days: %d steps in %d ms" % [ticks, Time.get_ticks_msec() - t0])

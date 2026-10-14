@@ -247,10 +247,10 @@ func _apply(t: float) -> void:
 	rain_fx.emitting = rn > 0.05
 	# the pond mirrors a little starlight and moonlight at night
 	if _island == null or not is_instance_valid(_island):
-		_island = get_tree().get_first_node_in_group("island_view")
-	if _island and _island.get("water_mat"):
+		_island = get_tree().get_first_node_in_group("voxel_view")
+	if _island and _island.get("mat_water"):
 		var glow := Color(0.055, 0.08, 0.12) * (1.0 - day) * (1.0 - oc * 0.5) + Color(0.03, 0.045, 0.07) * moon.light_energy * 2.0
-		(_island.water_mat as ShaderMaterial).set_shader_parameter("sky_glow", glow)
+		(_island.mat_water as ShaderMaterial).set_shader_parameter("sky_glow", Vector3(glow.r, glow.g, glow.b))
 	rain_fx.amount_ratio = clampf(rn, 0.05, 1.0)
 	current_day = day
 	current_rain = rn

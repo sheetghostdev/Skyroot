@@ -1,720 +1,579 @@
 class_name Actions
 extends Node
-## Host-only: validates and executes every request from every player
-## (including the host's own).  Because only this code mutates the world and
-## each request re-checks the current state (does the item still exist? is it
-## in the slot the client claims? is it within reach?), simultaneous requests
-## can't duplicate anything: the second one simply fails.
+## The host's request handler.  Every client request ends up here; each action
+## re-validates everything against the current state (is the block still there,
+## is it within reach, does the player hold what they claim...) before changing
+## anything, and requests are handled one at a time, so nothing can be
+## duplicated.  Domain rules live in BlockActs, FireActs, CraftActs and FarmActs.
 
-const REACH := 3.0          # generous server-side reach (client uses 2.6)
-const CARRY_KG := 45.0      # most anyone can carry about
-const LIFT_KG := 35.0       # heavier single things stay where they are (split a log where it lies)
-const PICKUP_STACK := true
+const REACH := 5.4                 # eye to the nearest point of the target (a little slack for lag)
+const EYE := 1.62
+const PICKUP_R := 1.5
+const ABYSS_Y := -30.0
 
-var handlers: Dictionary = {}
-var _rng := RandomNumberGenerator.new()
+var no_rate := false               # tests: requests may come faster than hands could
+var _pickup_t := 0.0
+var _last_break: Dictionary = {}   # pid -> msec
+var _last_act: Dictionary = {}     # "pid:action" -> msec
+
+var blocks: BlockActs
+var fire: FireActs
+var craft: CraftActs
+var farm: FarmActs
 
 
 func _ready() -> void:
-	_rng.randomize()
-	for nm in ["pickup", "drop", "place", "outcrop_take", "pick_mushroom", "pick_berries", "eat", "drink_pond",
-			"drink_vessel", "drink_entity", "fill_vessel", "eat_vessel", "hurt", "fell", "exert", "guide_state", "dig", "fill",
-			"till", "cut_grass", "tree_cut", "tree_chop_limb", "tree_fell", "process", "process_held", "harvest", "plant",
-			"fertilize", "pour", "inv_move", "inv_split", "inv_drop_slot", "respawn", "satchel_take", "split", "chat_cmd", "break_pot", "outcrop_break"]:
-		handlers[nm] = Callable(self, "_a_" + nm)
-	ActionsCraft.register(self)
-	ActionsFire.register(self)
-	ActionsBuild.register(self)
-	ActionsCompost.register(self)
+	blocks = BlockActs.new(self)
+	fire = FireActs.new(self)
+	craft = CraftActs.new(self)
+	farm = FarmActs.new(self)
 
 
-func register(nm: String, cb: Callable) -> void:
-	handlers[nm] = cb
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
 
-
-func handle(pid: int, action: String, args: Dictionary) -> void:
-	if not handlers.has(action):
-		push_warning("Unknown action " + action)
-		return
-	if not Net.players.has(pid):
-		return
-	if not args_ok(args):
-		push_warning("Ignored a malformed '%s' request from peer %d" % [action, pid])
-		return
-	var alive: bool = World.stats.get(pid, {}).get("alive", true)
-	if not alive and not action in ["respawn", "guide_state", "fell", "inv_move", "inv_split"]:
-		return
-	handlers[action].call(pid, args)
-
-
-# What the handlers expect each argument to be (anything else is refused).
 const ARG_TYPES := {
-	"eye": [TYPE_VECTOR3], "pos": [TYPE_VECTOR3], "dir": [TYPE_VECTOR3], "xf": [TYPE_TRANSFORM3D],
-	"op": [TYPE_ARRAY], "state": [TYPE_DICTIONARY],
-	"slot": [TYPE_INT, TYPE_FLOAT], "eid": [TYPE_INT, TYPE_FLOAT], "from": [TYPE_INT, TYPE_FLOAT],
-	"to": [TYPE_INT, TYPE_FLOAT], "n": [TYPE_INT, TYPE_FLOAT], "idx": [TYPE_INT, TYPE_FLOAT],
-	"surface": [TYPE_INT, TYPE_FLOAT], "board": [TYPE_INT, TYPE_FLOAT], "sy": [TYPE_INT, TYPE_FLOAT],
-	"amount": [TYPE_INT, TYPE_FLOAT],
-	"kind": [TYPE_STRING, TYPE_STRING_NAME], "part": [TYPE_STRING, TYPE_STRING_NAME],
-	"bp": [TYPE_STRING, TYPE_STRING_NAME], "cause": [TYPE_STRING, TYPE_STRING_NAME],
+	"c": TYPE_VECTOR3I, "face": TYPE_VECTOR3I, "slot": TYPE_INT, "i": TYPE_INT, "r": TYPE_STRING,
+	"sneak": TYPE_BOOL, "add": TYPE_BOOL, "cells": TYPE_PACKED_INT32_ARRAY, "button": TYPE_INT, "shift": TYPE_BOOL,
+	"all": TYPE_BOOL, "amount": TYPE_FLOAT, "cause": TYPE_STRING, "state": TYPE_DICTIONARY, "eid": TYPE_INT,
+	"point": TYPE_VECTOR3, "kind": TYPE_STRING, "yaw": TYPE_FLOAT,
 }
 
 
-static func args_ok(args: Dictionary) -> bool:
-	## A request's arguments must be the kinds of thing the handlers expect, and
-	## every number in them a real one: a NaN or an infinity from a broken or
-	## hostile client would poison whatever it touched (the island's books, a save).
+func handle(pid: int, action: String, args: Dictionary) -> void:
 	for k in args:
-		var want: Array = ARG_TYPES.get(String(k), [])
-		if not want.is_empty() and not typeof(args[k]) in want:
-			return false
-	return _finite(args, 0)
+		if ARG_TYPES.has(k) and typeof(args[k]) != ARG_TYPES[k]:
+			return
+	var st: Dictionary = World.stats.get(pid, {})
+	if st.is_empty():
+		return
+	var alive := bool(st.get("alive", true))
+	if not alive and action != "respawn" and action != "guide_state":
+		return
+	match action:
+		"break": blocks.break_at(pid, args)
+		"place": blocks.place(pid, args)
+		"use": use(pid, args)
+		"ignite": fire.ignite(pid, args)
+		"knap": craft.knap(pid, args)
+		"knap_choose": craft.knap_choose(pid, args)
+		"clay": craft.clay(pid, args)
+		"clay_choose": craft.clay_choose(pid, args)
+		"take": take(pid, args)
+		"satchel": take_satchel(pid, args)
+		"eat": eat(pid, args)
+		"drink": drink(pid, args)
+		"inv_click": inv_click(pid, args)
+		"inv_close": close_inventory(pid)
+		"container_click": craft.container_click(pid, args)
+		"drop": drop(pid, args)
+		"hurt":
+			if _rate(pid, "hurt", 300):
+				Survival.damage(pid, clampf(float(args.get("amount", 0.0)), 0.0, 1.0), String(args.get("cause", "fall")))
+		"fell": Survival.die(pid, "abyss")
+		"respawn": Survival.respawn(pid)
+		"bed_set": farm.bed_set(pid, args)
+		"guide_state":
+			World.guide_states[pid] = _clean_guide(args.get("state", {}))
 
 
-static func _finite(v: Variant, depth: int) -> bool:
-	if depth > 6:
+func _rate(pid: int, key: String, ms: int) -> bool:
+	if no_rate:
+		return true
+	var k := "%d:%s" % [pid, key]
+	var now := Time.get_ticks_msec()
+	if now - int(_last_act.get(k, -100000)) < ms:
 		return false
-	match typeof(v):
-		TYPE_FLOAT:
-			return is_finite(v)
-		TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4, TYPE_QUATERNION, TYPE_BASIS, TYPE_TRANSFORM2D, \
-				TYPE_TRANSFORM3D, TYPE_PLANE, TYPE_AABB, TYPE_RECT2:
-			return v.is_finite()
-		TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY:
-			for x in v:
-				if not is_finite(x):
-					return false
-		TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY:
-			for x in v:
-				if not x.is_finite():
-					return false
-		TYPE_ARRAY:
-			for x in v:
-				if not _finite(x, depth + 1):
-					return false
-		TYPE_DICTIONARY:
-			for k in v:
-				if not _finite(k, depth + 1) or not _finite(v[k], depth + 1):
-					return false
+	_last_act[k] = now
 	return true
 
 
+func _clean_guide(st: Dictionary) -> Dictionary:
+	var out := {}
+	for k in ["read", "seen", "done", "flags"]:
+		var src = st.get(k, {})
+		var d := {}
+		if src is Dictionary:
+			for key in src:
+				if d.size() < 400:
+					d[String(key).left(48)] = true
+		out[k] = d
+	return out
+
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Players
 # ---------------------------------------------------------------------------
 
 func player_pos(pid: int) -> Vector3:
-	var gw = Game.game_world
-	if gw and gw.players:
-		return gw.players.player_pos(pid)
-	return Net.poses.get(pid, {}).get("p", Vector3.ZERO)
+	var pose: Dictionary = Net.poses.get(pid, {})
+	return pose.get("p", World.spawn_point(pid))
 
 
-func eye(pid: int, args: Dictionary) -> Vector3:
-	var p := player_pos(pid)
-	var e: Vector3 = args.get("eye", p + Vector3(0, 1.6, 0))
-	if e.distance_to(p + Vector3(0, 1.3, 0)) > 1.2:
-		e = p + Vector3(0, 1.55, 0)
-	return e
+func eye_pos(pid: int) -> Vector3:
+	var pose: Dictionary = Net.poses.get(pid, {})
+	var crouch := bool(pose.get("c", false))
+	return player_pos(pid) + Vector3(0, 1.3 if crouch else EYE, 0)
 
 
-func in_reach(pid: int, args: Dictionary, point: Vector3, extra: float = 0.0) -> bool:
-	return eye(pid, args).distance_to(point) <= REACH + extra
+func in_reach(pid: int, c: Vector3i) -> bool:
+	var box := AABB(Vector3(c), Vector3.ONE)
+	var e := eye_pos(pid)
+	var nearest := e.clamp(box.position, box.end)
+	return e.distance_to(nearest) <= REACH
 
 
-func inv(pid: int) -> Inventory:
-	return World.inventory_of(pid)
+func held(pid: int, slot: int) -> Dictionary:
+	if slot < 0 or slot >= Inventory.HOTBAR:
+		return {}
+	return World.inventory_of(pid).get_slot(slot)
 
 
-func held(pid: int, args: Dictionary) -> Dictionary:
-	return inv(pid).get_slot(int(args.get("slot", -1)))
+func held_kind(pid: int, slot: int) -> String:
+	var s := held(pid, slot)
+	return ItemDB.tool_kind(String(s.get("i", ""))) if not s.is_empty() else ""
 
 
-func held_id(pid: int, args: Dictionary) -> String:
-	return String(held(pid, args).get("i", ""))
+func wear_tool(pid: int, slot: int, uses: int = 1) -> void:
+	## A tool loses a use; worn out, it breaks.
+	var inv := World.inventory_of(pid)
+	var s := inv.get_slot(slot)
+	if s.is_empty() or ItemDB.tool_info(String(s["i"])).is_empty():
+		return
+	var d: Dictionary = s["d"]
+	var dur := int(d.get("dur", ItemDB.max_durability(String(s["i"]), d))) - uses
+	if dur <= 0:
+		inv.set_slot(slot, {})
+		World.notify(pid, "Your %s broke." % ItemDB.label(String(s["i"]), d).to_lower(), "warn")
+		World.fx("tool_break", player_pos(pid) + Vector3(0, 1.2, 0))
+	else:
+		d["dur"] = dur
+	World.mark_inventory(pid)
 
 
-func give(pid: int, id: String, n: int, d: Dictionary = {}, near: Vector3 = Vector3.INF) -> void:
-	## Add to inventory; anything that doesn't fit, or is more than they can
-	## carry, is set down at their feet (or `near`).
-	var fit := mini(n, room_by_weight(pid, id, d))
-	var left := n - fit
-	if fit > 0:
-		left += inv(pid).add(id, fit, d)
+func give(pid: int, id: String, n: int = 1, d: Dictionary = {}, at := Vector3.INF) -> void:
+	## Into the player's inventory; what doesn't fit drops at their feet (or at `at`).
+	var inv := World.inventory_of(pid)
+	var left := inv.add(id, n, d)
 	World.mark_inventory(pid)
 	if left > 0:
-		var p := near if near != Vector3.INF else player_pos(pid)
-		spawn_item(id, left, d, p + Vector3(_rng.randf_range(-0.25, 0.25), 0.4, _rng.randf_range(-0.25, 0.25)))
-		World.notify(pid, ("That's more than you can carry - set down %s." if fit < n else "Your hands are full - dropped %s.") \
-			% ItemDB.display_name(id, d).to_lower())
-	_first_touch(pid, id)
+		var p := player_pos(pid) + Vector3(0, 0.6, 0) if at == Vector3.INF else at
+		drop_item(id, left, d, p, Vector3.ZERO, pid)
 
 
-func room_by_weight(pid: int, id: String, d: Dictionary = {}) -> int:
-	## How many more of these someone can carry before the load is too much.
-	var unit_kg := Inventory.stack_kg(id, 1, d)
-	if unit_kg <= 0.0:
-		return 1 << 30
-	return maxi(0, int(floor((CARRY_KG - inv(pid).carried_kg()) / unit_kg + 1e-6)))
+func give_stack(pid: int, s: Dictionary, at := Vector3.INF) -> void:
+	give(pid, String(s["i"]), int(s["n"]), s.get("d", {}), at)
 
 
-func _first_touch(pid: int, id: String) -> void:
-	World.hint_to(pid, "item:" + id)
+# ---------------------------------------------------------------------------
+# Dropped items
+# ---------------------------------------------------------------------------
 
-
-func take_held(pid: int, args: Dictionary, n: int = 1) -> Dictionary:
-	var slot := int(args.get("slot", -1))
-	var s := inv(pid).take_from(slot, n)
-	World.mark_inventory(pid)
-	return s
-
-
-func spawn_item(id: String, n: int, d: Dictionary, pos: Vector3, yaw: float = -1.0) -> int:
-	## Drop an item into the world; it settles on whatever is beneath it.
-	var rest := settle_point(pos)
-	if rest == Vector3.INF:
-		lose_to_abyss(id, n, d)
-		World.fx("drop", pos)
+func drop_item(id: String, n: int, d: Dictionary, p: Vector3, vel := Vector3.ZERO, by := 0) -> int:
+	## A stack lying in the world.  It lands on whatever is below; over the abyss
+	## it is gone.
+	if n <= 0:
 		return -1
-	if yaw < 0.0:
-		yaw = _rng.randf() * TAU
-	var lift := item_lift(id, d)
-	return World.spawn("item", Transform3D(Basis(Vector3.UP, yaw), rest + Vector3(0, lift, 0)), {"i": id, "n": n, "x": d})
+	var land := p + Vector3(vel.x, 0, vel.z) * 0.35
+	var y := World.vox.rest_height(land)
+	if y == -INF:
+		World.fx("lost", land, {"i": id})
+		return -1
+	land.y = y
+	var t := Time.get_ticks_msec()
+	return World.spawn("item", Transform3D(Basis(Vector3.UP, randf() * TAU), land), {"i": id, "n": n, "d": d, "t": t, "by": by, "from": p})
 
 
-func item_lift(id: String, d: Dictionary) -> float:
-	return float(InteractionRules._lift_cache.get(id + str(hash(d)), _compute_lift(id, d)))
+func drop_stacks(stacks: Array, p: Vector3) -> void:
+	for s in stacks:
+		if s is Dictionary and not s.is_empty():
+			var j := Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3))
+			drop_item(String(s["i"]), int(s["n"]), s.get("d", {}), p + j)
 
 
-func _compute_lift(id: String, d: Dictionary) -> float:
-	var vis := ItemVisual.single(id, d)
-	var lift := 0.02
-	if vis:
-		lift = -Models.aabb_of(vis).position.y + 0.004
-		vis.free()
-	InteractionRules._lift_cache[id + str(hash(d))] = lift
-	return lift
+func resettle_items(c: Vector3i) -> void:
+	## A block went away: whatever lay on it (in this column) falls.
+	for e in World.entities_of("item"):
+		var p: Vector3 = (e["xf"] as Transform3D).origin
+		if floori(p.x) != c.x or floori(p.z) != c.z or p.y < c.y:
+			continue
+		var y := World.vox.rest_height(p + Vector3(0, 0.05, 0))
+		if y == -INF:
+			World.fx("lost", p, {"i": e["d"]["i"]})
+			World.despawn(e["id"])
+		elif absf(y - p.y) > 0.01:
+			var xf: Transform3D = e["xf"]
+			xf.origin.y = y
+			World.update(e["id"], {"from": p})
+			World.set_xf(e["id"], xf)
 
 
-func settle_point(pos: Vector3) -> Vector3:
-	## Where something dropped at `pos` comes to rest, or INF if it falls off the island.
-	var space := get_viewport().world_3d.direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 0.3, 0), pos + Vector3(0, -60, 0),
-		EntityView.LAYER_TERRAIN | EntityView.LAYER_STRUCT | EntityView.LAYER_ITEMS)
-	var hit := space.intersect_ray(q)
-	if hit.is_empty():
-		return Vector3.INF
-	var p: Vector3 = hit["position"]
-	if p.y < -6.0:
-		return Vector3.INF  # caught on the underside: tumbles off into the abyss
-	return p
-
-
-func resettle(box: AABB) -> int:
-	## What was lying in `box` comes down onto whatever is beneath it now, or off
-	## the island: the deck or shelf under it was taken apart or fell.  Returns
-	## how many things moved.
-	var found: Array = []
-	for e in World.entities.values():
-		if (e["t"] == "item" or e["t"] == "work") and box.has_point(e["xf"].origin):
-			found.append(e)
-	found.sort_custom(func(p, q): return float(p["xf"].origin.y) < float(q["xf"].origin.y))
-	var space := get_viewport().world_3d.direct_space_state
-	var moved := 0
-	for e in found:
-		var eid := int(e["id"])
-		var xf: Transform3D = e["xf"]
-		var lift := 0.005
-		if e["t"] == "item":
-			lift = item_lift(String(e["d"]["i"]), e["d"].get("x", {}))
-		var q := PhysicsRayQueryParameters3D.create(xf.origin + Vector3(0, 0.05, 0), xf.origin + Vector3(0, -60, 0),
-			EntityView.LAYER_TERRAIN | EntityView.LAYER_STRUCT | EntityView.LAYER_ITEMS)
-		var v := entity_view(eid)
-		var own = v.get("body") if v else null
-		if own is CollisionObject3D:
-			q.exclude = [(own as CollisionObject3D).get_rid()]
-		var hit := space.intersect_ray(q)
-		if not hit.is_empty() and float((hit["position"] as Vector3).y) >= xf.origin.y - lift - 0.03:
-			continue  # still held up
-		moved += 1
-		if hit.is_empty() or float((hit["position"] as Vector3).y) < -6.0:
-			if e["t"] == "item":
-				lose_to_abyss(String(e["d"]["i"]), int(e["d"]["n"]), e["d"].get("x", {}))
+func _physics_process(delta: float) -> void:
+	if not World.running:
+		return
+	_pickup_t -= delta
+	if _pickup_t > 0.0:
+		return
+	_pickup_t = 0.12
+	var now := Time.get_ticks_msec()
+	for pid in Net.players:
+		var st: Dictionary = World.stats.get(pid, {})
+		if st.is_empty() or not bool(st.get("alive", true)):
+			continue
+		var p := player_pos(pid) + Vector3(0, 0.4, 0)
+		for e in World.entities_near(p, PICKUP_R + 0.5, "item"):
+			var d: Dictionary = e["d"]
+			# what you just threw can't jump straight back into your hands
+			if not no_rate:
+				if int(d.get("by", 0)) == pid and now - int(d.get("t", 0)) < 1600:
+					continue
+				if now - int(d.get("t", 0)) < 350:
+					continue
+			if (e["xf"].origin as Vector3).distance_to(p) > PICKUP_R:
+				continue
+			var inv := World.inventory_of(pid)
+			var n := int(d["n"])
+			var left := inv.add(String(d["i"]), n, d.get("d", {}))
+			if left == n:
+				continue
+			World.mark_inventory(pid)
+			if left > 0:
+				World.update(e["id"], {"n": left})
 			else:
-				Ledger.record_entity_loss(e)
-			World.despawn(eid)
-			World.fx("drop", xf.origin)
-			continue
-		xf.origin = (hit["position"] as Vector3) + Vector3(0, lift, 0)
-		World.set_xf(eid, xf)
-		World.fx("drop", xf.origin, {"vol": -4.0})
-	return moved
+				World.despawn(e["id"])
+			World.fx("pickup", e["xf"].origin, {"pid": pid})
+	# items that fell off into the abyss (pushed off an edge by a broken block)
+	for e in World.entities_of("item"):
+		if (e["xf"].origin as Vector3).y < ABYSS_Y:
+			World.despawn(e["id"])
 
 
-func lose_to_abyss(id: String, n: int, d: Dictionary) -> void:
-	var lost: Dictionary = World.pools.get("lost_mass", {})
-	lost[id] = int(lost.get(id, 0)) + n
-	World.pools["lost_mass"] = lost
-	Ledger.record_loss(id, n, d)
-
-
-func cell_index_at(p: Vector3) -> int:
-	var c := TerrainData.cell_at(Vector2(p.x, p.z))
-	return TerrainData.cell_index(c.x, c.y)
-
-
-func entity_view(eid: int) -> EntityView:
-	var gw = Game.game_world
-	return gw.entities.view(eid) if gw and gw.entities else null
-
-
-func stats(pid: int) -> Dictionary:
-	return World.stats.get(pid, {})
-
-
-func exert(pid: int, amount: float) -> void:
-	var st := stats(pid)
-	if st.is_empty():
-		return
-	st["stamina"] = clampf(float(st["stamina"]) - amount, 0.0, 1.0)
-	World.mark_stats(pid)
-
-
-# ---------------------------------------------------------------------------
-# Items
-# ---------------------------------------------------------------------------
-
-func _a_pickup(pid: int, args: Dictionary) -> void:
-	var eid := int(args.get("eid", -1))
-	var ent := World.get_entity(eid)
-	if ent.is_empty() or ent["t"] != "item":
-		return
-	if not in_reach(pid, args, ent["xf"].origin):
-		return
-	if int(ent["d"].get("site", -1)) >= 0 or ent["d"].get("x", {}).has("fm"):
-		ActionsFire.prepare_pickup(eid)
-		ent = World.get_entity(eid)
-		if ent.is_empty():
-			return
-	var d: Dictionary = ent["d"]
-	var id := String(d["i"])
-	var n := int(d["n"])
-	var x: Dictionary = d.get("x", {})
-	if x.has("cook"):
-		# (older saves kept cooking progress in the item; it only matters in the fire)
-		x = x.duplicate()
-		x.erase("cook")
-	var hot := float(d.get("heat", 20.0))
-	var space := inv(pid).space_for(id, x)
-	if space <= 0:
-		World.notify(pid, "No room to carry that.")
-		return
-	var unit_kg := Inventory.stack_kg(id, 1, x)
-	if unit_kg > LIFT_KG:
-		World.notify(pid, "Too heavy to lift. Split it where it lies.")
-		return
-	var by_weight := room_by_weight(pid, id, x)
-	if by_weight <= 0:
-		World.notify(pid, "You can't carry any more weight. Put something down first.")
-		return
-	var take := mini(n, mini(space, by_weight))
-	if hot > 70.0 and id != "torch":
-		Survival.damage(pid, clampf((hot - 70.0) / 400.0, 0.02, 0.15), "burn")
-		World.notify(pid, "Ouch - it's hot!", "warn")
-	inv(pid).add(id, take, x)
-	World.mark_inventory(pid)
-	if take >= n:
-		World.despawn(eid)
-	else:
-		World.update(eid, {"n": n - take})
-	World.fx("pickup", ent["xf"].origin)
-	_first_touch(pid, id)
-	if id == "charcoal":
-		# however it was made - an opened mound, a smothered fire - the first handful counts
-		World.discover("first_charcoal", pid)
-
-
-func _a_drop(pid: int, args: Dictionary) -> void:
-	var stack := held(pid, args)
-	if stack.is_empty():
-		return
-	var n := clampi(int(args.get("n", 1)), 1, int(stack["n"]))
-	var from: Vector3 = eye(pid, args)
-	var dir: Vector3 = (args.get("dir", Vector3.FORWARD) as Vector3).normalized()
-	var s := take_held(pid, args, n)
-	if s.is_empty():
-		return
-	# a short throw: arc forward, then settle
-	var land := from + Vector3(dir.x, 0, dir.z).normalized() * 1.3 + Vector3(0, -0.5, 0)
-	var space := get_viewport().world_3d.direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(from, land, EntityView.LAYER_TERRAIN | EntityView.LAYER_STRUCT)
-	var hit := space.intersect_ray(q)
-	if not hit.is_empty():
-		land = hit["position"] + (hit["normal"] as Vector3) * 0.05
-	spawn_item(String(s["i"]), int(s["n"]), s["d"], land)
-
-
-func _a_place(pid: int, args: Dictionary) -> void:
-	var stack := held(pid, args)
-	if stack.is_empty():
-		return
-	var xf: Transform3D = args.get("xf", Transform3D())
-	if not in_reach(pid, args, xf.origin, 0.3):
-		return
-	var id := String(stack["i"])
-	# placed things must rest on something solid
-	var below := settle_point(xf.origin + Vector3(0, 0.05, 0))
-	if below == Vector3.INF or below.y < xf.origin.y - 0.6:
-		World.notify(pid, "There's nothing there to put it on.")
-		return
-	var s := take_held(pid, args, 1)
-	if s.is_empty():
-		return
-	var eid := World.spawn("item", xf, {"i": id, "n": 1, "x": s["d"]})
-	World.fx("drop", xf.origin, {"vol": -6.0})
-	ActionsFire.on_item_placed(eid)
-	if id == "pot":
-		World.hint_to(pid, "drying")
-
-
-func _a_inv_move(pid: int, args: Dictionary) -> void:
-	inv(pid).move(int(args.get("from", -1)), int(args.get("to", -1)))
-	World.mark_inventory(pid)
-
-
-func _a_inv_split(pid: int, args: Dictionary) -> void:
-	inv(pid).split(int(args.get("from", -1)), int(args.get("to", -1)))
-	World.mark_inventory(pid)
-
-
-func _a_inv_drop_slot(pid: int, args: Dictionary) -> void:
+func drop(pid: int, args: Dictionary) -> void:
 	var slot := int(args.get("slot", -1))
-	var s := inv(pid).take_from(slot, int(args.get("n", 999)))
-	World.mark_inventory(pid)
+	if slot < 0 or slot >= Inventory.MAIN:
+		return
+	var inv := World.inventory_of(pid)
+	var s := inv.get_slot(slot)
 	if s.is_empty():
 		return
-	var p := player_pos(pid)
-	spawn_item(String(s["i"]), int(s["n"]), s["d"], p + Vector3(0, 0.5, 0))
-
-
-func _a_satchel_take(pid: int, args: Dictionary) -> void:
-	var eid := int(args.get("eid", -1))
-	var ent := World.get_entity(eid)
-	if ent.is_empty() or ent["t"] != "satchel" or not in_reach(pid, args, ent["xf"].origin):
-		return
-	var items: Array = ent["d"].get("items", [])
-	var rest: Array = []
-	for s in items:
-		var n := int(s["n"])
-		var fit := mini(n, room_by_weight(pid, String(s["i"]), s["d"]))
-		var left := n - fit
-		if fit > 0:
-			left += inv(pid).add(String(s["i"]), fit, s["d"])
-		if left > 0:
-			rest.append(Inventory.make(s["i"], left, s["d"]))
+	var n := int(s["n"]) if bool(args.get("all", false)) else 1
+	var out := inv.take_from(slot, n)
 	World.mark_inventory(pid)
-	if rest.is_empty():
+	var yaw := float(args.get("yaw", 0.0))
+	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+	var from := eye_pos(pid) - Vector3(0, 0.3, 0)
+	# thrown about a block and a half ahead (never through a wall)
+	var to := from + fwd * 1.4
+	var hit := World.vox.raycast(from, fwd, 1.4)
+	if not hit.is_empty():
+		to = from + fwd * maxf(0.0, float(hit["dist"]) - 0.3)
+	drop_item(String(out["i"]), int(out["n"]), out["d"], to, Vector3.ZERO, pid)
+
+
+# ---------------------------------------------------------------------------
+# Using things (right click)
+# ---------------------------------------------------------------------------
+
+func use(pid: int, args: Dictionary) -> void:
+	var c: Vector3i = args.get("c", Vector3i(-1, -1, -1))
+	var slot := int(args.get("slot", -1))
+	var sneak := bool(args.get("sneak", false))
+	var face: Vector3i = args.get("face", Vector3i.UP)
+	if not in_reach(pid, c):
+		return
+	if not _rate(pid, "use", 90):
+		return
+	var s := held(pid, slot)
+	var id := String(s.get("i", ""))
+	# a block entity in the cell
+	var be := World.be(c)
+	if not be.is_empty():
+		match String(be["t"]):
+			"firepit": fire.use_firepit(pid, be, slot, sneak)
+			"kiln": fire.use_kiln(pid, be, slot, sneak)
+			"ground": craft.use_ground(pid, be, slot, sneak)
+			"knap": craft.use_knap(pid, be, slot, sneak)
+			"clay": craft.use_clay(pid, be, slot, sneak)
+			"jar": craft.use_jar(pid, be, slot, sneak)
+		return
+	var target := World.block(c)
+	# things done to the block itself
+	if farm.use_block(pid, c, target, slot, s, face, sneak):
+		return
+	# set something down on top of the block
+	if face == Vector3i.UP and Blocks.is_solid(target):
+		var above := c + Vector3i.UP
+		if World.cell_free(above) and (sneak or ItemDB.block_of(id) < 0):
+			if craft.set_down(pid, above, slot, s, sneak):
+				return
+	# place a block
+	if ItemDB.block_of(id) >= 0:
+		blocks.place(pid, {"c": c + face, "slot": slot, "face": face})
+
+
+func take(pid: int, args: Dictionary) -> void:
+	var c: Vector3i = args.get("c", Vector3i(-1, -1, -1))
+	if not in_reach(pid, c):
+		return
+	var be := World.be(c)
+	if be.is_empty():
+		return
+	match String(be["t"]):
+		"ground": craft.take_ground(pid, be)
+		"firepit": fire.take_from_firepit(pid, be)
+
+
+func take_satchel(pid: int, args: Dictionary) -> void:
+	## Your things back from the bag you left when you died (anyone may open it).
+	var eid := int(args.get("eid", -1))
+	var e := World.get_entity(eid)
+	if e.is_empty() or e["t"] != "satchel":
+		return
+	var p: Vector3 = (e["xf"] as Transform3D).origin
+	if eye_pos(pid).distance_to(p) > REACH + 0.5:
+		return
+	var inv := World.inventory_of(pid)
+	var left: Array = []
+	for s in e["d"].get("items", []):
+		var n := inv.add(String(s["i"]), int(s["n"]), s.get("d", {}))
+		if n > 0:
+			left.append(Inventory.make(String(s["i"]), n, s.get("d", {})))
+	World.mark_inventory(pid)
+	if left.is_empty():
 		World.despawn(eid)
+		World.fx("pickup", p, {"pid": pid})
 	else:
-		World.update(eid, {"items": rest})
-		World.notify(pid, "You couldn't carry everything.")
-	World.fx("pickup", ent["xf"].origin)
+		World.update(eid, {"items": left})
+		World.notify(pid, "You couldn't carry everything; the rest is still in the bag.")
+
+
+func eat(pid: int, args: Dictionary) -> void:
+	var slot := int(args.get("slot", -1))
+	if not _rate(pid, "eat", 700):
+		return
+	var inv := World.inventory_of(pid)
+	var s := held(pid, slot)
+	if s.is_empty():
+		return
+	var id := String(s["i"])
+	var d: Dictionary = s["d"]
+	# a bowl of stew or water
+	if id == "bowl" and d.get("c", "") != "":
+		var what := String(d["c"])
+		if what == "water":
+			Survival.drink(pid, 0.35)
+		elif what == "stew":
+			Survival.eat(pid, {"hunger": 0.32, "thirst": 0.05}, true)
+		inv.set_data(slot, {})
+		World.mark_inventory(pid)
+		World.fx("drink" if what == "water" else "eat", player_pos(pid) + Vector3(0, 1.5, 0), {"pid": pid})
+		return
+	var f := ItemDB.food(id)
+	if f.is_empty():
+		return
+	var st: Dictionary = World.stats.get(pid, {})
+	if float(st.get("hunger", 0.0)) >= 0.995 and float(f.get("thirst", 0.0)) <= 0.0:
+		World.notify(pid, "You're full.")
+		return
+	inv.take_from(slot, 1)
+	World.mark_inventory(pid)
+	Survival.eat(pid, f, not f.has("cook"))
+	World.fx("eat", player_pos(pid) + Vector3(0, 1.5, 0), {"pid": pid})
+
+
+func drink(pid: int, args: Dictionary) -> void:
+	## Drinking straight from the pond (hold right click on water with an empty hand).
+	var c: Vector3i = args.get("c", Vector3i(-1, -1, -1))
+	if not in_reach(pid, c) or Blocks.shape[World.block(c)] != Blocks.Shape.LIQUID:
+		return
+	if not _rate(pid, "drink", 450):
+		return
+	Survival.drink(pid, 0.12)
+	World.fx("drink", Vector3(c) + Vector3(0.5, 0.9, 0.5), {"pid": pid})
 
 
 # ---------------------------------------------------------------------------
-# Gathering
+# Inventory screen (host keeps the cursor and crafting grid)
 # ---------------------------------------------------------------------------
 
-func _a_outcrop_take(pid: int, args: Dictionary) -> void:
-	var eid := int(args.get("eid", -1))
-	var ent := World.get_entity(eid)
-	if ent.is_empty() or ent["t"] != "outcrop":
+const OUTPUT := 46
+
+
+func inv_click(pid: int, args: Dictionary) -> void:
+	## Minecraft-style slot clicks.  button 0: pick up / put down / swap the whole
+	## stack; button 1: pick up half / put down one.  shift: move straight across
+	## (backpack <-> hotbar, grid -> backpack).  Slot 46 is the crafting result.
+	var inv := World.inventory_of(pid)
+	var slot := int(args.get("slot", -1))
+	var button := int(args.get("button", 0))
+	var shift := bool(args.get("shift", false))
+	if slot == OUTPUT:
+		_craft_click(pid, inv, shift)
+		World.mark_inventory(pid)
 		return
-	var idx := int(args.get("idx", -1))
-	var loose: Array = ent["d"].get("loose", []).duplicate()
-	if idx < 0 or idx >= loose.size() or int(loose[idx]) <= 0:
+	if slot < 0 or slot >= Inventory.CURSOR:
 		return
-	var v := entity_view(eid)
-	var at: Vector3 = v.interaction_point("loose:%d" % idx) if v else ent["xf"].origin
-	if not in_reach(pid, args, at, 0.5):
+	var cur := inv.get_slot(Inventory.CURSOR)
+	var s := inv.get_slot(slot)
+	if shift:
+		if s.is_empty():
+			return
+		var dest := range(Inventory.HOTBAR, Inventory.MAIN) if slot < Inventory.HOTBAR else range(0, Inventory.HOTBAR)
+		if slot >= Inventory.GRID:
+			dest = range(0, Inventory.MAIN)
+		var moving: Dictionary = s.duplicate(true)
+		inv.set_slot(slot, {})
+		var left := _merge_into(inv, moving, dest)
+		if left > 0:
+			moving["n"] = left
+			inv.set_slot(slot, moving)
+		World.mark_inventory(pid)
 		return
-	if inv(pid).space_for("stone") <= 0:
-		World.notify(pid, "No room to carry a stone.")
-		return
-	if room_by_weight(pid, "stone") <= 0:
-		World.notify(pid, "You can't carry any more weight. Put something down first.")
-		return
-	loose[idx] = 0
-	World.update(eid, {"loose": loose})
-	give(pid, "stone", 1)
-	World.fx("stone_break", at, {"sound": "stone_drop", "amount": 6})
-
-
-func _a_outcrop_break(pid: int, args: Dictionary) -> void:
-	## Strike the outcrop to crack a stone loose from its rock.
-	var eid := int(args.get("eid", -1))
-	var ent := World.get_entity(eid)
-	if ent.is_empty() or ent["t"] != "outcrop" or not in_reach(pid, args, ent["xf"].origin + Vector3(0, 0.5, 0), 0.8):
-		return
-	var id := held_id(pid, args)
-	var tool := ItemDB.tool_kind(id)
-	if not (id == "stone" or tool == "chop" or tool == "dig"):
-		return
-	var d: Dictionary = ent["d"]
-	if not d.get("loose", []).has(0):
-		World.notify(pid, "There are loose stones here already.")
-		return
-	if float(d.get("rock", 0.0)) < ItemDB.unit_mass("stone"):
-		World.notify(pid, "The rock is worn down to its core - nothing more will come free.")
-		return
-	var pry: float = float(d.get("pry", 0.0)) + (OutcropSim.PRY_TOOL if tool != "" else OutcropSim.PRY_STONE)
-	exert(pid, 0.03)
-	if tool != "":
-		Tools.wear(pid, args, 0.006)
-	World.fx("chips", ent["xf"].origin + Vector3(0, 0.6, 0), {"sound": "stone_break", "amount": 6})
-	if pry >= 1.0:
-		OutcropSim.shed(ent)
-		World.notify(pid, "A stone cracks free of the outcrop.")
-	else:
-		World.update(eid, {"pry": pry})
-
-
-func _a_pick_mushroom(pid: int, args: Dictionary) -> void:
-	var eid := int(args.get("eid", -1))
-	var ent := World.get_entity(eid)
-	if ent.is_empty() or ent["t"] != "mushrooms" or not in_reach(pid, args, ent["xf"].origin, 0.5):
-		return
-	var caps: Array = ent["d"].get("caps", []).duplicate()
-	var idx := int(args.get("idx", -1))
-	if idx < 0 or idx >= caps.size() or float(caps[idx]) < 0.6:
-		World.notify(pid, "That one is too small yet.")
-		return
-	# a cap picked a little early is a little smaller: the rest of a mushroom's worth
-	# comes from the wood and minerals it was still drawing on
-	var short := 1.0 - float(caps[idx])
-	var sub := float(ent["d"].get("substrate", 0.0)) - short * ItemDB.unit_mass("mushroom")
-	var nu := float(ent["d"].get("nutr", 0.0)) - short * ItemDB.nutrients("mushroom")
-	if sub < 0.0 or nu < 0.0:
-		World.notify(pid, "That one is too small yet.")
-		return
-	caps[idx] = 0.0
-	World.update(eid, {"caps": caps, "substrate": sub, "nutr": nu})
-	give(pid, "mushroom", 1)
-	World.fx("harvest", ent["xf"].origin, {"amount": 3})
-
-
-func _a_pick_berries(pid: int, args: Dictionary) -> void:
-	var eid := int(args.get("eid", -1))
-	var ent := World.get_entity(eid)
-	if ent.is_empty() or ent["t"] != "bush" or not in_reach(pid, args, ent["xf"].origin + Vector3(0, 0.4, 0), 0.6):
-		return
-	var b := float(ent["d"].get("berries", 0.0))
-	if b < 0.25:
-		return
-	# whole berries only; the rest keep ripening on the bush
-	var n := int(floor(b * 6.0 + 1e-6))
-	World.update(eid, {"berries": maxf(0.0, b - n / 6.0)})
-	give(pid, "berries", n)
-	World.fx("berries", ent["xf"].origin + Vector3(0, 0.5, 0))
-
-
-func _a_cut_grass(pid: int, args: Dictionary) -> void:
-	var pos: Vector3 = args.get("pos", Vector3.ZERO)
-	if not in_reach(pid, args, pos):
-		return
-	var blade := ItemDB.tool_kind(held_id(pid, args)) == "cut"
-	var radius := 0.32 if blade else 0.2
-	var cells := World.terrain.cells_in_radius(Vector2(pos.x, pos.z), radius)
-	var removed := 0.0
-	for k in cells:
-		var g := World.terrain.grass[k]
-		if g <= 0.05:
-			continue
-		var take := minf(g, 0.6 if blade else 0.35)
-		World.terrain.grass[k] = g - take
-		removed += take
-	if removed <= 0.0:
-		World.notify(pid, "No grass left to cut here.")
-		return
-	# grass cover is biomass and minerals; what's cut gathers into handfuls as
-	# soon as there is a whole one's worth (the wisps in between are counted too)
-	var kg := removed * PlantSim.GRASS_KG
-	var nu := removed * PlantSim.GRASS_NUTR
-	World.pools["grass_nutr"] = float(World.pools.get("grass_nutr", 0.0)) - nu
-	var bank_kg := float(World.pools.get("cut_grass_kg", 0.0)) + kg
-	var bank_n := float(World.pools.get("cut_grass_nutr", 0.0)) + nu
-	var um := ItemDB.unit_mass("grass")
-	var un := ItemDB.nutrients("grass")
-	var units := int(floor(minf(bank_kg / um, bank_n / un) + 1e-9))
-	bank_kg -= units * um
-	bank_n -= units * un
-	# more stalk than the minerals can make into handfuls just rots where it falls
-	var keep_kg := (bank_n / un + 1.0) * um
-	if bank_kg > keep_kg:
-		World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + (bank_kg - keep_kg)
-		bank_kg = keep_kg
-	World.pools["cut_grass_kg"] = bank_kg
-	World.pools["cut_grass_nutr"] = bank_n
-	if units > 0:
-		give(pid, "grass", units, {"moist": 0.65})
-	World.terrain_edited(Rect2i(TerrainData.cell_at(Vector2(pos.x, pos.z)) - Vector2i(3, 3), Vector2i(7, 7)))
-	World.fx("grass", pos)
-	if blade:
-		Tools.wear(pid, args, 0.002)
-	exert(pid, 0.01)
-
-
-func _a_dig(pid: int, args: Dictionary) -> void:
-	TerrainActions.dig(self, pid, args)
-
-
-func _a_fill(pid: int, args: Dictionary) -> void:
-	TerrainActions.fill(self, pid, args)
-
-
-func _a_till(pid: int, args: Dictionary) -> void:
-	TerrainActions.till(self, pid, args)
-
-
-func _a_fertilize(pid: int, args: Dictionary) -> void:
-	TerrainActions.fertilize(self, pid, args)
-
-
-func _a_plant(pid: int, args: Dictionary) -> void:
-	FarmActions.plant(self, pid, args)
-
-
-func _a_harvest(pid: int, args: Dictionary) -> void:
-	FarmActions.harvest(self, pid, args)
-
-
-func _a_pour(pid: int, args: Dictionary) -> void:
-	WaterActions.pour(self, pid, args)
-
-
-func _a_drink_pond(pid: int, args: Dictionary) -> void:
-	WaterActions.drink_pond(self, pid, args)
-
-
-func _a_drink_vessel(pid: int, args: Dictionary) -> void:
-	WaterActions.drink_vessel(self, pid, args)
-
-
-func _a_drink_entity(pid: int, args: Dictionary) -> void:
-	WaterActions.drink_entity(self, pid, args)
-
-
-func _a_fill_vessel(pid: int, args: Dictionary) -> void:
-	WaterActions.fill_vessel(self, pid, args)
-
-
-func _a_eat_vessel(pid: int, args: Dictionary) -> void:
-	WaterActions.eat_vessel(self, pid, args)
-
-
-func _a_tree_cut(pid: int, args: Dictionary) -> void:
-	TreeActions.cut_small(self, pid, args)
-
-
-func _a_tree_chop_limb(pid: int, args: Dictionary) -> void:
-	TreeActions.chop_limb(self, pid, args)
-
-
-func _a_tree_fell(pid: int, args: Dictionary) -> void:
-	TreeActions.fell(self, pid, args)
-
-
-func _a_process(pid: int, args: Dictionary) -> void:
-	TreeActions.process_item(self, pid, args)
-
-
-func _a_process_held(pid: int, args: Dictionary) -> void:
-	TreeActions.process_held(self, pid, args)
-
-
-func _a_split(pid: int, args: Dictionary) -> void:
-	TreeActions.split(self, pid, args)
-
-
-# ---------------------------------------------------------------------------
-# Survival
-# ---------------------------------------------------------------------------
-
-func _a_eat(pid: int, args: Dictionary) -> void:
-	var stack := held(pid, args)
-	var id := String(stack.get("i", ""))
-	var food := ItemDB.food(id)
-	if food.is_empty():
-		return
-	take_held(pid, args, 1)
-	Survival.eat(pid, id, food)
-	World.fx("eat", player_pos(pid) + Vector3(0, 1.5, 0))
-
-
-func _a_break_pot(pid: int, args: Dictionary) -> void:
-	## A cracked pot is broken up into potsherds; the crumbs of clay that are
-	## too small to keep go back to the ground.
-	var s := held(pid, args)
-	if String(s.get("i", "")) != "pot" or String(s["d"].get("state", "")) != "cracked":
-		return
-	var x: Dictionary = s["d"]
-	take_held(pid, args, 1)
-	var vol := float(x.get("vol", 0.25))
-	var n := int(floor(vol / Ledger.SHERD_L))
-	if n > 0:
-		give(pid, "potsherds", n)
-	World.pools["clay_spilled_l"] = float(World.pools.get("clay_spilled_l", 0.0)) + maxf(0.0, vol - n * Ledger.SHERD_L)
-	var pos := player_pos(pid)
-	var w := float(x.get("water", 0.0))
-	if w > 0.0:
-		WaterActions.soak(pos, w, 0.4)
-	var cont: Dictionary = x.get("contents", {})
-	for cid in cont:
-		if cid == "porridge":
-			# spilled porridge: its grain goes to the ground as scraps would
-			var seeds := int(cont[cid]) * WaterActions.PORRIDGE_SEEDS
-			spawn_item("seed_grain", seeds, {}, pos + Vector3(0, 0.5, 0))
-			var pw := minf(float(World.pools.get("porridge_water_l", 0.0)), int(cont[cid]) * WaterActions.PORRIDGE_WATER)
-			World.pools["porridge_water_l"] = float(World.pools.get("porridge_water_l", 0.0)) - pw
-			WaterActions.soak(pos, pw, 0.4)
+	if button == 0:
+		if cur.is_empty():
+			inv.set_slot(Inventory.CURSOR, s)
+			inv.set_slot(slot, {})
+		elif s.is_empty():
+			inv.set_slot(slot, cur)
+			inv.set_slot(Inventory.CURSOR, {})
+		elif _same(cur, s):
+			var mx := ItemDB.stack_max(String(s["i"]))
+			var take := mini(int(cur["n"]), mx - int(s["n"]))
+			s["n"] = int(s["n"]) + take
+			cur["n"] = int(cur["n"]) - take
+			if int(cur["n"]) <= 0:
+				inv.set_slot(Inventory.CURSOR, {})
 		else:
-			spawn_item(String(cid), int(cont[cid]), {}, pos + Vector3(0, 0.5, 0))
-	World.fx("pottery_crack", pos + Vector3(0, 1.0, 0))
+			inv.set_slot(slot, cur)
+			inv.set_slot(Inventory.CURSOR, s)
+	else:
+		if cur.is_empty():
+			if s.is_empty():
+				return
+			var half := int(ceil(int(s["n"]) / 2.0))
+			inv.set_slot(Inventory.CURSOR, inv.take_from(slot, half))
+		elif s.is_empty():
+			inv.set_slot(slot, inv.take_from(Inventory.CURSOR, 1))
+		elif _same(cur, s) and int(s["n"]) < ItemDB.stack_max(String(s["i"])):
+			s["n"] = int(s["n"]) + 1
+			inv.take_from(Inventory.CURSOR, 1)
+		else:
+			inv.set_slot(slot, cur)
+			inv.set_slot(Inventory.CURSOR, s)
+	World.mark_inventory(pid)
 
 
-func _a_hurt(pid: int, args: Dictionary) -> void:
-	Survival.damage(pid, clampf(float(args.get("amount", 0.0)), 0.0, 1.0), String(args.get("cause", "")))
+func _same(a: Dictionary, b: Dictionary) -> bool:
+	return String(a["i"]) == String(b["i"]) and ItemDB.can_stack(String(a["i"]), a["d"]) and ItemDB.can_stack(String(b["i"]), b["d"])
 
 
-func _a_fell(pid: int, args: Dictionary) -> void:
-	Survival.die(pid, "abyss")
+func _merge_into(inv: Inventory, s: Dictionary, dest: Array) -> int:
+	var n := int(s["n"])
+	var id := String(s["i"])
+	var mx := ItemDB.stack_max(id)
+	if ItemDB.can_stack(id, s["d"]):
+		for i in dest:
+			var t := inv.get_slot(i)
+			if not t.is_empty() and _same(t, s) and int(t["n"]) < mx:
+				var take := mini(n, mx - int(t["n"]))
+				t["n"] = int(t["n"]) + take
+				n -= take
+				if n <= 0:
+					return 0
+	for i in dest:
+		if inv.is_empty_slot(i):
+			var take := mini(n, mx)
+			inv.set_slot(i, Inventory.make(id, take, s["d"].duplicate(true)))
+			n -= take
+			if n <= 0:
+				return 0
+	return n
 
 
-func _a_respawn(pid: int, args: Dictionary) -> void:
-	Survival.respawn(pid)
+func craft_preview(inv: Inventory) -> Dictionary:
+	var grid := inv.grid()
+	var m := ItemDB.match_recipe(grid)
+	if m.is_empty():
+		return {}
+	return ItemDB.recipe_output(m, grid)
 
 
-func _a_exert(pid: int, args: Dictionary) -> void:
-	match String(args.get("kind", "")):
-		"jump":
-			exert(pid, 0.02)
+func _craft_click(pid: int, inv: Inventory, shift: bool) -> void:
+	var times := 64 if shift else 1
+	var made := 0
+	var last := ""
+	while times > 0:
+		times -= 1
+		var grid := inv.grid()
+		var m := ItemDB.match_recipe(grid)
+		if m.is_empty():
+			break
+		var out := ItemDB.recipe_output(m, grid)
+		var cur := inv.get_slot(Inventory.CURSOR)
+		if shift:
+			if inv.space_for(String(out["i"]), out["d"]) < int(out["n"]):
+				break
+		elif not cur.is_empty():
+			if not (_same(cur, out) and int(cur["n"]) + int(out["n"]) <= ItemDB.stack_max(String(out["i"]))):
+				break
+		# consume: one of each ingredient; tools lose a use and stay
+		var r: Dictionary = m["recipe"]
+		for gi in range(Inventory.GRID, Inventory.GRID + 9):
+			var g := inv.get_slot(gi)
+			if g.is_empty():
+				continue
+			if not ItemDB.tool_info(String(g["i"])).is_empty() and _is_tool_ing(r, String(g["i"])):
+				wear_tool(pid, gi)
+			else:
+				inv.take_from(gi, 1)
+		if shift:
+			inv.add(String(out["i"]), int(out["n"]), out["d"])
+		elif cur.is_empty():
+			inv.set_slot(Inventory.CURSOR, out)
+		else:
+			cur["n"] = int(cur["n"]) + int(out["n"])
+		made += 1
+		last = String(out["i"])
+		flag_player(pid, "craft:" + last)
+	if made > 0:
+		World.fx("craft", player_pos(pid) + Vector3(0, 1.2, 0), {"pid": pid, "i": last})
 
 
-func _a_guide_state(pid: int, args: Dictionary) -> void:
-	## Someone's own guide progress (what they've read and pinned), kept with the
-	## island so it comes back with them.  Only lists of entry ids are kept.
-	var st: Dictionary = args.get("state", {})
-	var clean := {}
-	for k in ["read", "fresh", "pinned", "dismissed", "seen", "steps"]:
-		var ids: Array = []
-		var v = st.get(k, [])
-		if v is Array:
-			for id in v:
-				if (id is String or id is StringName) and String(id).length() <= 64 and ids.size() < 256:
-					ids.append(String(id))
-		clean[k] = ids
-	World.guide_states[pid] = clean
+func _is_tool_ing(r: Dictionary, id: String) -> bool:
+	for spec in r.get("shapeless", []):
+		if String(spec).begins_with("tool:") and ItemDB.tool_kind(id) == String(spec).substr(5):
+			return true
+	return false
 
 
-func _a_chat_cmd(_pid: int, _args: Dictionary) -> void:
-	pass
+func flag_player(pid: int, f: String) -> void:
+	## Tell a player's goal tracker they did something.
+	if pid == multiplayer.get_unique_id():
+		Guide.flag(f)
+	elif Net.is_online():
+		_rpc_flag.rpc_id(pid, f)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_flag(f: String) -> void:
+	Guide.flag(f)
+
+
+func close_inventory(pid: int) -> void:
+	## Grid and cursor go back into the inventory; what doesn't fit drops.
+	if not World.inventories.has(pid):
+		return
+	var inv := World.inventory_of(pid)
+	var spill: Array = []
+	for i in range(Inventory.GRID, Inventory.SIZE):
+		var s := inv.get_slot(i)
+		if s.is_empty():
+			continue
+		inv.set_slot(i, {})
+		var left := inv.add(String(s["i"]), int(s["n"]), s["d"])
+		if left > 0:
+			spill.append(Inventory.make(String(s["i"]), left, s["d"]))
+	World.mark_inventory(pid)
+	if not spill.is_empty():
+		drop_stacks(spill, player_pos(pid) + Vector3(0, 0.6, 0))

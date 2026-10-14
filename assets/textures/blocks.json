@@ -1,0 +1,440 @@
+{
+ "tile": 32,
+ "cols": 16,
+ "names": [
+  "dirt",
+  "grass_top",
+  "grass_side",
+  "farmland",
+  "farmland_wet",
+  "stone",
+  "stone_mossy",
+  "gravel",
+  "sand",
+  "clay",
+  "clay_raw",
+  "terracotta",
+  "ash",
+  "log_oak",
+  "log_oak_top",
+  "log_birch",
+  "log_birch_top",
+  "firewood",
+  "firewood_end",
+  "stick",
+  "charred",
+  "embers",
+  "planks",
+  "leaves_oak",
+  "leaves_birch",
+  "leaves_bush",
+  "berries_overlay",
+  "tallgrass",
+  "tallgrass_dry",
+  "fern",
+  "flower_red",
+  "flower_yellow",
+  "flower_blue",
+  "reeds",
+  "mushroom",
+  "sapling_oak",
+  "sapling_birch",
+  "roots",
+  "vines",
+  "crop_turnip_0",
+  "crop_flax_0",
+  "crop_turnip_1",
+  "crop_flax_1",
+  "crop_turnip_2",
+  "crop_flax_2",
+  "crop_turnip_3",
+  "crop_flax_3",
+  "wild_turnip",
+  "wild_flax",
+  "thatch",
+  "thatch_top",
+  "brick",
+  "water",
+  "torch",
+  "flame",
+  "straw_bed",
+  "flint",
+  "granite_knap",
+  "dry_grass",
+  "bag",
+  "cloth",
+  "skin",
+  "hair",
+  "leather",
+  "crack_0",
+  "crack_1",
+  "crack_2",
+  "crack_3",
+  "crack_4",
+  "crack_5",
+  "crack_6",
+  "crack_7"
+ ],
+ "avg": {
+  "dirt": [
+   0.437,
+   0.305,
+   0.202
+  ],
+  "grass_top": [
+   0.357,
+   0.492,
+   0.217
+  ],
+  "grass_side": [
+   0.404,
+   0.32,
+   0.194
+  ],
+  "farmland": [
+   0.286,
+   0.193,
+   0.127
+  ],
+  "farmland_wet": [
+   0.191,
+   0.131,
+   0.085
+  ],
+  "stone": [
+   0.462,
+   0.443,
+   0.421
+  ],
+  "stone_mossy": [
+   0.404,
+   0.441,
+   0.335
+  ],
+  "gravel": [
+   0.355,
+   0.331,
+   0.304
+  ],
+  "sand": [
+   0.799,
+   0.71,
+   0.53
+  ],
+  "clay": [
+   0.527,
+   0.58,
+   0.618
+  ],
+  "clay_raw": [
+   0.577,
+   0.62,
+   0.655
+  ],
+  "terracotta": [
+   0.682,
+   0.381,
+   0.244
+  ],
+  "ash": [
+   0.517,
+   0.505,
+   0.486
+  ],
+  "log_oak": [
+   0.287,
+   0.206,
+   0.137
+  ],
+  "log_oak_top": [
+   0.489,
+   0.373,
+   0.233
+  ],
+  "log_birch": [
+   0.834,
+   0.815,
+   0.764
+  ],
+  "log_birch_top": [
+   0.798,
+   0.731,
+   0.6
+  ],
+  "firewood": [
+   0.653,
+   0.508,
+   0.322
+  ],
+  "firewood_end": [
+   0.602,
+   0.466,
+   0.285
+  ],
+  "stick": [
+   0.343,
+   0.256,
+   0.17
+  ],
+  "charred": [
+   0.141,
+   0.118,
+   0.105
+  ],
+  "embers": [
+   0.617,
+   0.253,
+   0.098
+  ],
+  "planks": [
+   0.554,
+   0.406,
+   0.238
+  ],
+  "leaves_oak": [
+   0.273,
+   0.441,
+   0.167
+  ],
+  "leaves_birch": [
+   0.38,
+   0.566,
+   0.226
+  ],
+  "leaves_bush": [
+   0.246,
+   0.398,
+   0.171
+  ],
+  "berries_overlay": [
+   0.247,
+   0.397,
+   0.19
+  ],
+  "tallgrass": [
+   0.335,
+   0.462,
+   0.202
+  ],
+  "tallgrass_dry": [
+   0.646,
+   0.568,
+   0.315
+  ],
+  "fern": [
+   0.3,
+   0.487,
+   0.197
+  ],
+  "flower_red": [
+   0.355,
+   0.432,
+   0.168
+  ],
+  "flower_yellow": [
+   0.366,
+   0.486,
+   0.172
+  ],
+  "flower_blue": [
+   0.319,
+   0.47,
+   0.248
+  ],
+  "reeds": [
+   0.357,
+   0.454,
+   0.195
+  ],
+  "mushroom": [
+   0.659,
+   0.504,
+   0.368
+  ],
+  "sapling_oak": [
+   0.305,
+   0.425,
+   0.178
+  ],
+  "sapling_birch": [
+   0.522,
+   0.659,
+   0.373
+  ],
+  "roots": [
+   0.308,
+   0.217,
+   0.133
+  ],
+  "vines": [
+   0.249,
+   0.4,
+   0.165
+  ],
+  "crop_turnip_0": [
+   0.31,
+   0.541,
+   0.184
+  ],
+  "crop_flax_0": [
+   0.369,
+   0.541,
+   0.227
+  ],
+  "crop_turnip_1": [
+   0.326,
+   0.569,
+   0.194
+  ],
+  "crop_flax_1": [
+   0.388,
+   0.57,
+   0.239
+  ],
+  "crop_turnip_2": [
+   0.326,
+   0.569,
+   0.194
+  ],
+  "crop_flax_2": [
+   0.388,
+   0.57,
+   0.239
+  ],
+  "crop_turnip_3": [
+   0.402,
+   0.569,
+   0.304
+  ],
+  "crop_flax_3": [
+   0.39,
+   0.57,
+   0.266
+  ],
+  "wild_turnip": [
+   0.402,
+   0.569,
+   0.304
+  ],
+  "wild_flax": [
+   0.39,
+   0.57,
+   0.266
+  ],
+  "thatch": [
+   0.619,
+   0.522,
+   0.265
+  ],
+  "thatch_top": [
+   0.642,
+   0.542,
+   0.276
+  ],
+  "brick": [
+   0.644,
+   0.353,
+   0.256
+  ],
+  "water": [
+   0.196,
+   0.399,
+   0.566
+  ],
+  "torch": [
+   0.422,
+   0.33,
+   0.195
+  ],
+  "flame": [
+   0.946,
+   0.535,
+   0.21
+  ],
+  "straw_bed": [
+   0.712,
+   0.602,
+   0.307
+  ],
+  "flint": [
+   0.272,
+   0.297,
+   0.338
+  ],
+  "granite_knap": [
+   0.495,
+   0.472,
+   0.447
+  ],
+  "dry_grass": [
+   0.643,
+   0.557,
+   0.307
+  ],
+  "bag": [
+   0.432,
+   0.31,
+   0.197
+  ],
+  "cloth": [
+   0.814,
+   0.799,
+   0.769
+  ],
+  "skin": [
+   0.827,
+   0.631,
+   0.49
+  ],
+  "hair": [
+   0.239,
+   0.17,
+   0.122
+  ],
+  "leather": [
+   0.352,
+   0.244,
+   0.165
+  ],
+  "crack_0": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_1": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_2": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_3": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_4": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_5": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_6": [
+   0.08,
+   0.06,
+   0.05
+  ],
+  "crack_7": [
+   0.08,
+   0.06,
+   0.05
+  ]
+ }
+}

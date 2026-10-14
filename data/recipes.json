@@ -1,0 +1,18 @@
+{
+	"_doc": "Crafting grid recipes. shape: rows of keys (may sit anywhere in the 3x3 grid, mirrored too); shapeless: a list of ingredients in any slots. An ingredient is an item id, alternatives 'a|b', or 'tool:<kind>' (a tool that loses one use and stays in the grid). mat: copy the material of that key's item to the result.",
+	"recipes": [
+		{"out": "knife", "shape": ["B", "S"], "keys": {"B": "knife_blade", "S": "stick"}, "mat": "B"},
+		{"out": "axe", "shape": ["B", "S"], "keys": {"B": "axe_head", "S": "stick"}, "mat": "B"},
+		{"out": "shovel", "shape": ["B", "S"], "keys": {"B": "shovel_head", "S": "stick"}, "mat": "B"},
+		{"out": "hoe", "shape": ["B", "S"], "keys": {"B": "hoe_head", "S": "stick"}, "mat": "B"},
+		{"out": "twine", "shapeless": ["plant_fiber", "plant_fiber", "plant_fiber"]},
+		{"out": "firestarter", "shapeless": ["stick", "stick", "twine"]},
+		{"out": "torch", "n": 2, "shape": ["G", "S"], "keys": {"G": "dry_grass", "S": "stick"}},
+		{"out": "firewood", "n": 4, "shapeless": ["log_oak|log_birch", "tool:axe"]},
+		{"out": "thatch", "shape": ["GG", "GG"], "keys": {"G": "dry_grass"}},
+		{"out": "dry_grass", "n": 4, "shapeless": ["thatch"]},
+		{"out": "straw_bed", "shape": ["TTT"], "keys": {"T": "thatch"}},
+		{"out": "brick_block", "shape": ["BB", "BB"], "keys": {"B": "brick"}},
+		{"out": "brick", "n": 4, "shapeless": ["brick_block"]}
+	]
+}

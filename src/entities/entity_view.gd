@@ -1,15 +1,7 @@
 class_name EntityView
 extends Node3D
-## Base class for the visual/physical representation of a World entity.
-## Views never change world state; they render it and expose colliders that the
-## interaction raycast resolves back to (entity id, part).
-
-const LAYER_TERRAIN := 1
-const LAYER_STRUCT := 2
-const LAYER_ITEMS := 4
-const LAYER_PLAYERS := 8
-const LAYER_INTERACT := 16
-const LAYER_WATER := 32
+## Base class for the visual representation of a World entity.  Views never
+## change world state; they only render it.
 
 var entity_id := -1
 var e: Dictionary = {}
@@ -25,8 +17,12 @@ func setup(ent: Dictionary) -> void:
 func on_changed(ent: Dictionary, keys: Array) -> void:
 	e = ent
 	if keys.has("xf"):
-		transform = ent["xf"]
+		_moved(ent["xf"])
 	_refresh(keys)
+
+
+func _moved(xf: Transform3D) -> void:
+	transform = xf
 
 
 func on_removed() -> void:
@@ -45,31 +41,37 @@ func _refresh(_keys: Array) -> void:
 	pass
 
 
-func make_body(shape: Shape3D, layer: int, part: String = "", xf: Transform3D = Transform3D.IDENTITY, solid: bool = false) -> CollisionObject3D:
-	## A collider that resolves to this entity.  `solid` bodies also block players.
-	var body: CollisionObject3D
-	if solid or layer == LAYER_STRUCT or layer == LAYER_ITEMS:
-		body = StaticBody3D.new()
-	else:
-		var a := Area3D.new()
-		a.monitoring = false
-		a.monitorable = false
-		body = a
-	body.collision_layer = layer
-	body.collision_mask = 0
-	body.set_meta("eid", entity_id)
-	body.set_meta("part", part)
-	var cs := CollisionShape3D.new()
-	cs.shape = shape
-	cs.transform = xf
-	body.add_child(cs)
-	add_child(body)
-	return body
+static func block_mat() -> ShaderMaterial:
+	return EntityModels.get_or_build("mat:block", func():
+		var m := ShaderMaterial.new()
+		m.shader = load("res://assets/shaders/voxel_solid.gdshader")
+		m.set_shader_parameter("atlas", BlockTex.array())
+		m.set_shader_parameter("ao_light", 0.0)
+		return m)
 
 
-func interaction_point(_part: String) -> Vector3:
-	return global_position
+static func boxes_mesh(boxes: Array, mat: Material = null) -> ArrayMesh:
+	## [[a, b, tile name or layer, tint (Color), rot (radians)], ...] in block units.
+	var s := ChunkMesher.Surf.new()
+	for b in boxes:
+		var tex: int = b[2] if b[2] is int else BlockTex.layer(String(b[2]))
+		var col: Color = b[3] if b.size() > 3 else Color.WHITE
+		var rot: float = b[4] if b.size() > 4 else 0.0
+		ChunkMesher.box_faces(s, b[0], b[1], rot, Vector3.ZERO, tex, tex, Color(col.r, col.g, col.b, 1.0))
+	var m := ArrayMesh.new()
+	var arr := s.arrays()
+	if arr.is_empty():
+		return m
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	m.surface_set_material(0, mat if mat else block_mat())
+	return m
 
 
-func game_world() -> Node:
-	return Game.game_world
+func add_mesh(mesh: Mesh, xf := Transform3D.IDENTITY, shadow := true) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.transform = xf
+	if not shadow:
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	return mi

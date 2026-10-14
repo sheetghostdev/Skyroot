@@ -1,5 +1,5 @@
 class_name RemotePlayer
-extends CharacterBody3D
+extends Node3D
 ## Another player, driven by relayed poses (interpolated ~100 ms behind).
 
 var pid := 0
@@ -15,15 +15,6 @@ const DELAY := 0.1
 
 
 func _ready() -> void:
-	collision_layer = EntityView.LAYER_PLAYERS
-	collision_mask = 0
-	var cap := CapsuleShape3D.new()
-	cap.radius = 0.3
-	cap.height = 1.74
-	var cs := CollisionShape3D.new()
-	cs.shape = cap
-	cs.position.y = 0.87
-	add_child(cs)
 	model = CharacterModel.new()
 	add_child(model)
 	model.build(Net.player_color(pid))
@@ -49,13 +40,12 @@ func push_pose(pose: Dictionary) -> void:
 		_buf.pop_front()
 	var seq := int(pose.get("s", 0))
 	if seq != _last_seq:
-		if _last_seq != -1 and String(pose.get("a", "")) != "":
-			model.play_action(String(pose["a"]))
+		if _last_seq != -1:
+			model.swing()
 		_last_seq = seq
 	var held := String(pose.get("h", ""))
-	if held != _held:
-		_held = held
-		model.set_held(held)
+	var hd = pose.get("hd", {})
+	model.set_held(held, hd if hd is Dictionary else {})
 	_mode = String(pose.get("m", "play"))
 
 
@@ -84,6 +74,6 @@ func _physics_process(delta: float) -> void:
 	var facing := lerp_angle(float(pa.get("f", 0.0)), float(pb.get("f", 0.0)), t)
 	model.rotation.y = lerp_angle(model.rotation.y, facing, 1.0 - exp(-14.0 * delta))
 	var hv := Vector2(_vel.x, _vel.z).length()
-	model.animate(delta, {"speed": hv, "crouch": bool(pb.get("c", false)), "air": absf(_vel.y) > 1.5 and hv < 8.0,
-		"pitch": float(pb.get("x", 0.0)), "mode": _mode, "sprint": bool(pb.get("sp", false))})
+	model.animate(delta, {"speed": hv, "crouch": bool(pb.get("c", false)), "air": not bool(pb.get("g", true)),
+		"pitch": float(pb.get("x", 0.0)), "mode": _mode, "action": String(pb.get("a", ""))})
 	nameplate.visible = _mode != "dead"

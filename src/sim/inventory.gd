@@ -1,11 +1,17 @@
 class_name Inventory
 extends RefCounted
-## A fixed-size list of item stacks.  Lives on the host (authoritative) and is
-## mirrored to the owning client.  A stack is {"i": item_id, "n": count, "d": data}.
-## Items carrying data (tools, pottery, knapped heads...) never stack.
+## A player's slots.  Lives on the host (authoritative) and is mirrored to the
+## owning client.  A stack is {"i": item_id, "n": count, "d": data}; items
+## carrying data (tools, tool heads, filled bowls...) never stack.
+##
+## Slots 0-8 are the hotbar, 9-35 the backpack, 36-44 the 3x3 crafting grid and
+## 45 the stack held on the mouse cursor while the inventory screen is open.
 
 const HOTBAR := 9
-const SIZE := 27
+const MAIN := 36
+const GRID := 36
+const CURSOR := 45
+const SIZE := 46
 
 var slots: Array = []
 
@@ -38,48 +44,18 @@ func item_at(i: int) -> String:
 	return String(get_slot(i).get("i", ""))
 
 
-static func stack_kg(id: String, n: int, d: Dictionary) -> float:
-	## How heavy a stack is to carry.
-	match id:
-		"wood_piece":
-			return float(d.get("mass", 10.0)) * n
-		"torch":
-			return float(d.get("mass", ItemDB.unit_mass("stick"))) * n
-		"charred_wood":
-			# what's left of it: a half-burnt log is still heavy
-			if d.has("fm"):
-				return (float(d["fm"]) + float(d.get("ch", 0.0))) * n
-		"pot":
-			return (float(d.get("vol", 0.25)) * 1.8 + float(d.get("water", 0.0))) * n
-	return ItemDB.unit_mass(id) * n
-
-
-func carried_kg() -> float:
-	var kg := 0.0
-	for s in slots:
-		if not s.is_empty():
-			kg += stack_kg(String(s["i"]), int(s["n"]), s["d"])
-	return kg
-
-
 func count(id: String) -> int:
 	var n := 0
-	for s in slots:
+	for i in MAIN:
+		var s: Dictionary = slots[i]
 		if not s.is_empty() and s["i"] == id:
 			n += int(s["n"])
 	return n
 
 
 func find(id: String) -> int:
-	for i in slots.size():
+	for i in MAIN:
 		if not slots[i].is_empty() and slots[i]["i"] == id:
-			return i
-	return -1
-
-
-func find_where(pred: Callable) -> int:
-	for i in slots.size():
-		if not slots[i].is_empty() and pred.call(slots[i]):
 			return i
 	return -1
 
@@ -88,7 +64,8 @@ func space_for(id: String, d: Dictionary = {}) -> int:
 	var free := 0
 	var mx := ItemDB.stack_max(id)
 	var stackable := ItemDB.can_stack(id, d)
-	for s in slots:
+	for i in MAIN:
+		var s: Dictionary = slots[i]
 		if s.is_empty():
 			free += mx if stackable else 1
 		elif stackable and s["i"] == id and ItemDB.can_stack(id, s["d"]):
@@ -96,43 +73,29 @@ func space_for(id: String, d: Dictionary = {}) -> int:
 	return free
 
 
-static func _merge_moist(s: Dictionary, id: String, add_n: int, d: Dictionary) -> void:
-	## Weighted-average moisture when merging stacks.
-	if not d.has("moist") and not s["d"].has("moist"):
-		return
-	var dm := ItemDB.default_moist(id)
-	var m1 := float(s["d"].get("moist", dm))
-	var m2 := float(d.get("moist", dm))
-	var n1 := int(s["n"])
-	var m := (m1 * n1 + m2 * add_n) / maxf(1.0, n1 + add_n)
-	s["d"] = {"moist": m}
-
-
 func add(id: String, n: int = 1, d: Dictionary = {}, prefer_slot: int = -1) -> int:
-	## Adds up to n items; returns how many could NOT be added.
+	## Adds up to n items to the hotbar and backpack; returns how many did NOT fit.
 	if n <= 0 or not ItemDB.exists(id):
 		return n
 	var mx := ItemDB.stack_max(id)
 	if ItemDB.can_stack(id, d):
-		for s in slots:
+		for i in MAIN:
 			if n <= 0:
 				break
+			var s: Dictionary = slots[i]
 			if not s.is_empty() and s["i"] == id and ItemDB.can_stack(id, s["d"]) and int(s["n"]) < mx:
 				var take := mini(n, mx - int(s["n"]))
-				_merge_moist(s, id, take, d)
 				s["n"] = int(s["n"]) + take
 				n -= take
-		var order := _slot_order(prefer_slot)
-		for i in order:
+		for i in _slot_order(prefer_slot):
 			if n <= 0:
 				break
 			if slots[i].is_empty():
 				var take := mini(n, mx)
-				slots[i] = make(id, take, d.duplicate())
+				slots[i] = make(id, take, {})
 				n -= take
 	else:
-		var order := _slot_order(prefer_slot)
-		for i in order:
+		for i in _slot_order(prefer_slot):
 			if n <= 0:
 				break
 			if slots[i].is_empty():
@@ -143,19 +106,19 @@ func add(id: String, n: int = 1, d: Dictionary = {}, prefer_slot: int = -1) -> i
 
 func _slot_order(prefer: int) -> Array:
 	var order: Array = []
-	if prefer >= 0 and prefer < slots.size():
+	if prefer >= 0 and prefer < MAIN:
 		order.append(prefer)
-	for i in slots.size():
+	for i in MAIN:
 		if i != prefer:
 			order.append(i)
 	return order
 
 
 func remove(id: String, n: int = 1) -> bool:
-	## Removes n of a (data-less or any) item.  All-or-nothing.
+	## Removes n of an item from the hotbar and backpack.  All-or-nothing.
 	if count(id) < n:
 		return false
-	for i in range(slots.size() - 1, -1, -1):
+	for i in range(MAIN - 1, -1, -1):
 		if n <= 0:
 			break
 		var s: Dictionary = slots[i]
@@ -191,40 +154,21 @@ func set_data(i: int, d: Dictionary) -> void:
 		slots[i]["d"] = d
 
 
-func move(from: int, to: int) -> void:
-	## Move/merge/swap a stack between two slots.
-	if from == to or is_empty_slot(from) or to < 0 or to >= slots.size():
-		return
-	var a: Dictionary = slots[from]
-	var b: Dictionary = slots[to]
-	if not b.is_empty() and b["i"] == a["i"] and ItemDB.can_stack(a["i"], a["d"]) and ItemDB.can_stack(b["i"], b["d"]):
-		var mx := ItemDB.stack_max(a["i"])
-		var take := mini(int(a["n"]), mx - int(b["n"]))
-		_merge_moist(b, b["i"], take, a["d"])
-		b["n"] = int(b["n"]) + take
-		a["n"] = int(a["n"]) - take
-		if int(a["n"]) <= 0:
-			slots[from] = {}
-		return
-	slots[from] = b
-	slots[to] = a
-
-
-func split(from: int, to: int) -> void:
-	# (is_empty_slot() calls a slot past either end "empty": check the target is a real one)
-	if is_empty_slot(from) or to < 0 or to >= slots.size() or not slots[to].is_empty():
-		return
-	var a: Dictionary = slots[from]
-	var half := int(a["n"]) / 2
-	if half <= 0:
-		return
-	a["n"] = int(a["n"]) - half
-	slots[to] = make(a["i"], half, a["d"].duplicate(true))
+func grid() -> Array:
+	return slots.slice(GRID, GRID + 9)
 
 
 func clear() -> void:
 	for i in slots.size():
 		slots[i] = {}
+
+
+func all_stacks() -> Array:
+	var out: Array = []
+	for s in slots:
+		if not s.is_empty():
+			out.append(s.duplicate(true))
+	return out
 
 
 func to_array() -> Array:
@@ -234,11 +178,3 @@ func to_array() -> Array:
 func from_array(arr: Array) -> void:
 	for i in slots.size():
 		slots[i] = arr[i].duplicate(true) if i < arr.size() and arr[i] is Dictionary else {}
-
-
-func total_mass() -> float:
-	var m := 0.0
-	for s in slots:
-		if not s.is_empty():
-			m += ItemDB.unit_mass(s["i"]) * int(s["n"])
-	return m

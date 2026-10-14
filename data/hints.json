@@ -1,0 +1,19 @@
+{
+	"_doc": "One-time hints, shown in the corner when the game first asks for them.",
+	"welcome": {"text": "You wake on a small island floating above the clouds. Your first goal is in the top right. What you look at and what the mouse buttons will do is written under the crosshair. H opens the handbook."},
+	"edge": {"text": "That's the edge of the island. Below it is a very long fall. Hold Shift to sneak: sneaking, you can't walk off an edge."},
+	"grass_knife": {"text": "By hand, tall grass just tears. Cut it with a knife and you get dry grass - tinder for fires."},
+	"firepit": {"text": "A fire pit! Right-click more sticks onto it - each one crosses the last - and right-click dry grass to tuck tinder underneath. Then hold right-click on it with a bow drill."},
+	"firewood_needs_sticks": {"text": "Firewood won't catch from tinder alone. Lay sticks first: tinder lights the sticks, the sticks light the firewood."},
+	"kiln": {"text": "Raw pottery on the ground. Cover it with dry grass (right-click it) to start a pit kiln. In a pit, one block deep, it fires evenly and nothing cracks."},
+	"kiln_cover": {"text": "Keep covering the pottery: four dry grass in all, then six sticks laid over the mound, then light it."},
+	"kiln_ready": {"text": "The kiln is ready. Light it with the bow drill (hold right-click) or a burning torch. It takes about three hours."},
+	"kiln_open": {"text": "This kiln is out in the open: the heat escapes on the sides, and some pieces may crack. Next time, set the pottery in a hole one block deep."},
+	"raw_pottery": {"text": "Raw pottery is fragile and won't hold water. Fire it in a pit kiln: dig a hole, shift-right-click it in, cover it with dry grass and sticks, light it."},
+	"hungry": {"text": "You're getting hungry. Berries, mushrooms and wild turnips will do for now; roast them on a fire and they fill you far more."},
+	"thirsty": {"text": "You're thirsty. Hold right-click on the pond's water with an empty hand to drink."},
+	"cold": {"text": "You're cold. Get close to a fire, or out of the wind: a roof and walls help. Rain and night make it worse."},
+	"hurt": {"text": "You're hurt. Health comes back slowly while you're fed, watered and warm - faster asleep."},
+	"dusk": {"text": "The sun is going down. Nights are cold here: have a fire burning, with firewood to keep it going, and somewhere sheltered to be."},
+	"rain": {"text": "Rain. It soaks you, chills you and drowns open fires. Shelter under a roof or the overhang of the knoll."}
+}

@@ -1,6 +1,6 @@
 extends Node
 ## Automated multiplayer check, run as separate game instances on one machine
-## (see tools/mp_test.sh):
+## (see tools/mp_test.sh, mp_crowd.sh, mp_crash.sh):
 ##   host:    --autostart=host --world=MPTest --new --name=Host --mptest=host
 ##   client:  --autostart=join --name=Ana --mptest=client   (then again with --mptest=rejoin)
 ## The instances talk through the game's own chat, so everything they check
@@ -88,6 +88,17 @@ func _say(text: String) -> void:
 	Net.send_chat(text)
 
 
+func _lp() -> LocalPlayer:
+	return Game.game_world.local_player()
+
+
+func _go(p: Vector3) -> void:
+	## Move this machine's own player (each machine owns its movement).
+	var lp := _lp()
+	lp.global_position = p
+	lp.velocity = Vector3.ZERO
+
+
 func _run() -> void:
 	if role == "fifth":
 		await _fifth()
@@ -113,6 +124,23 @@ func _run() -> void:
 		"crash_b":
 			await _crash_b()
 	_finish()
+
+
+static func blocks_hash() -> int:
+	return hash(World.vox.ids)
+
+
+static func flat_spot(x: int, z: int) -> Vector3i:
+	for r in range(0, 8):
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var y := World.vox.surface_y(x + dx, z + dz)
+				if y < 0:
+					continue
+				var c := Vector3i(x + dx, y, z + dz)
+				if Blocks.is_opaque(World.block(c)) and Blocks.is_replaceable(World.block(c + Vector3i.UP)) and World.block(c + Vector3i(0, 2, 0)) == 0 and not World.be_at.has(c + Vector3i.UP):
+					return c
+	return Vector3i(-1, -1, -1)
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +171,6 @@ func _count_everywhere(id: String) -> int:
 
 func _host() -> void:
 	if Game.cli.has("open_later"):
-		# started alone: open the running island to friends, as the pause menu does
 		check(not Net.is_online(), "the island started solo")
 		check(Net.open_to_friends(int(Game.cli.get("port", str(Net.DEFAULT_PORT)))) == OK, "and was opened to friends mid-session")
 	_log("hosting, waiting for a player")
@@ -154,45 +181,41 @@ func _host() -> void:
 	var cpid := _client_pid("Ana")
 	check(cpid != -1, "the player is called Ana")
 	var ready := await _wait_msg("READY", 40.0)
-	check(ready != "", "Ana's world loaded")
-	check(ready == str(World.entities.size()), "Ana sees the same %d things on the island as the host (%s)" % [World.entities.size(), ready])
-	# one charcoal piece, three hands: whoever's request arrives first gets it; nobody gets a copy
-	var lp: LocalPlayer = Game.game_world.local_player()
-	var spot := lp.global_position + Vector3(0.6, 0, 0.6)
-	var piece: int = World.actions.spawn_item("charcoal", 1, {}, spot + Vector3(0, 0.3, 0))
-	var L0 := Ledger.compute()
-	_say("ITEM %d" % piece)
-	var picked := await _wait_msg("PICKED", 30.0)
-	World.request("pickup", {"eid": piece, "eye": lp.eye_position()})
-	await _frames(10)
-	check(_count_everywhere("charcoal") == 1, "the charcoal piece exists exactly once after both grabbed it (%d)" % _count_everywhere("charcoal"))
-	check(not World.has_entity(piece), "and it is no longer on the ground")
-	# Ana walks to the outcrop and takes a stone
-	var stone_said := await _wait_msg("STONE", 40.0)
-	await _frames(10)
-	check(World.inventory_of(cpid).count("stone") >= 1, "the host gave Ana the stone she asked for (%s)" % stone_said)
-	var pose: Dictionary = Net.poses.get(cpid, {})
-	var at := String(stone_said).split(",")
-	if at.size() == 3 and pose.has("p"):
-		var claimed := Vector3(float(at[0]), float(at[1]), float(at[2]))
-		check((pose["p"] as Vector3).distance_to(claimed) < 1.0, "Ana's movement reached the host (%.2f m off)" % (pose["p"] as Vector3).distance_to(claimed))
-	# Ana shapes a pot; the host watches it take shape
-	World.inventory_of(cpid).add("clay_prepared", 1)
-	var blade_d := {"seed": 5, "cuts": [], "q": 0.8, "stone_kg": 0.3, "dur": 1.0}
-	World.inventory_of(cpid).add("blade", 1, blade_d)
+	var parts := ready.split(" ")
+	check(parts.size() == 2 and int(parts[0]) == World.entities.size(), "Ana sees the same %d things on the island (%s)" % [World.entities.size(), ready])
+	check(parts.size() == 2 and int(parts[1]) == blocks_hash(), "and exactly the same blocks")
+	# one flint on the ground, two people walking onto it: one of them gets it
+	var spot := flat_spot(30, 36)
+	var at := Vector3(spot) + Vector3(0.5, 1.2, 0.5)
+	World.actions.drop_item("flint", 1, {}, at)
+	await _frames(5)
+	_say("FLINT %.2f,%.2f,%.2f" % [at.x, at.y, at.z])
+	await _wait_msg("ONIT", 30.0)
+	_go(at + Vector3(0, -0.2, 0))
+	await _frames(40)
+	check(_count_everywhere("flint") == 1, "the flint exists exactly once after both stepped on it (%d)" % _count_everywhere("flint"))
+	# Ana works: breaks loose stones, places soil, builds and lights a fire, knaps
+	World.inventory_of(cpid).add("dirt", 2)
+	World.inventory_of(cpid).add("stick", 4)
+	World.inventory_of(cpid).add("dry_grass", 2)
+	World.inventory_of(cpid).add("firestarter", 1, {"dur": 8})
 	World.mark_inventory(cpid)
-	_say("CLAY")
-	var shaped := await _wait_msg("SHAPED", 40.0)
-	var work := {}
-	for e in World.entities.values():
-		if e["t"] == "work" and int(e["d"].get("by", -1)) == cpid:
-			work = e
-	check(not work.is_empty(), "Ana's pottery workpiece exists on the host")
-	if not work.is_empty():
-		var st := Pottery.stats(work["d"]["pot"])
-		check(bool(st["hollow"]), "the host sees her lump become a hollow vessel (capacity %.2f L, Ana says %s)" % [float(st["capacity_l"]), shaped])
-		var view: Node = Game.game_world.entities.view(int(work["id"]))
-		check(view != null, "and the host's world shows it")
+	_say("WORK")
+	var did := await _wait_msg("DID", 60.0)
+	var w := did.split(" ")
+	check(w.size() >= 3, "Ana reports her work (%s)" % did)
+	if w.size() >= 3:
+		var placed := _cell(w[0])
+		var fire := _cell(w[1])
+		var knap := _cell(w[2])
+		check(Blocks.name_of(World.block(placed)) == "dirt", "the soil Ana placed is on the host's island")
+		var fb := World.be(fire)
+		check(not fb.is_empty() and fb["t"] == "firepit" and bool(fb["d"]["lit"]), "her fire pit is burning on the host")
+		check(not fb.is_empty() and int(fb["d"]["sticks"]) >= 3, "with the sticks she laid (%d)" % (int(fb["d"]["sticks"]) if not fb.is_empty() else 0))
+		check(World.be(knap).is_empty() and World.inventory_of(cpid).count("knife_blade") == 1, "she knapped a knife blade")
+		var view = Game.game_world.entities.view(int(fb.get("id", -1)))
+		check(view != null, "and the host's world shows the fire")
+	check(World.inventory_of(cpid).count("stone") >= 1, "Ana carries the stones she picked up (%d)" % World.inventory_of(cpid).count("stone"))
 	_say("FINE")
 	var bye := await _wait_msg("BYE", 30.0)
 	check(bye != "", "Ana says goodbye")
@@ -200,32 +223,29 @@ func _host() -> void:
 	check(gone, "Ana disconnected")
 	await _frames(5)
 	check(World.player_saves.has("Ana"), "the host kept Ana's belongings while she's away")
-	var rec_inv: Array = World.player_saves.get("Ana", {}).get("inv", [])
 	var stones := 0
-	for s in rec_inv:
+	var blades := 0
+	for s in World.player_saves.get("Ana", {}).get("inv", []):
 		if s is Dictionary and String(s.get("i", "")) == "stone":
 			stones += int(s["n"])
-	check(stones >= 1, "including her stone")
+		if s is Dictionary and String(s.get("i", "")) == "knife_blade":
+			blades += 1
+	check(stones >= 1 and blades == 1, "including her stones and her blade")
 	var back := await _wait(func(): return _client_pid("Ana") != -1, 60.0)
 	check(back, "Ana came back")
 	var inv_said := await _wait_msg("BACK", 30.0)
-	check(inv_said != "", "Ana reports her things: %s" % inv_said)
-	await _frames(10)
-	var cpid2 := _client_pid("Ana")
-	check(World.inventory_of(cpid2).count("stone") == stones, "she has exactly the stones she left with")
-	check(_count_everywhere("charcoal") == 1, "and still exactly one charcoal piece on the island")
-	# nothing was created or destroyed by all that coming and going (the host's gifts aside)
-	var L1 := Ledger.compute()
-	var clay_gift := Ledger.item_contrib("clay_prepared", 1, {})
-	var blade_gift := Ledger.item_contrib("blade", 1, blade_d)
-	for k in Ledger.KEYS:
-		var diff := float(L1[k]) - float(clay_gift[k]) - float(blade_gift[k]) - float(L0[k])
-		check(absf(diff) < (0.01 if k == "water" else 0.0005), "the island's %s balances (%+.5f)" % [k, diff])
+	check(inv_said == "stone=%d blade=1" % stones, "she has exactly what she left with (%s)" % inv_said)
+	check(_count_everywhere("flint") == 1, "and still exactly one flint on the island")
 	check(Game.save() == OK, "the host saves the island")
 	_say("DONE")
 	await _frames(30)
-	World.delete_save(World.world_name)   # a test island shouldn't linger in the list
+	World.delete_save(World.world_name)
 	await _frames(30)
+
+
+func _cell(s: String) -> Vector3i:
+	var p := s.split(",")
+	return Vector3i(int(p[0]), int(p[1]), int(p[2])) if p.size() == 3 else Vector3i(-1, -1, -1)
 
 
 # ---------------------------------------------------------------------------
@@ -235,116 +255,82 @@ func _host() -> void:
 func _client() -> void:
 	_log("joined as %s (peer %d)" % [Settings.player_name, Net.my_id()])
 	await _frames(20)
-	_say("READY %d" % World.entities.size())
-	var lp: LocalPlayer = Game.game_world.local_player()
-	var item := await _wait_msg("ITEM", 30.0)
-	check(item != "", "the host told us about a charcoal piece")
-	var eid := int(item)
-	await _wait(func(): return World.has_entity(eid), 10.0)
-	check(World.has_entity(eid), "the charcoal piece the host dropped appeared here too")
-	if World.has_entity(eid):
-		var p: Vector3 = World.get_entity(eid)["xf"].origin
-		lp.global_position = p + Vector3(0.0, 0.1, 0.9)
-		lp.velocity = Vector3.ZERO
-		await _frames(20)
-		for i in 3:
-			World.request("pickup", {"eid": eid, "eye": lp.eye_position()})
-	_say("PICKED")
-	await _frames(30)
-	var mine := World.my_inventory.count("charcoal")
-	_log("I hold %d charcoal" % mine)
-	# walk to the outcrop and take a loose stone
-	var outcrop := {}
-	for e in World.entities.values():
-		if e["t"] == "outcrop":
-			outcrop = e
-	var got := false
-	if not outcrop.is_empty():
-		var loose: Array = outcrop["d"].get("loose", [])
-		var idx := -1
-		for i in loose.size():
-			if int(loose[i]) > 0:
-				idx = i
+	_say("READY %d %d" % [World.entities.size(), blocks_hash()])
+	var f := await _wait_msg("FLINT", 30.0)
+	var fp := f.split(",")
+	if fp.size() == 3:
+		_go(Vector3(float(fp[0]), float(fp[1]) - 0.2, float(fp[2])))
+	_say("ONIT")
+	await _frames(40)
+	_log("I hold %d flint" % World.my_inventory.count("flint"))
+	await _wait_msg("WORK", 30.0)
+	await _wait(func(): return World.my_inventory.count("firestarter") > 0, 10.0)
+	check(World.my_inventory.count("firestarter") == 1, "the host's gifts arrived")
+	var lp := _lp()
+	# pick up loose stones: break them and walk over what drops
+	var got := 0
+	for z in range(10, 56):
+		for x in range(10, 56):
+			if got >= 2:
 				break
-		var v: Node = Game.game_world.entities.view(int(outcrop["id"]))
-		if idx >= 0 and v:
-			var at: Vector3 = v.interaction_point("loose:%d" % idx)
-			var away := Vector3(at.x - outcrop["xf"].origin.x, 0, at.z - outcrop["xf"].origin.z).normalized()
-			var stand := at + away * 1.0
-			stand.y = World.terrain.height(stand.x, stand.z) + 0.05
-			lp.global_position = stand
-			lp.velocity = Vector3.ZERO
-			await _frames(30)
-			for i in 4:
-				World.request("outcrop_take", {"eid": int(outcrop["id"]), "idx": idx, "eye": lp.eye_position()})
+			var y := World.vox.surface_y(x, z)
+			var c := Vector3i(x, y + 1, z)
+			if y >= 0 and Blocks.name_of(World.block(c)) == "loose_stones":
+				_go(Vector3(c) + Vector3(1.5, 0.0, 0.5))
+				await _frames(10)
+				World.request("break", {"c": c, "slot": 0})
 				await _frames(15)
-				if World.my_inventory.count("stone") > 0:
-					got = true
-					break
-	check(got, "took a stone from the outcrop through the host")
-	var p2 := lp.global_position
-	_say("STONE %.2f,%.2f,%.2f" % [p2.x, p2.y, p2.z])
-	# shape a pot on the ground; the host should see it
-	var clay := await _wait_msg("CLAY", 30.0)
-	await _wait(func(): return World.my_inventory.count("clay_prepared") > 0, 10.0)
-	check(World.my_inventory.count("clay_prepared") > 0, "the host's gift of clay arrived")
-	var spot := lp.global_position + Vector3(0.6, 0, -0.6)
-	spot.y = World.terrain.height(spot.x, spot.z)
-	World.request("work_start", {"kind": "pottery", "surface": -1, "pos": spot, "slot": World.my_inventory.find("clay_prepared"), "eye": lp.eye_position()})
-	var found: Array = []   # (a lambda can't reassign an outer variable, but it can fill an array)
-	await _wait(func():
-		for e in World.entities.values():
-			if e["t"] == "work" and int(e["d"].get("by", -1)) == Net.my_id():
-				found.append(e)
-				return true
-		return false, 10.0)
-	var work: Dictionary = found[0] if not found.is_empty() else {}
-	check(not work.is_empty(), "my pottery workpiece appeared")
-	var cc := get_tree().get_first_node_in_group("crafting")
-	await _wait(func(): return cc != null and cc.is_open(), 5.0)
-	check(cc != null and cc.is_open(), "and its close-up opened by itself")
-	if not work.is_empty():
-		var wid := int(work["id"])
-		for i in 8:
-			World.request("work_op", {"eid": wid, "op": ["hollow", 0.1 * (i + 1), 0.25 + 0.06 * i, 0.0], "eye": lp.eye_position()})
-		await _frames(20)
-		var st := Pottery.stats(World.get_entity(wid)["d"]["pot"])
-		_say("SHAPED %.2f" % float(st["capacity_l"]))
+				_go(Vector3(c) + Vector3(0.5, 0.0, 0.5))
+				await _frames(25)
+				if World.my_inventory.count("stone") > got:
+					got = World.my_inventory.count("stone")
+	check(got >= 1, "broke loose stones and picked them up through the host (%d)" % got)
+	# place soil
+	var spot := flat_spot(24, 32)
+	_go(Vector3(spot) + Vector3(-1.5, 1.0, 0.5))
+	await _frames(10)
+	var placed := spot + Vector3i.UP
+	World.request("place", {"c": placed, "slot": World.my_inventory.find("dirt"), "face": Vector3i.UP})
+	await _wait(func(): return Blocks.name_of(World.block(placed)) == "dirt", 5.0)
+	check(Blocks.name_of(World.block(placed)) == "dirt", "placed soil, and see it placed")
+	# a fire pit: a stick on the ground, more sticks, tinder, the bow drill
+	var fs := flat_spot(28, 40)
+	var up := fs + Vector3i.UP
+	_go(Vector3(fs) + Vector3(1.6, 1.0, 0.5))
+	await _frames(10)
+	var sticks := World.my_inventory.find("stick")
+	World.request("use", {"c": fs, "face": Vector3i.UP, "slot": sticks, "sneak": true})
+	await _wait(func(): return not World.be(up).is_empty(), 5.0)
+	for i in 2:
+		await _frames(8)
+		World.request("use", {"c": up, "face": Vector3i.UP, "slot": World.my_inventory.find("stick"), "sneak": false})
+	await _frames(8)
+	World.request("use", {"c": up, "face": Vector3i.UP, "slot": World.my_inventory.find("dry_grass"), "sneak": false})
+	await _frames(8)
+	World.request("ignite", {"c": up, "slot": World.my_inventory.find("firestarter")})
+	await _wait(func(): return not World.be(up).is_empty() and bool(World.be(up)["d"]["lit"]), 5.0)
+	check(not World.be(up).is_empty() and bool(World.be(up)["d"]["lit"]), "my fire pit is lit")
+	var view = Game.game_world.entities.view(int(World.be(up).get("id", -1)))
+	check(view != null, "and I can see it")
+	# knap a knife blade from one of the stones
+	var ks := flat_spot(34, 34)
+	var kc := ks + Vector3i.UP
+	_go(Vector3(ks) + Vector3(1.6, 1.0, 0.5))
+	await _frames(10)
+	World.request("use", {"c": ks, "face": Vector3i.UP, "slot": World.my_inventory.find("stone"), "sneak": true})
+	await _wait(func(): return not World.be(kc).is_empty(), 5.0)
+	World.request("knap_choose", {"c": kc, "r": "knife_blade"})
+	await _wait(func(): return not World.be(kc).is_empty() and String(World.be(kc)["d"]["r"]) == "knife_blade", 5.0)
+	var mask: PackedByteArray = ItemDB.knapping["knife_blade"]["mask"]
+	for i in 256:
+		if ItemDB.stone_mask[i] == 1 and mask[i] == 0:
+			World.request("knap", {"c": kc, "i": i})
+			await get_tree().create_timer(0.07).timeout
+	await _wait(func(): return World.my_inventory.count("knife_blade") == 1, 10.0)
+	check(World.my_inventory.count("knife_blade") == 1, "knapped a knife blade")
+	_say("DID %d,%d,%d %d,%d,%d %d,%d,%d" % [placed.x, placed.y, placed.z, up.x, up.y, up.z, kc.x, kc.y, kc.z])
 	var fine := await _wait_msg("FINE", 30.0)
 	check(fine != "", "the host has seen enough")
-	if cc != null and cc.is_open():
-		cc.close(true)
-		await _frames(20)
-	# cut at a branch of the great tree: it shakes on my screen, not only the host's
-	var tree := {}
-	for e in World.entities.values():
-		if e["t"] == "tree" and not bool(e["d"].get("felled", false)):
-			tree = e
-	var tv: Node = Game.game_world.entities.view(int(tree["id"])) if not tree.is_empty() else null
-	var si := -1
-	if tv:
-		for i in TreeSim.SMALL:
-			if float(tree["d"]["sb"][i]) >= 0.98:
-				si = i
-				break
-	if si != -1:
-		var tip: Vector3 = tv.interaction_point("sb:%d" % si)
-		var o: Vector3 = tree["xf"].origin
-		var foot := Vector3(tip.x, 0, tip.z) + (Vector3(tip.x, 0, tip.z) - Vector3(o.x, 0, o.z)).normalized() * 0.4
-		foot.y = World.terrain.height(foot.x, foot.z) + 0.05
-		lp.global_position = foot
-		lp.velocity = Vector3.ZERO
-		await _frames(30)
-		var shp0 := float(tree["d"]["shp"][si])
-		World.request("tree_cut", {"eid": int(tree["id"]), "part": "sb:%d" % si, "slot": World.my_inventory.find("blade"), "eye": lp.eye_position()})
-		var shake := 0.0
-		for f in 60:
-			await get_tree().physics_frame
-			shake = maxf(shake, float(tv.get("_shake")))
-		check(float(World.get_entity(int(tree["id"]))["d"]["shp"][si]) < shp0, "my cut at a branch reached the host")
-		check(shake > 0.0, "and the tree shook on my screen too (%.2f)" % shake)
-	else:
-		check(false, "found a branch to cut")
 	_say("BYE")
 	await _frames(10)
 
@@ -353,8 +339,8 @@ func _rejoin() -> void:
 	_log("back as %s" % Settings.player_name)
 	await _frames(30)
 	var inv := World.my_inventory
-	check(inv.count("stone") >= 1, "my stone was waiting for me")
-	_say("BACK stone=%d charcoal=%d" % [inv.count("stone"), inv.count("charcoal")])
+	check(inv.count("stone") >= 1, "my stones were waiting for me")
+	_say("BACK stone=%d blade=%d" % [inv.count("stone"), inv.count("knife_blade")])
 	var done := await _wait_msg("DONE", 60.0)
 	check(done != "", "the host finished")
 
@@ -366,16 +352,18 @@ func _rejoin() -> void:
 func _crowd_host() -> void:
 	var full := await _wait(func(): return Net.players.size() >= 4, 90.0)
 	check(full, "four players on the island (%d)" % Net.players.size())
-	var outcrop := {}
-	for e in World.entities.values():
-		if e["t"] == "outcrop":
-			outcrop = e
-	var loose0 := 0
-	for v in outcrop["d"].get("loose", []):
-		loose0 += int(v)
+	var spot := flat_spot(38, 41)
+	# the host stands well away from the pile (so only the visitors can grab it)
+	var away := flat_spot(20, 26)
+	_go(Vector3(away) + Vector3(0.5, 1.05, 0.5))
+	await _frames(10)
+	var at := Vector3(spot) + Vector3(0.5, 1.2, 0.5)
+	for i in 3:
+		World.actions.drop_item("flint", 1, {}, at)
+	var loose := flat_spot(34, 30) + Vector3i.UP
+	World.set_block(loose, Blocks.id_of("loose_flint"))
 	await _frames(20)
-	_say("GRAB")
-	# everyone grabs at once; then count
+	_say("GRAB %.2f,%.2f,%.2f %d,%d,%d" % [at.x, at.y, at.z, loose.x, loose.y, loose.z])
 	var counts: Dictionary = {}
 	var t := 0.0
 	while counts.size() < 3 and t < 40.0:
@@ -387,18 +375,14 @@ func _crowd_host() -> void:
 		t += get_process_delta_time()
 	check(counts.size() == 3, "all three visitors reported back (%s)" % str(counts))
 	await _frames(10)
-	var loose1 := 0
-	for v in World.get_entity(int(outcrop["id"]))["d"].get("loose", []):
-		loose1 += int(v)
 	var held := 0
 	for pid in World.inventories:
-		held += World.inventories[pid].count("stone")
+		held += World.inventories[pid].count("flint")
 	var said := 0
 	for k in counts:
 		said += int(counts[k])
-	check(loose0 - loose1 == held, "every stone that left the outcrop is in exactly one pack (%d taken, %d carried)" % [loose0 - loose1, held])
+	check(held == 4 and _count_everywhere("flint") == 4, "three flints on the ground and one nodule broken by three people at once make exactly four flints (%d carried)" % held)
 	check(said == held, "and each visitor's own view agrees with the host (%d)" % said)
-	# meanwhile a fifth player knocks (tools/mp_crowd.sh); give them time to be turned away
 	await get_tree().create_timer(22.0).timeout
 	check(Net.players.size() == 4, "a fifth player was turned away; still four here")
 	_say("DONE")
@@ -408,27 +392,23 @@ func _crowd_host() -> void:
 
 
 func _crowd() -> void:
-	await _wait_msg("GRAB", 60.0)
-	var lp: LocalPlayer = Game.game_world.local_player()
-	var outcrop := {}
-	for e in World.entities.values():
-		if e["t"] == "outcrop":
-			outcrop = e
-	var v: Node = Game.game_world.entities.view(int(outcrop["id"]))
-	var loose: Array = outcrop["d"].get("loose", [])
-	# everybody goes for the same first stones at the same moment
-	for idx in mini(3, loose.size()):
-		var at: Vector3 = v.interaction_point("loose:%d" % idx)
-		var away := Vector3(at.x - outcrop["xf"].origin.x, 0, at.z - outcrop["xf"].origin.z).normalized()
-		var stand := at + away * 1.0
-		stand.y = World.terrain.height(stand.x, stand.z) + 0.05
-		lp.global_position = stand
-		lp.velocity = Vector3.ZERO
-		await _frames(3)
-		World.request("outcrop_take", {"eid": int(outcrop["id"]), "idx": idx, "eye": lp.eye_position()})
+	var g := await _wait_msg("GRAB", 60.0)
+	var parts := g.split(" ")
+	if parts.size() == 2:
+		var p := parts[0].split(",")
+		var at := Vector3(float(p[0]), float(p[1]) - 0.2, float(p[2]))
+		var lc := _cell(parts[1])
+		# everybody breaks the same nodule at the same moment, then runs for the pile
+		_go(Vector3(lc) + Vector3(1.5, 0.0, 0.5))
+		await _frames(6)
+		World.request("break", {"c": lc, "slot": 0})
+		await _frames(10)
+		_go(Vector3(lc) + Vector3(0.5, 0.0, 0.5))
+		await _frames(20)
+		_go(at)
 	await _frames(60)
-	var n := World.my_inventory.count("stone")
-	_log("I got %d stones" % n)
+	var n := World.my_inventory.count("flint")
+	_log("I got %d flint" % n)
 	_say("HAVE %d" % n)
 	var done := await _wait_msg("DONE", 90.0)
 	check(done != "", "the host wrapped up")

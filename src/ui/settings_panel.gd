@@ -25,7 +25,6 @@ func _ready() -> void:
 	v.add_child(UITheme.hslider("Render scale", 0.5, 1.0, 0.05, Settings.render_scale, func(x): Settings.render_scale = x; _save(true), pct))
 	v.add_child(UITheme.hslider("Shadow quality", 0, 3, 1, Settings.shadows_quality, func(x): Settings.shadows_quality = int(x); _save(true),
 		func(x: float) -> String: return ["Off", "Low", "Medium", "High"][clampi(int(x), 0, 3)]))
-	v.add_child(UITheme.hslider("Grass density", 0.2, 1.0, 0.05, Settings.grass_density, func(x): Settings.grass_density = x; _save(true), pct))
 	v.add_child(UITheme.checkbox("Ambient occlusion", Settings.ssao, func(on): Settings.ssao = on; _save(true)))
 	v.add_child(UITheme.checkbox("Fullscreen", Settings.fullscreen, func(on): Settings.fullscreen = on; _save(true)))
 	v.add_child(UITheme.checkbox("V-Sync", Settings.vsync, func(on): Settings.vsync = on; _save(true)))

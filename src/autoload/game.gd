@@ -39,16 +39,16 @@ func start_world(mode: String, world_name: String, is_new: bool, port: int = Net
 		Net.start_offline()
 	if is_new:
 		World.new_world(world_name)
-		WorldGen.populate()
 	else:
 		var lerr := World.load_world(world_name)
 		if lerr != OK:
 			Net.close()
+			if lerr == ERR_FILE_UNRECOGNIZED:
+				return "'%s' is an island from before the block world and can't be opened." % world_name
 			return "Could not load world '%s' (%s)." % [world_name, error_string(lerr)]
 	var info := World.on_player_joined(Net.my_id(), Settings.player_name)
 	Guide.load_local(_guide_key())
 	Guide.import_state(World.guide_states.get(Net.my_id(), {}))
-	_first_steps(info)
 	_enter_game(info)
 	return ""
 
@@ -69,14 +69,7 @@ func on_client_welcome(info: Dictionary) -> void:
 	Guide.load_local(_guide_key())
 	World.guide_states[Net.my_id()] = info.get("guide", {})
 	Guide.import_state(info.get("guide", {}))
-	_first_steps(info)
 	_enter_game(info)
-
-
-func _first_steps(info: Dictionary) -> void:
-	## Someone new to this island starts with the first-hour checklist on screen.
-	if bool(info.get("new", false)) and Guide.pinned.is_empty() and Guide.read.is_empty() and Guide.has_entry("getting_started"):
-		Guide.toggle_pin("getting_started")
 
 
 func _guide_key() -> String:
@@ -166,19 +159,13 @@ func _notification(what: int) -> void:
 func _exit_tree() -> void:
 	# static caches hold resources; release them so the engine shuts down cleanly
 	Tex._cache.clear()
-	Models._scenes.clear()
-	Models._mats.clear()
-	Models._held.clear()
-	ProcMesh._cache.clear()
-	Geo._ico_cache.clear()
-	InteractionRules._lift_cache.clear()
+	Icons.clear()
+	BlockTex.clear()
+	EntityModels.clear()
 	UITheme._theme = null
 	UITheme._font = null
 	UITheme._font_bold = null
 	UITheme._font_title = null
-	FireSim.reset()
-	ActionsFire._drill_t.clear()
-	preload("res://src/entities/site_view.gd").clear_cache()
 
 
 func quit() -> void:

@@ -5,116 +5,98 @@ code: single-player is simply a host with no clients (an `OfflineMultiplayerPeer
 
 ## The authoritative world
 
-`World` (autoload, `src/autoload/world.gd`) holds the whole simulated island:
+`World` (autoload, `src/autoload/world.gd`) holds the whole island:
 
-* **entities** — `id -> {id, t, xf, d}`: a type (`item`, `tree`, `plant`, `site`,
-  `structure`, `compost`, `work`, `satchel`...), a transform, and a plain data
-  dictionary.  Everything that exists on the island is an entity or terrain.
-* **terrain** (`TerrainData`) — a height-field of layers (rock, clay, soil) plus
-  per-cell moisture, nutrients, grass and tilled flags.
-* **env** — replicated environment: game time, weather, wind, pond volume.
-* **pools** — host-only reservoirs of the closed economy (air water and carbon, soil
-  organic matter, losses to the abyss...), see [ECONOMY.md](ECONOMY.md).
-* per-player **inventories**, **stats** and **guide progress**, and `player_saves`
-  (records of players who are away).
+* **blocks** — `VoxelData` (`src/voxel/voxel_data.gd`): a 64 × 80 × 64 grid of block
+  ids plus one byte of state per block (log axis and "grew naturally", crop stage,
+  farmland wetness, ripe berries), stored column by column.  It also keeps the highest
+  and lowest sky-blocking block of every column (skylight, rain, shelter).
+* **entities** — `id -> {id, t, xf, d}`: dropped items, the bags people leave when
+  they die, and **block entities** — things that occupy one cell and have their own
+  state: fire pits, pit kilns, knapping stones, clay being shaped, ground storage,
+  storage jars.  `World.be_at` maps a cell to its block entity.
+* **env** — game time, rain, clouds, wind, mist.
+* per-player **inventories** (hotbar, backpack, crafting grid and the stack on the
+  mouse cursor all live on the host), **stats** and **guide progress**, and
+  `player_saves` (records of players who are away).
 
-Only the host mutates this state, through `spawn / update / set_xf / despawn /
-terrain_edited`.  Each mutation is applied locally and queued as a replication op;
-ops are flushed to every client once per physics frame in a single reliable RPC, so
-clients see changes in exactly the order the host made them.  Late joiners receive a
-snapshot.  Clients never change the world themselves: they call
-`World.request(action, args)`.
+Only the host mutates this state, through `set_block` and `spawn / update / set_xf /
+despawn`.  Each mutation is applied locally and queued as a replication op; ops are
+flushed to every client once per physics frame in a single reliable RPC, so clients
+see changes in exactly the order the host made them.  Late joiners receive a snapshot
+(the block grid is zstd-compressed, about 30 kB).  Clients never change the world
+themselves: they call `World.request(action, args)`.
 
 ## Requests and validation
 
-`Actions` (`src/sim/actions.gd`) is the host's request handler.  Each action is a
-small function that re-validates everything against the current state — does the
-item still exist, is it in the slot the client claims, is the target within reach,
-does the player have the tool — before changing anything.  Because two requests for
-the same thing are processed one after the other, the second simply fails: nothing
-can be duplicated.  Domain handlers register themselves: `ActionsCraft`,
-`ActionsFire`, `ActionsBuild`, `ActionsCompost`, `FarmActions`, `TreeActions`,
-`TerrainActions`, `WaterActions`.
+`Actions` (`src/sim/actions.gd`) is the host's request handler.  It checks argument
+types, that the player is alive and within reach (from the poses players send), what
+they really hold, and rate limits, then hands the request to a domain module:
 
-Player movement is the exception: each machine owns its own player's movement and
-relays a pose (~20 Hz, unreliable) through the host.  The host checks reach from the
-poses it has.
+| module | file | does |
+|---|---|---|
+| blocks | `block_acts.gd` | break times and tools, drops, felling whole trees, plants that go with their ground, falling sand/gravel, placing |
+| fire | `fire_acts.gd` | fire pits (sticks, tinder, firewood; lighting; burning phases; rain; roasting; stew; torches) and pit kilns |
+| craft | `craft_acts.gd` | setting things down, knapping, clay forming, ground storage, storage jars |
+| farm | `farm_acts.gd` | berries, tilling, sowing, filling vessels, beds; random ticks that grow crops, saplings, berries, grass and mushrooms |
+
+Inventory clicks (`inv_click`) follow Minecraft's rules with the cursor stack kept on
+the host; the crafting grid matches `data/recipes.json`.  Because requests are handled
+one after the other against the current state, two players grabbing the same thing
+can't both get it.
+
+Player movement is the exception: each machine moves its own player (box physics
+against the block grid, `src/player/voxel_body.gd`) and relays a pose (~20 Hz,
+unreliable) through the host.
 
 ## Simulation
 
-`SimDriver` (host) advances time (one in-game day = 20 real minutes) and ticks every
-system twice a second:
+`SimDriver` (host) advances time (one in-game day = 20 real minutes, much faster when
+everyone sleeps) and ticks every system twice a second: weather, fire pits and kilns,
+random ticks, and survival (hunger, thirst, warmth from `Climate`: time of day, rain,
+wind, roof and walls read from the blocks, nearby fires).
 
-| system | file | what it does |
-|---|---|---|
-| weather | `sim/weather.gd` | clouds, rain driven by air humidity, wind |
-| water | `sim/water_sim.gd` | pond and soil evaporation, rain, seepage, runoff, diffusion |
-| plants | `sim/plant_sim.gd`, `tree_sim.gd` | crops, the tree, grass, bush, mushrooms grow from air carbon, soil water and nutrients |
-| drying | `sim/drying_sim.gd` | pottery, wood and grass dry or get rained on |
-| fire | `sim/fire_sim.gd` + `fire_model.gd` | every fire site: membership, enclosure (65 shell cells, ray-cast), per-piece pyrolysis/char/heat, cooking, pot firing, charcoal |
-| structures | `sim/structure_sim.gd` | support spans, creaking, collapse; what lay on a piece that came down is re-dropped a layer per frame |
-| compost | `sim/compost_sim.gd` | rot rate from mix, moisture, air, self-heating |
-| survival | `sim/survival.gd` | hunger, thirst, warmth, stamina, health, death |
+## Rendering
 
-Processes are evaluated from the physical setup, not from recipes: a fire site does
-not know whether it is a "campfire" or a "charcoal mound"; it sees fuel pieces, their
-moisture and size, the earth shell and vents around them, and the air that can reach
-them, and the outcome follows.
-
-## Crafting sessions
-
-Hands-on crafts (knapping, cordage, hafting, clay preparation, pottery, the fire
-drill) open a **work entity** at the spot where the material was set down.  The
-player's `CraftSession` (`src/crafting/`) turns mouse gestures into small operations
-(`strike`, `flip`, `twist`, `knead`, `water`, `hollow`, `shape`, `smooth`, `seat`,
-`wrap`, `spin`) sent as `work_op` requests.  The host applies them to the workpiece's data (the knapped polygon, the
-pot's lathe profile, the twist of the cord) and replicates it — which is why other
-players see a pot rise or a stone lose its flakes as it happens.  Finishing evaluates
-the result geometrically (`Knap.evaluate`, `Pottery.stats`) and gives the item.
+`VoxelView` meshes the grid in 16³ chunks on worker threads (`ChunkMesher`): face
+culling, per-vertex corner occlusion and skylight.  Skylight is worked out per chunk
+from a padded copy of the surrounding blocks: open sky above and open air under the
+island are lit, and light spreads into overhangs, caves and canopies.  The shaders
+apply it to ambient light only; the sun casts real shadows.  Textures come from one
+atlas split into a `Texture2DArray`, so tiles never bleed.  Block entities have their
+own views in `src/entities/`, built from the same textured boxes.  Items are their
+pixel-art icon extruded into 3D (`Icons.mesh`).
 
 ## Client side
 
-* `EntityManager` keeps one view node (`src/entities/*_view.gd`) per entity and
-  updates it from replication signals.  Views only render and expose colliders that
-  resolve back to `(entity id, part)`.
-* `Interactor` ray-casts what the player looks at; `InteractionRules` (plus
-  `SiteRules`, `BuildRules`, `CompostRules`) decide what E, LMB and RMB do with the
-  held item, and the HUD shows those prompts.  Animations play locally at once and
-  the request is sent at the animation's moment of impact.
-* `BuildPlacer` shows a ghost frame with snapping and asks `ActionsBuild.check_place`
-  (the same function the host uses) whether it fits.
-* UI panels (`src/ui/`): inventory, Survival Guide, build menu, pause; `HUD` owns them
-  and the hint card, toasts, tracker and vitals.
+* `Interactor` ray-casts the blocks (down to the cell of a knapping grid or clay
+  layer), outlines the target, and turns mouse buttons into requests; `UseRules`
+  decides what each button will do and words the prompt under the crosshair.
+* `HUD` owns the hotbar, bars, goal tracker, toasts, hints, death screen, chat and the
+  panels: inventory (`InventoryUI`), handbook (`HandbookUI`), shape chooser
+  (`ChooserUI`), pause menu.
+* `Guide` (autoload) holds handbook pages (`data/guide.json`, plus one generated page
+  per item), one-time hints (`data/hints.json`) and the goal sequence.
 
 ## Data
 
-Everything that describes *what things are* is data:
-
-* `data/items.json` — mass, volume, material, fuel properties, food values, tool
-  kinds, processing yields, guide links.
-* `data/blueprints.json` — building pieces: parts in installation order, the work
-  each part needs, bounding box, model.
-* `data/plants.json` — crops: growth time, water and nutrient needs, yields.
-* `data/guide/*.json` — guide categories and entries, contextual hints, discoveries.
+* `data/blocks.json` — every block: shape, textures, hardness, tool, drops, light.
+* `data/items.json` — stack sizes, the block an item places, tool kinds and uses,
+  food values, fuel kinds.
+* `data/recipes.json`, `data/knapping.json`, `data/clayforming.json` — what can be
+  made and how.
+* `data/guide.json`, `data/hints.json` — the handbook, goals and hints.
 
 ## Persistence
 
 The host saves the world (`World.save_world`) to `user://saves/<name>.skyroot` as a
-versioned dictionary: entities, terrain layers, env, pools, discoveries and every
-player's record (inventory, stats, position, guide progress).  Saving writes a
-temporary file and renames it, so a crash can't leave half a save.  `_migrate`
-upgrades older versions.  A returning player is matched by name and gets exactly the
-record they left with (tests check that nothing duplicates across save/load and
-leave/rejoin).
+versioned dictionary: blocks, entities, env, discoveries and every player's record.
+Saving writes a temporary file and renames it, so a crash can't leave half a save.
+A returning player is matched by name and gets exactly the record they left with.
 
 ## Testing
 
-* `tests/test_runner.gd` — headless suites driving the real game through requests,
-  with ledger checks after every scenario (see the README).  `tests/test_main.tscn`
-  starts it through `tests/test_boot.gd`, which exits with code 3 if the runner
-  doesn't compile.
-* `src/util/mp_test.gd` with `tools/mp_test.sh` / `tools/mp_crowd.sh` /
-  `tools/mp_crash.sh` — real multi-instance network tests.
-* `tools/run_tests.sh` — all of the above in one go.
-* `src/util/debug_shot.gd` — deterministic screenshots of set-up scenes for visual
-  review.
+* `tests/test_runner.gd` — headless suites driving the real game through requests.
+* `src/util/mp_test.gd` with `tools/mp_test.sh`, `mp_crowd.sh`, `mp_crash.sh` — real
+  multi-instance network tests.
+* `src/util/debug_shot.gd` — staged scenes and screenshots for visual review.
