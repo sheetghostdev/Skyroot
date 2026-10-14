@@ -7,6 +7,7 @@ extends Node
 ##   --compost=H  (three heaps in view - fresh, H hours old, all straw - fast-forwarded)
 ##   --build=hut|frames  (a finished hut on a deck, or half-built frames, in view)
 ##   --smoke  (open every panel and guide entry, search, ghost every blueprint, both cameras; then quit)
+##   --perf=S  (after S seconds, print average frame/process/physics times, draw calls, nodes; then quit)
 
 var path := ""
 var delay := 8.0
@@ -72,6 +73,8 @@ func _setup() -> void:
 		_build_setup.call_deferred(String(Game.cli["build"]))
 	if Game.cli.has("smoke"):
 		_smoke.call_deferred()
+	if Game.cli.has("perf"):
+		_perf.call_deferred(float(Game.cli["perf"]))
 
 
 func _frames(n: int) -> void:
@@ -193,6 +196,35 @@ func _compost_setup(hours: float) -> void:
 		CompostSim.tick(0.2)
 		if i % 10 == 0:
 			await _frames(1)
+
+
+func _perf(secs: float) -> void:
+	path = ""
+	await get_tree().create_timer(3.0).timeout
+	var n := 0
+	var t_proc := 0.0
+	var t_phys := 0.0
+	var t_frame := 0.0
+	var calls := 0.0
+	var prims := 0.0
+	var worst := 0.0
+	var t0 := Time.get_ticks_usec()
+	var last := t0
+	while (Time.get_ticks_usec() - t0) / 1e6 < secs:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		var ft := (now - last) / 1000.0
+		last = now
+		n += 1
+		t_frame += ft
+		worst = maxf(worst, ft)
+		t_proc += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		t_phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+		calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+	print("PERF frames %d  frame %.2f ms (worst %.1f)  process %.2f ms  physics %.2f ms  draw calls %.0f  primitives %.0f  nodes %d  entities %d" % [
+		n, t_frame / n, worst, t_proc / n, t_phys / n, calls / n, prims / n, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), World.entities.size()])
+	get_tree().quit()
 
 
 func _smoke() -> void:
