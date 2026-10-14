@@ -129,7 +129,7 @@
         {"h": "Hosting", "steps": [
           "In the main menu choose [b]Play[/b] and leave [b]Open to friends[/b] ticked - it is by default. The port is 7777 unless you change it.",
           "Continue one of your islands, or wake on a new one.",
-          "In game, press [key]Esc[/key]: the island menu shows the addresses your friends can use. On the same network they use your local IP address; over the internet you have to forward the port on your router."
+          "Already playing alone? Press [key]Esc[/key] and choose [b]Open to friends now[/b]: the island you are on opens without restarting.", "In game, press [key]Esc[/key]: the island menu shows the addresses your friends can use. On the same network they use your local IP address; over the internet you have to forward the port on your router."
         ]},
         {"h": "Joining", "steps": [
           "Choose [b]Join a friend[/b] and enter your name, the host's IP address and the port.",
