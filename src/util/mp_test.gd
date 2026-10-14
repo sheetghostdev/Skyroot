@@ -89,6 +89,10 @@ func _say(text: String) -> void:
 
 
 func _run() -> void:
+	if role == "fifth":
+		await _fifth()
+		_finish()
+		return
 	await _wait(func(): return World.running and Game.game_world != null and Game.game_world.local_player() != null, 30.0)
 	await _frames(10)
 	match role:
@@ -98,6 +102,10 @@ func _run() -> void:
 			await _client()
 		"rejoin":
 			await _rejoin()
+		"crowd_host":
+			await _crowd_host()
+		"crowd":
+			await _crowd()
 	_finish()
 
 
@@ -298,3 +306,84 @@ func _rejoin() -> void:
 	_say("BACK stone=%d charcoal=%d" % [inv.count("stone"), inv.count("charcoal")])
 	var done := await _wait_msg("DONE", 60.0)
 	check(done != "", "the host finished")
+
+
+# ---------------------------------------------------------------------------
+# Four on one island (tools/mp_crowd.sh)
+# ---------------------------------------------------------------------------
+
+func _crowd_host() -> void:
+	var full := await _wait(func(): return Net.players.size() >= 4, 90.0)
+	check(full, "four players on the island (%d)" % Net.players.size())
+	var outcrop := {}
+	for e in World.entities.values():
+		if e["t"] == "outcrop":
+			outcrop = e
+	var loose0 := 0
+	for v in outcrop["d"].get("loose", []):
+		loose0 += int(v)
+	await _frames(20)
+	_say("GRAB")
+	# everyone grabs at once; then count
+	var counts: Dictionary = {}
+	var t := 0.0
+	while counts.size() < 3 and t < 40.0:
+		for m in _msgs.duplicate():
+			if String(m[1]).begins_with("HAVE "):
+				counts[String(m[0])] = int(String(m[1]).substr(5))
+				_msgs.erase(m)
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	check(counts.size() == 3, "all three visitors reported back (%s)" % str(counts))
+	await _frames(10)
+	var loose1 := 0
+	for v in World.get_entity(int(outcrop["id"]))["d"].get("loose", []):
+		loose1 += int(v)
+	var held := 0
+	for pid in World.inventories:
+		held += World.inventories[pid].count("stone")
+	var said := 0
+	for k in counts:
+		said += int(counts[k])
+	check(loose0 - loose1 == held, "every stone that left the outcrop is in exactly one pack (%d taken, %d carried)" % [loose0 - loose1, held])
+	check(said == held, "and each visitor's own view agrees with the host (%d)" % said)
+	# meanwhile a fifth player knocks (tools/mp_crowd.sh); give them time to be turned away
+	await get_tree().create_timer(22.0).timeout
+	check(Net.players.size() == 4, "a fifth player was turned away; still four here")
+	_say("DONE")
+	await _frames(30)
+
+
+func _crowd() -> void:
+	await _wait_msg("GRAB", 60.0)
+	var lp: LocalPlayer = Game.game_world.local_player()
+	var outcrop := {}
+	for e in World.entities.values():
+		if e["t"] == "outcrop":
+			outcrop = e
+	var v: Node = Game.game_world.entities.view(int(outcrop["id"]))
+	var loose: Array = outcrop["d"].get("loose", [])
+	# everybody goes for the same first stones at the same moment
+	for idx in mini(3, loose.size()):
+		var at: Vector3 = v.interaction_point("loose:%d" % idx)
+		var away := Vector3(at.x - outcrop["xf"].origin.x, 0, at.z - outcrop["xf"].origin.z).normalized()
+		var stand := at + away * 1.0
+		stand.y = World.terrain.height(stand.x, stand.z) + 0.05
+		lp.global_position = stand
+		lp.velocity = Vector3.ZERO
+		await _frames(3)
+		World.request("outcrop_take", {"eid": int(outcrop["id"]), "idx": idx, "eye": lp.eye_position()})
+	await _frames(60)
+	var n := World.my_inventory.count("stone")
+	_log("I got %d stones" % n)
+	_say("HAVE %d" % n)
+	var done := await _wait_msg("DONE", 90.0)
+	check(done != "", "the host wrapped up")
+
+
+func _fifth() -> void:
+	## A fifth player knocks: the island is full.
+	var reason: Array = []
+	Net.join_failed.connect(func(r): reason.append(r))
+	await _wait(func(): return not reason.is_empty(), 30.0)
+	check(not reason.is_empty() and String(reason[0]).contains("full"), "the fifth player is told the island is full (%s)" % (reason[0] if not reason.is_empty() else "no answer"))

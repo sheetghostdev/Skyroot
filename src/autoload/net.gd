@@ -73,7 +73,8 @@ func start_offline() -> void:
 func host(port: int = DEFAULT_PORT) -> Error:
 	close()
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, MAX_PLAYERS - 1)
+	# one spare connection slot, so a fifth player can be told why they can't join
+	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
 		return err
 	multiplayer.multiplayer_peer = peer
