@@ -289,7 +289,7 @@ func dig(center: Vector2, radius: float, volume_l: float, max_layer: String = "c
 	## then clay (if max_layer == "clay"); bedrock never.  Returns the litres of
 	## each material actually removed and the touched cell rect.
 	var cells := cells_in_radius(center, radius)
-	var out := {"soil": 0.0, "clay": 0.0, "rect": Rect2i()}
+	var out := {"soil": 0.0, "clay": 0.0, "rect": Rect2i(), "torn": {}}
 	if cells.is_empty():
 		return out
 	var weights := PackedFloat32Array()
@@ -315,7 +315,8 @@ func dig(center: Vector2, radius: float, volume_l: float, max_layer: String = "c
 			clay[k] -= from_clay
 			out["clay"] += from_clay * CELL_AREA * 1000.0
 		if from_soil > 0.0:
-			grass[k] = maxf(0.0, grass[k] - 0.8 * weights[n] - 0.2)
+			# the grass on it is torn up too (the caller settles where it goes)
+			out["torn"][k] = 0.8 * weights[n] + 0.2
 		rect = rect.expand(cell_xy(k))
 	out["rect"] = rect.grow(1)
 	return out

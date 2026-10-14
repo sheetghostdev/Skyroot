@@ -143,8 +143,22 @@ static func _runtime(e: Dictionary) -> Dictionary:
 	var id := int(e["id"])
 	if not _rt.has(id):
 		_rt[id] = {"T": float(e["d"].get("T", 15.0)), "members": [], "env": {}, "encl_t": 0.0, "vis_t": 0.0,
-			"last": {}, "cold_s": 0.0, "dirty": true, "sheltered": false}
+			"last": {}, "cold_s": float(e["d"].get("cold_s", 0.0)), "dirty": true, "sheltered": false,
+			"scorched": bool(e["d"].get("scorched", false))}
 	return _rt[id]
+
+
+static func store_runtime() -> void:
+	## Before a save: what a fire is doing right now goes into its data, so a
+	## loaded fire carries on exactly where it was.
+	for id in _rt:
+		var e := World.get_entity(int(id))
+		if e.is_empty():
+			continue
+		var rt: Dictionary = _rt[id]
+		e["d"]["T"] = float(rt["T"])
+		e["d"]["cold_s"] = float(rt.get("cold_s", 0.0))
+		e["d"]["scorched"] = bool(rt.get("scorched", false))
 
 
 static func mark_dirty(site_id: int) -> void:
@@ -342,6 +356,18 @@ static func _fuel_props(iid: String, x: Dictionary) -> Dictionary:
 	return ItemDB.fuel(iid)
 
 
+const FUEL_KEYS := ["fm", "ch", "nu", "m0"]   # the fire's bookkeeping on a piece of fuel
+
+
+static func plain_fuel(iid: String, n: int, x: Dictionary) -> Dictionary:
+	## A piece of fuel as it was before the fire's bookkeeping: its own data (split
+	## wood keeps its shape and weight) and what the books count for it.
+	var px := x.duplicate(true)
+	for k in FUEL_KEYS:
+		px.erase(k)
+	return {"x": px, "c": Ledger.item_contrib(iid, n, px)}
+
+
 static func _init_fuel(md: Dictionary) -> void:
 	var x: Dictionary = md["x"]
 	if x.has("fm"):
@@ -352,14 +378,13 @@ static func _init_fuel(md: Dictionary) -> void:
 		x["fm"] = 0.0
 		x["ch"] = n * ItemDB.unit_mass("charcoal")
 		x["nu"] = n * ItemDB.nutrients("charcoal")
-	elif iid == "torch":
-		x["fm"] = float(x.get("mass", ItemDB.unit_mass("stick")))
-		x["ch"] = 0.0
-		x["nu"] = float(x.get("nu", ItemDB.nutrients("stick")))
 	else:
-		x["fm"] = n * ItemDB.unit_mass(iid)
+		# it starts with exactly what the books count for it (a burning stick or
+		# a piece of split wood is its own weight, not a standard one)
+		var c := Ledger.item_contrib(iid, n, x)
+		x["fm"] = float(c["carbon"])
 		x["ch"] = 0.0
-		x["nu"] = n * ItemDB.nutrients(iid)
+		x["nu"] = float(c["nutr"])
 	if not x.has("moist"):
 		x["moist"] = ItemDB.default_moist(iid)
 	x["m0"] = float(x["fm"]) + float(x["ch"])
@@ -838,12 +863,13 @@ static func _finish(e: Dictionary, rt: Dictionary) -> void:
 			char_pool += fm + ch
 			nu_pool += nu
 			World.despawn(mid)
-		elif iid != "charred_wood" and iid != "torch" and fm >= 0.97 * m0 and ch <= 0.01 * m0 and nu >= 0.999 * n * ItemDB.nutrients(iid):
+		elif iid != "charred_wood" and iid != "torch" and fm >= 0.97 * m0 and ch <= 0.01 * m0 \
+				and nu >= 0.999 * float(plain_fuel(iid, n, x)["c"]["nutr"]):
 			# barely touched: it's plain fuel again (the tiny difference is the air's)
-			atmo_c -= n * ItemDB.unit_mass(iid) - fm - ch
-			nu_pool += nu - n * ItemDB.nutrients(iid)
-			var x2 := {"moist": float(x.get("moist", ItemDB.default_moist(iid)))}
-			World.update(mid, {"x": x2, "heat": 15, "hot": false, "char": 0.0})
+			var plain := plain_fuel(iid, n, x)
+			atmo_c -= float(plain["c"]["carbon"]) - fm - ch
+			nu_pool += nu - float(plain["c"]["nutr"])
+			World.update(mid, {"x": plain["x"], "heat": 15, "hot": false, "char": 0.0})
 		else:
 			var from := iid if iid != "charred_wood" else String(x.get("from", "firewood"))
 			if from == "torch":

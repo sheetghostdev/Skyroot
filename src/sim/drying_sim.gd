@@ -15,6 +15,9 @@ static func _sheltered(pos: Vector3) -> bool:
 	return Shelter.roof_above(gw.get_world_3d(), pos + Vector3(0, 0.25, 0), 6.0)
 
 
+const LITTER_H := {"leaves": 96.0, "twig": 140.0, "seed_tree": 120.0}   # hours to rot away on damp ground
+
+
 static func tick(hours: float, ctx: Dictionary) -> void:
 	var temp: float = ctx.get("temp", 16.0)
 	var sun: float = ctx.get("sun", 0.5)
@@ -31,6 +34,8 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 		var id := String(d.get("i", ""))
 		var x: Dictionary = d.get("x", {})
 		var pos: Vector3 = e["xf"].origin
+		if LITTER_H.has(id) and _rot(e, id, hours, pos):
+			continue
 		match id:
 			"pot":
 				_pot(e, x, hours, base, sun, rain, pos)
@@ -40,6 +45,26 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 				var mat := ItemDB.material(id)
 				if mat == "wood" or id == "grass" or id == "leaves":
 					_organic(e, x, id, hours, base, sun, rain, pos)
+
+
+static func _rot(e: Dictionary, id: String, hours: float, pos: Vector3) -> bool:
+	## Leaves, twigs and seeds lying on the ground rot into it (faster when it's
+	## damp): their carbon becomes humus, their minerals go into the soil.
+	## Returns true if it's gone.
+	var t := World.terrain
+	if not t.is_inside(pos.x, pos.z) or pos.y > t.height(pos.x, pos.z) + 0.12:
+		return false  # on a deck, a shelf or a rock: it keeps
+	var k := TerrainData.cell_index(TerrainData.cell_at(Vector2(pos.x, pos.z)).x, TerrainData.cell_at(Vector2(pos.x, pos.z)).y)
+	var d: Dictionary = e["d"]
+	var r := float(d.get("rot", 0.0)) + hours * (0.4 + 1.2 * clampf(t.moist[k], 0.0, 1.0))
+	if r < float(LITTER_H[id]):
+		d["rot"] = r
+		return false
+	var c := Ledger.item_contrib(id, int(d.get("n", 1)), d.get("x", {}))
+	World.despawn(int(e["id"]))
+	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + float(c["carbon"])
+	TerrainActions.add_nutrients(pos, float(c["nutr"]), 0.3)
+	return true
 
 
 static func _pot(e: Dictionary, x: Dictionary, hours: float, base: float, sun: float, rain: float, pos: Vector3) -> void:
@@ -143,11 +168,7 @@ static func _organic(e: Dictionary, x: Dictionary, id: String, hours: float, bas
 		World.update(e["id"], {"i": "straw", "x": {"moist": 0.1}})
 		World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + n * maxf(0.0, ItemDB.unit_mass("grass") - ItemDB.unit_mass("straw"))
 		# what crumbles away while it cures returns to the soil underneath, minerals and all
-		if World.terrain.is_inside(pos.x, pos.z):
-			var k := TerrainData.cell_index(TerrainData.cell_at(Vector2(pos.x, pos.z)).x, TerrainData.cell_at(Vector2(pos.x, pos.z)).y)
-			World.terrain.nutr[k] += n * maxf(0.0, ItemDB.nutrients("grass") - ItemDB.nutrients("straw"))
-		else:
-			World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + n * maxf(0.0, ItemDB.nutrients("grass") - ItemDB.nutrients("straw"))
+		TerrainActions.add_nutrients(pos, n * maxf(0.0, ItemDB.nutrients("grass") - ItemDB.nutrients("straw")))
 		return
 	if absf(nm - m) > 0.02:
 		var x2 := x.duplicate()

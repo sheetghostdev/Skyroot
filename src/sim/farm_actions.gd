@@ -108,15 +108,12 @@ static func harvest(a: Actions, pid: int, args: Dictionary) -> void:
 		if ItemDB.default_moist(id) > 0.0:
 			dd = {"moist": ItemDB.default_moist(id)}
 		a.give(pid, id, n, dd, pos)
-	var cells := World.terrain.cells_in_radius(Vector2(pos.x, pos.z), 0.35)
 	if perennial:
 		World.update(eid, {"g": 0.3, "bio": bio - used_m, "nutr": nutr - used_n, "vig": 1.0})
 	else:
 		# roots and stubble rot back into the soil
 		World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, bio - used_m)
-		var left := maxf(0.0, nutr - used_n)
-		for k in cells:
-			World.terrain.nutr[k] += left / maxf(1.0, cells.size())
+		TerrainActions.add_nutrients(pos, maxf(0.0, nutr - used_n), 0.35)
 		World.despawn(eid)
 	World.fx("harvest", pos + Vector3(0, 0.2, 0))
 	World.discover("harvest_" + sp, pid)

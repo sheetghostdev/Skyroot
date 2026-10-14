@@ -22,20 +22,30 @@ sessions, and ten in-game days of island life — to within rounding.
 **Water.**  The pond and the soil evaporate into the air (faster when warm, sunny and
 windy, slower when the air is already humid).  When the air holds enough, it rains:
 on the pond, into open vessels, onto compost heaps and items, and into the soil;
-what the soil can't take runs off into the pond.  Plants draw soil water and transpire
-it.  People drink from the pond or vessels and lose water to the air as they breathe
-and sweat.  Water poured over the edge is gone.
+what the soil can't take runs off into the pond, and soil wetter than it can hold
+against gravity seeps through the ground back to the pond over the following day or
+two (so the pond doesn't slowly drain into the island).  Plants draw soil water and
+transpire it.  People drink from the pond or vessels and lose water to the air as they
+breathe and sweat.  Water poured over the edge is gone.
 
 **Carbon.**  Plants and the tree grow by fixing carbon from the air; growth is paid
 for, kilogram for kilogram.  Burning returns carbon to the air (charcoal and ash keep
 some of it); eating returns food carbon to the air except what leaves the body as
-food scraps; rotting (in compost heaps, cut stubble, curing grass) returns part to the
-air and part to the soil.  The tree regrows cut branches from its stored reserve.
+food scraps; rotting (in compost heaps, cut stubble, curing grass, leaves and twigs
+left lying on the ground) returns part to the air and part to the soil as humus, and
+the soil slowly breathes its humus back out (about 1% a day), so carbon doesn't pile
+up underground for good.  The mossy log takes humus back to keep growing mushrooms.
+The tree regrows cut branches from its stored reserve; one cut in the last moment of
+growing back takes the bit it hadn't grown yet from that reserve.
 
 **Nutrients.**  Plants take nutrients from the soil under them; harvests can contain
-no more than the plant absorbed.  Eating puts the nutrients into food scraps; scraps,
+no more than the plant absorbed.  The tree takes up minerals as it grows, as richly as
+its richest harvest (a leafy branch); what it holds beyond what its wood needs — after
+leaner wood was carried off, or reserve it breathed away — goes back to the soil around
+its roots over a couple of days.  Eating puts the nutrients into food scraps; scraps,
 leaves and other greens go into compost, compost and ash are worked back into the
-soil.  Burning leaves the minerals in the ash.
+soil.  Burning leaves the minerals in the ash.  Minerals set free somewhere with no
+island beneath (a deck out over the abyss) are lost over the edge, on the books.
 
 **Clay and soil.**  Digging moves soil or clay from the terrain into items; filling,
 covering mounds and daubing walls moves it back out.  Fired pots are clay; a cracked

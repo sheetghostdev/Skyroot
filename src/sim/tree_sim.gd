@@ -21,7 +21,7 @@ const STORE_MAX := 16.0
 const ROOT_RADIUS := 2.8
 const GROW_RATE := 0.5          # kg per game hour per unit leaf area at full light
 const WATER_PER_KG := 1.5       # litres transpired per kg grown
-const NUTR_PER_KG := 0.0018
+const NUTR_PER_KG := 0.0086     # minerals taken up per kg grown (as rich as its richest harvest, a leafy branch)
 const LOG_KG := 70.0
 
 
@@ -118,6 +118,7 @@ static func on_felled(d: Dictionary) -> Array:
 	for i in SMALL:
 		if float(d["sb"][i]) >= 0.98:
 			drops.append(["branch", 1])
+			rest -= (1.0 - float(d["sb"][i])) * SMALL_KG   # (the last bit of regrowth comes from the reserve)
 		else:
 			rest += float(d["sb"][i]) * SMALL_KG
 		d["sb"][i] = 0.0
@@ -125,6 +126,7 @@ static func on_felled(d: Dictionary) -> Array:
 	for i in LARGE:
 		if float(d["lb"][i]) >= 0.98:
 			drops.append(["limb", 1])
+			rest -= (1.0 - float(d["lb"][i])) * LARGE_KG
 		else:
 			rest += float(d["lb"][i]) * LARGE_KG
 		d["lb"][i] = 0.0
@@ -211,6 +213,8 @@ static func tick(d: Dictionary, hours: float, light: float, pos: Vector3, terrai
 			store -= dt
 		if store > STORE_MAX:
 			pools["atmo_carbon_kg"] = float(pools["atmo_carbon_kg"]) + (store - STORE_MAX)  # respired
+			# ...and the minerals that came with it go back to the root zone
+			return_nutrients(pools, terrain, cells, (store - STORE_MAX) * NUTR_PER_KG)
 			store = STORE_MAX
 		d["store"] = store
 		d["shed"] = float(d.get("shed", 0.0)) - hours
@@ -226,6 +230,33 @@ static func tick(d: Dictionary, hours: float, light: float, pos: Vector3, terrai
 			d["seedt"] = randf_range(26.0, 40.0)
 			_shed(d, pools, out, "seed_tree")
 	return out
+
+
+static func return_nutrients(pools: Dictionary, terrain: TerrainData, cells: PackedInt32Array, amount: float) -> void:
+	## Minerals the trees hold but no longer need go back into the soil around them.
+	var give := minf(amount, maxf(0.0, float(pools.get("tree_nutr", 0.0))))
+	if give <= 0.0 or cells.is_empty():
+		return
+	pools["tree_nutr"] = float(pools["tree_nutr"]) - give
+	for k in cells:
+		terrain.nutr[k] += give / cells.size()
+
+
+static func settle_surplus(trees: Array, hours: float, terrain: TerrainData, pools: Dictionary) -> void:
+	## The trees hold minerals in proportion to their wood; what's beyond that
+	## (left when wood leaner than the tree was carried off) returns to the soil
+	## over a couple of days, as litter and dying roots.
+	var total := 0.0
+	for e in trees:
+		total += biomass(e["d"])
+	var surplus := float(pools.get("tree_nutr", 0.0)) - total * NUTR_PER_KG
+	if surplus <= 0.0 or total <= 0.0:
+		return
+	var out_n := surplus * minf(1.0, hours / 48.0)
+	for e in trees:
+		var o: Vector3 = e["xf"].origin
+		var cells := terrain.cells_in_radius(Vector2(o.x, o.z), ROOT_RADIUS)
+		return_nutrients(pools, terrain, cells, out_n * biomass(e["d"]) / total)
 
 
 static func _shed(d: Dictionary, pools: Dictionary, out: Dictionary, id: String) -> void:

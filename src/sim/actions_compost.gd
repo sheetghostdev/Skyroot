@@ -134,12 +134,7 @@ static func _spread(eid: int) -> void:
 	var d: Dictionary = e["d"]
 	var pos: Vector3 = e["xf"].origin
 	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + CompostSim.mass(d)
-	var cells := World.terrain.cells_in_radius(Vector2(pos.x, pos.z), 0.6)
-	if cells.is_empty():
-		cells = PackedInt32Array([TerrainData.cell_index(TerrainData.cell_at(Vector2(pos.x, pos.z)).x, TerrainData.cell_at(Vector2(pos.x, pos.z)).y)])
-	var nu := float(d.get("nu", 0.0))
-	for k in cells:
-		World.terrain.nutr[k] += nu / cells.size()
+	TerrainActions.add_nutrients(pos, float(d.get("nu", 0.0)), 0.6)
 	var w := float(d.get("w", 0.0))
 	World.despawn(eid)
 	if w > 0.0:

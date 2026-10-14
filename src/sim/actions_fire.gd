@@ -103,14 +103,17 @@ static func prepare_pickup(eid: int) -> void:
 	var m0 := float(x.get("m0", fm + ch))
 	var n := int(d.get("n", 1))
 	var site := World.get_entity(sid)
-	if iid != "charred_wood" and iid != "torch" and iid != "charcoal" and fm >= 0.97 * m0 and ch <= 0.01 * m0 and nu >= 0.999 * n * ItemDB.nutrients(iid):
-		World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) - (n * ItemDB.unit_mass(iid) - fm - ch)
-		var extra := nu - n * ItemDB.nutrients(iid)
+	var plain := FireSim.plain_fuel(iid, n, x)
+	if iid != "charred_wood" and iid != "torch" and iid != "charcoal" and fm >= 0.97 * m0 and ch <= 0.01 * m0 \
+			and nu >= 0.999 * float(plain["c"]["nutr"]):
+		# barely touched: it comes out as it went in (its own weight and shape)
+		World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) - (float(plain["c"]["carbon"]) - fm - ch)
+		var extra := nu - float(plain["c"]["nutr"])
 		if not site.is_empty():
 			World.update(sid, {"ash_n": float(site["d"].get("ash_n", 0.0)) + extra})
 		else:
 			World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + extra
-		World.update(eid, {"x": {"moist": float(x.get("moist", ItemDB.default_moist(iid)))}, "site": -1, "char": 0.0})
+		World.update(eid, {"x": plain["x"], "site": -1, "char": 0.0})
 	elif iid == "charcoal" and fm <= 0.0:
 		var unit := ItemDB.unit_mass("charcoal")
 		var k := int(floor(ch / unit + 1e-6))
@@ -291,8 +294,7 @@ static func _fire_cover(pid: int, args: Dictionary, a: Actions) -> void:
 	var used := TerrainActions.EARTH_L - left
 	if left > 0.0:
 		# the rest falls beside the mound
-		var rect := World.terrain.fill(Vector2(pos.x, pos.z), 0.3, left)
-		World.terrain_edited(rect)
+		TerrainActions.put_earth(pos, left)
 	var total := 0.0
 	for v in shell:
 		total += float(v)
@@ -369,8 +371,7 @@ static func _fire_uncover(pid: int, args: Dictionary, a: Actions) -> void:
 		got -= TerrainActions.EARTH_L
 	if got > 1e-9:
 		# too little to carry (or the last crumbs of the mound): it goes back on the ground
-		var rect := World.terrain.fill(Vector2(pos.x, pos.z), 0.3, got)
-		World.terrain_edited(rect)
+		TerrainActions.put_earth(pos, got)
 	World.update(int(site["id"]), {"shell": shell, "shell_l": total, "vents": vents})
 	World.fx("dust", pos)
 	a.exert(pid, 0.02)

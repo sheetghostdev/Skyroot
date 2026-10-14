@@ -23,13 +23,14 @@ func _ready() -> void:
 	island.name = "Island"
 	add_child(island)
 	island.build(World.terrain)
+	# (effects first: a view being built for a saved or replicated entity may play one)
+	fx = FX.new()
+	fx.name = "FX"
+	add_child(fx)
 	entities = EntityManager.new()
 	entities.name = "Entities"
 	add_child(entities)
 	Registry.register_views(entities)
-	fx = FX.new()
-	fx.name = "FX"
-	add_child(fx)
 	if Net.is_host():
 		actions = Actions.new()
 		actions.name = "Actions"

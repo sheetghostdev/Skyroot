@@ -10,8 +10,30 @@ const FIREWOOD_M3 := 0.003
 const BOARD_M3 := 0.016
 
 
-static func _tree_nutr_out(id: String, n: int) -> void:
-	World.pools["tree_nutr"] = float(World.pools.get("tree_nutr", 0.0)) - ItemDB.nutrients(id) * n
+static func _tree_nutr_out(id: String, n: int, tree: Dictionary = {}) -> void:
+	## What's cut from the tree takes its minerals from the tree; if the tree is
+	## short of them (an old island), its roots find the rest in the soil.
+	var need := ItemDB.nutrients(id) * n
+	var have := maxf(0.0, float(World.pools.get("tree_nutr", 0.0)))
+	var from_tree := minf(need, have)
+	var rest := need - from_tree
+	if rest > 1e-12 and not tree.is_empty():
+		var o: Vector3 = tree["xf"].origin
+		var got := TreeSim.draw_from_cells(World.terrain, World.terrain.cells_in_radius(Vector2(o.x, o.z), TreeSim.ROOT_RADIUS), 0.0, rest)
+		rest -= got.y
+	World.pools["tree_nutr"] = float(World.pools.get("tree_nutr", 0.0)) - from_tree - maxf(0.0, rest)
+
+
+static func _regrowth_owed(d: Dictionary, g: float, kg: float) -> bool:
+	## A part cut in the last moment of growing back comes off whole: the tree's
+	## reserve pays the bit it hadn't grown yet (or it isn't ready).
+	var owed := (1.0 - g) * kg
+	if owed <= 1e-9:
+		return true
+	if float(d.get("store", 0.0)) < owed:
+		return false
+	d["store"] = float(d["store"]) - owed
+	return true
 
 
 static func cut_small(a: Actions, pid: int, args: Dictionary) -> void:
@@ -37,12 +59,16 @@ static func cut_small(a: Actions, pid: int, args: Dictionary) -> void:
 	Tools.wear(pid, args, 0.006)
 	a.exert(pid, 0.02)
 	if float(shp[i]) <= 0.0:
+		if not _regrowth_owed(d, float(d["sb"][i]), TreeSim.SMALL_KG):
+			World.update(eid, {"shp": shp})
+			World.notify(pid, "That branch is still growing back.")
+			return
 		shp[i] = 1.0
 		var sb: Array = d["sb"].duplicate()
 		sb[i] = 0.0
-		World.update(eid, {"sb": sb, "shp": shp})
+		World.update(eid, {"sb": sb, "shp": shp, "store": d["store"]})
 		a.spawn_item("branch", 1, {"moist": 0.45}, at)
-		_tree_nutr_out("branch", 1)
+		_tree_nutr_out("branch", 1, ent)
 		World.fx("leaves", at, {"sound": "branch_snap"})
 		World.hint_to(pid, "branch_cut")
 	else:
@@ -71,12 +97,16 @@ static func chop_limb(a: Actions, pid: int, args: Dictionary) -> void:
 	Tools.wear(pid, args, 0.008)
 	a.exert(pid, 0.035)
 	if float(lhp[j]) <= 0.0:
+		if not _regrowth_owed(d, float(d["lb"][j]), TreeSim.LARGE_KG):
+			World.update(eid, {"lhp": lhp})
+			World.notify(pid, "That limb is still growing back.")
+			return
 		lhp[j] = 1.0
 		var lb: Array = d["lb"].duplicate()
 		lb[j] = 0.0
-		World.update(eid, {"lb": lb, "lhp": lhp})
+		World.update(eid, {"lb": lb, "lhp": lhp, "store": d["store"]})
 		a.spawn_item("limb", 1, {"moist": 0.45}, at)
-		_tree_nutr_out("limb", 1)
+		_tree_nutr_out("limb", 1, ent)
 		World.fx("leaves", at, {"sound": "branch_snap", "amount": 24})
 	else:
 		World.update(eid, {"lhp": lhp})
@@ -118,7 +148,7 @@ static func fell(a: Actions, pid: int, args: Dictionary) -> void:
 			var pos: Vector3 = ent["xf"].origin + away * dist + side + Vector3(0, 1.5, 0)
 			var yaw := atan2(away.x, away.z) + PI * 0.5
 			a.spawn_item(id, 1, {"moist": 0.45} if ItemDB.material(id) == "wood" else {}, pos, yaw)
-			_tree_nutr_out(id, 1)
+			_tree_nutr_out(id, 1, ent)
 			k += 1
 	World.discover("tree_felled", pid)
 	World.notify(pid, "The tree comes down. Its roots are still alive - in a few days a new tree will grow.", "info")
@@ -132,6 +162,10 @@ static func process_item(a: Actions, pid: int, args: Dictionary) -> void:
 	var id := String(ent["d"]["i"])
 	var proc: Dictionary = ItemDB.def(id).get("process", {})
 	if proc.is_empty() or not a.in_reach(pid, args, ent["xf"].origin):
+		return
+	if ent["d"].get("x", {}).has("fm"):
+		# (part of it may have burnt already: what's left is the fire's to settle)
+		World.notify(pid, "Take it out of the fire first.")
 		return
 	var need := String(proc["tool"])
 	var tool := ItemDB.tool_kind(a.held_id(pid, args))
@@ -168,9 +202,7 @@ static func _emit_yields(a: Actions, id: String, n: int, yields: Dictionary, pos
 		k += 1
 	# bark, crumbs and chaff stay behind and rot into the soil
 	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, m_in - m_out)
-	var cells := World.terrain.cells_in_radius(Vector2(pos.x, pos.z), 0.4)
-	for c in cells:
-		World.terrain.nutr[c] += maxf(0.0, nu_in - nu_out) / maxf(1.0, cells.size())
+	TerrainActions.add_nutrients(pos, maxf(0.0, nu_in - nu_out))
 
 
 static func process_held(a: Actions, pid: int, args: Dictionary) -> void:
@@ -189,8 +221,7 @@ static func process_held(a: Actions, pid: int, args: Dictionary) -> void:
 		m_out += ItemDB.unit_mass(yid) * int(proc["yields"][yid])
 		nu_out += ItemDB.nutrients(yid) * int(proc["yields"][yid])
 	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, ItemDB.unit_mass(id) - m_out)
-	var k := a.cell_index_at(p)
-	World.terrain.nutr[k] += maxf(0.0, ItemDB.nutrients(id) - nu_out)
+	TerrainActions.add_nutrients(p, maxf(0.0, ItemDB.nutrients(id) - nu_out))
 	World.fx("grass", p + Vector3(0, 1.0, 0), {"sound": "rustle"})
 
 
@@ -221,6 +252,9 @@ static func split(a: Actions, pid: int, args: Dictionary) -> void:
 	if not a.in_reach(pid, args, pos, 0.4):
 		return
 	var x: Dictionary = ent["d"].get("x", {})
+	if x.has("fm"):
+		World.notify(pid, "Take it out of the fire first.")
+		return
 	var poly := piece_poly(x, id)
 	var length := float(x.get("len", 2.0))
 	var r0 := float(x.get("r0", 0.16))
@@ -263,10 +297,7 @@ static func split(a: Actions, pid: int, args: Dictionary) -> void:
 	# boards, firewood and split wood all carry the log's minerals per kilogram;
 	# the splinters' share goes into the ground with them
 	var nu_rest := ItemDB.nutrients("log") / ItemDB.unit_mass("log") * maxf(0.0, mass_in - mass_out)
-	if World.terrain.is_inside(pos.x, pos.z):
-		World.terrain.nutr[a.cell_index_at(pos)] += nu_rest
-	else:
-		World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + nu_rest
+	TerrainActions.add_nutrients(pos, nu_rest)
 	World.fx("wood_split", pos)
 	World.discover("first_split", pid)
 
@@ -280,10 +311,10 @@ static func _classify_piece(a: Actions, poly: PackedVector2Array, area: float, l
 	if thin >= 0.022 and thin <= 0.075 and wide >= 0.15 and vol >= BOARD_M3 * 0.85:
 		var boards := maxi(1, int(floor(vol / BOARD_M3 + 0.15)))
 		var bm := ItemDB.unit_mass("board") * boards
-		if bm <= mass + 0.01:
+		if bm <= mass:
 			a.spawn_item("board", boards, {"moist": moist}, spot + Vector3(0, 0.3, 0), yaw)
 			var rest := mass - bm
-			var fw := int(floor(rest / ItemDB.unit_mass("firewood")))
+			var fw := maxi(0, int(floor(rest / ItemDB.unit_mass("firewood"))))
 			if fw > 0:
 				a.spawn_item("firewood", fw, {"moist": moist}, spot + Vector3(0.3, 0.3, 0.2))
 			return bm + fw * ItemDB.unit_mass("firewood")

@@ -48,8 +48,7 @@ static func _break(pid: int, slot: int, s: Dictionary) -> void:
 			a.give(pid, "stone_head", 1, head)
 			a.give(pid, "fiber", 1)
 			World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, ItemDB.unit_mass("cordage") - ItemDB.unit_mass("fiber"))
-			var k := a.cell_index_at(a.player_pos(pid))
-			World.terrain.nutr[k] += maxf(0.0, ItemDB.nutrients("cordage") - ItemDB.nutrients("fiber"))
+			TerrainActions.add_nutrients(a.player_pos(pid), maxf(0.0, ItemDB.nutrients("cordage") - ItemDB.nutrients("fiber")))
 		"blade":
 			World.pools["debris_stone_kg"] = float(World.pools.get("debris_stone_kg", 0.0)) + float(s["d"].get("stone_kg", ItemDB.unit_mass("blade")))
 	World.notify(pid, "Your %s broke." % name.to_lower(), "warn")

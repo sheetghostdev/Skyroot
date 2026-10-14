@@ -97,14 +97,17 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			else:
 				out["interact"] = opt("Pick up %s%s" % [nm, " ×%d" % n if n > 1 else ""], "pickup", {"eid": eid}, "pick")
 			var proc: Dictionary = ItemDB.def(iid).get("process", {})
-			if not proc.is_empty():
+			var in_fire: bool = d.get("x", {}).has("fm")
+			if in_fire and (not proc.is_empty() or ItemDB.has_tag(iid, "splittable")):
+				out["primary"] = disabled("Work the %s" % nm.to_lower(), "Take it out of the fire first.")
+			elif not proc.is_empty():
 				var need := String(proc.get("tool", ""))
 				if need == "hand" or tool == need or (need == "cut" and tool == "chop"):
 					var verb := String(proc.get("label", "Cut up %s" % nm.to_lower() if need != "chop" else "Chop up %s" % nm.to_lower()))
 					out["primary"] = opt(verb, "process", {"eid": eid}, "cut" if tool == "cut" else "swing", true)
 				else:
 					out["primary"] = disabled("Process %s" % nm.to_lower(), "You need a %s." % {"cut": "sharp blade", "chop": "stone axe"}.get(need, "tool"))
-			if ItemDB.has_tag(iid, "splittable"):
+			if ItemDB.has_tag(iid, "splittable") and not in_fire:
 				if tool == "chop":
 					out["primary"] = opt("Split %s (aim at the end)" % nm.to_lower(), "split", {"eid": eid, "pos": t["pos"]}, "swing")
 				else:

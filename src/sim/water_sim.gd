@@ -8,6 +8,8 @@ extends RefCounted
 const ATMO_CAPACITY := 1600.0     # litres of vapour the local air can hold before it must rain
 const POND_EVAP_MM_H := 0.22      # mm per hour at 20 C, sun, light wind
 const SOIL_EVAP_MM_H := 0.09
+const DRAIN_ABOVE := 0.6          # soil wetter than this (of field capacity) drains toward the pond
+const DRAIN_RATE := 0.03          # share of that excess draining away per hour
 
 
 static func cell_l() -> float:
@@ -54,6 +56,19 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 		seep_total += l
 	# --- diffusion between neighbouring soil cells (conservative)
 	_diffuse(t, hours)
+	# --- soil wetter than it can hold against gravity seeps down and through the
+	# ground to the pond: rain on the island keeps the pond filled
+	var drained := 0.0
+	var dk := minf(1.0, DRAIN_RATE * hours)
+	for k in t.moist.size():
+		if not t.inside[k] or t.is_pond_cell(k):
+			continue
+		var m := t.moist[k]
+		if m > DRAIN_ABOVE:
+			var dm := (m - DRAIN_ABOVE) * dk
+			t.moist[k] = m - dm
+			drained += dm * cl
+	pond += drained
 	# --- rain
 	var rain := float(World.env.get("rain", 0.0))
 	if rain > 0.0:

@@ -29,6 +29,10 @@ static func _surface_ok(a: Actions, pid: int, args: Dictionary, kind: String) ->
 	if kind == "knap" and not hard:
 		World.notify(pid, "Knapping needs a hard anvil stone.")
 		return {}
+	var below := a.settle_point(pos + Vector3(0, 0.05, 0))
+	if below == Vector3.INF or below.y < pos.y - 0.25:
+		World.notify(pid, "There's nothing there to work on.")
+		return {}
 	for e in World.entities_near(pos, 0.24, "work"):
 		World.notify(pid, "There's already work in progress right there.")
 		return {}
@@ -281,8 +285,8 @@ static func _clay_op(a: Actions, pid: int, e: Dictionary, op: Array) -> void:
 				note = "wet"
 			homog = minf(1.0, homog + gain)
 			grit = maxf(0.0, grit - 0.2 * strength)
-			# working clay in the open slowly dries it
-			var dry := 0.0015 * strength
+			# working clay in the open slowly dries it (never past bone dry)
+			var dry := minf(0.0015 * strength, maxf(0.0, m - 0.02))
 			World.pools["atmo_water_l"] = float(World.pools.get("atmo_water_l", 0.0)) + dry * vol
 			World.update(e["id"], {"homog": homog, "grit": grit, "moist": m - dry, "kneads": int(d.get("kneads", 0)) + 1, "note": note})
 			World.fx("clay_squish", _world_point(e, Vector3(0, 0.05, 0)), {"amount": 3})
@@ -486,8 +490,7 @@ static func _finish_cordage(a: Actions, pid: int, e: Dictionary) -> void:
 	# a few short fibres are lost in twisting; they go back to the soil
 	var n := int(e["d"].get("fibers", 2))
 	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, n * ItemDB.unit_mass("fiber") - ItemDB.unit_mass("cordage"))
-	var k := a.cell_index_at(e["xf"].origin)
-	World.terrain.nutr[k] += maxf(0.0, n * ItemDB.nutrients("fiber") - ItemDB.nutrients("cordage"))
+	TerrainActions.add_nutrients(e["xf"].origin, maxf(0.0, n * ItemDB.nutrients("fiber") - ItemDB.nutrients("cordage")))
 	World.discover("first_cordage", pid)
 	_result(pid, e, "A length of two-ply cord.", "craft")
 

@@ -20,7 +20,7 @@ func _ready() -> void:
 		return
 	await frames(10)
 	lp = Game.game_world.local_player()
-	var suites: Array = ["craft", "survival", "farm", "fire", "build", "save", "longrun"] if suite == "all" else Array(suite.split(","))
+	var suites: Array = ["craft", "survival", "farm", "fire", "build", "economy", "save", "longrun"] if suite == "all" else Array(suite.split(","))
 	Events.toast.connect(func(t, k): print("     [toast] ", t))
 	for s in suites:
 		if has_method("suite_" + s):
@@ -85,10 +85,13 @@ func dropped_satchels() -> Array:
 
 
 func give(id: String, n: int = 1, d: Dictionary = {}) -> void:
-	## Test-only: conjure items.  Recorded so ledger checks can subtract them.
-	inv().add(id, n, d)
+	## Test-only: conjure items.  Recorded so ledger checks can subtract them
+	## (only what actually fitted in the pack: the rest never existed).
+	var left := inv().add(id, n, d)
 	World.mark_inventory(Net.my_id())
-	Ledger._add(injected, Ledger.item_contrib(id, n, d))
+	Ledger._add(injected, Ledger.item_contrib(id, n - left, d))
+	if left > 0:
+		print("     (the pack was full: %d %s not given)" % [left, id])
 
 
 func slot_of(id: String) -> int:
@@ -1298,6 +1301,258 @@ func test_bad_requests() -> void:
 	ledger_same(L0, ledger(), "broken requests")
 
 
+# ---------------------------------------------------------------------------
+# The island's books in less-travelled corners (QA round 2)
+# ---------------------------------------------------------------------------
+
+const TIGHT := {"water": 0.01, "carbon": 0.0001, "nutr": 0.00001, "clay": 0.0001, "soil": 0.0001, "stone": 0.0001}
+
+
+func suite_economy() -> void:
+	Game.game_world.sim.set_process(false)   # (the island's own clock waits while each case is measured)
+	await test_wood_in_fire()
+	await test_cut_regrown()
+	await test_dig_grass()
+	await test_rim_and_abyss()
+	await test_knead_and_midair()
+	Game.game_world.sim.set_process(true)
+	await test_island_renews()
+
+
+func test_wood_in_fire() -> void:
+	print("-- split wood and burning wood")
+	give("axe", 1, {"q": 0.85, "dur": 1.0, "bind": 0.9, "cords": 1, "head": {"stone_kg": 0.3}})
+	give("blade", 1, {"seed": 5, "cuts": [], "q": 0.8, "stone_kg": 0.3, "dur": 1.0})
+	var c := ground(Vector2(-0.6, 2.4))
+	await stand_near(c, Vector3(0, 0, 1.4))
+	var lg := place("log", 1, {"moist": 0.42}, c)
+	await frames(3)
+	var lx: Transform3D = World.get_entity(lg)["xf"]
+	for i in 12:
+		if not World.has_entity(lg):
+			break
+		req("split", {"eid": lg, "pos": lx * Vector3(0, 0.16, 0), "slot": slot_of("axe")})
+		await frames(2)
+	var pieces := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "wood_piece" and e["xf"].origin.distance_to(c) < 1.5)
+	check(pieces.size() >= 1, "a log split into pieces of split wood")
+	if pieces.is_empty():
+		return
+	var wp: Dictionary = pieces[0]
+	var at: Vector3 = wp["xf"].origin + Vector3(0.0, 0.0, 0.32)
+	at.y = World.terrain.height(at.x, at.z)
+	await stand_near(at, Vector3(0, 0, 1.2))
+	var L0 := ledger()
+	var tinder := lay_campfire(at, 2)
+	await frames(4)
+	FireSim.ignite(tinder, 620.0)
+	await run_fire(0.03)
+	var we := World.get_entity(int(wp["id"]))
+	check(not we.is_empty() and absf(float(we["d"]["x"].get("fm", 0.0)) + float(we["d"]["x"].get("ch", 0.0)) - float(we["d"]["x"].get("mass", 0.0))) < 0.5,
+		"a piece of split wood in a fire burns its own weight, not a standard one")
+	ledger_same(L0, ledger(), "split wood in a fire", {"water": 0.05})
+	# a branch lying in the flames can't be cut up (or a burning log split)
+	var br := place("branch", 1, {"moist": 0.2}, at + Vector3(0.03, 0, -0.02))
+	await frames(2)
+	await run_fire(0.05)
+	var L1 := ledger()
+	for i in 4:
+		req("process", {"eid": br, "slot": slot_of("blade")})
+		await frames(1)
+	check(World.has_entity(br), "a branch burning in the fire can't be cut up where it lies")
+	var burning: Array = World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "wood_piece" and e["d"].get("x", {}).has("fm"))
+	if not burning.is_empty():
+		req("split", {"eid": int(burning[0]["id"]), "pos": burning[0]["xf"].origin, "slot": slot_of("axe")})
+		await frames(1)
+		check(World.has_entity(int(burning[0]["id"])), "nor split wood that's in the fire split again")
+	ledger_same(L1, ledger(), "working wood that's in a fire", TIGHT)
+	await run_fire(6.0)
+	ledger_same(L0, ledger(), "a fire of split wood, burnt out", {"water": 0.05})
+
+
+func test_cut_regrown() -> void:
+	print("-- cutting what has only just grown back")
+	var tid := int(_tree()["id"])
+	if bool(_tree()["d"].get("felled", false)):
+		print("     (the tree was felled earlier: skipped)")
+		return
+	var d: Dictionary = _tree()["d"]
+	var si := 0
+	d["sb"][si] = 0.985                      # (set before the books are read)
+	d["store"] = maxf(float(d.get("store", 0.0)), 1.0)
+	await _under("sb:%d" % si)
+	var L0 := ledger()
+	for k in 10:
+		if float(_tree()["d"]["sb"][si]) < 0.5:
+			break
+		req("tree_cut", {"eid": tid, "part": "sb:%d" % si, "slot": slot_of("blade")})
+		await frames(1)
+	check(float(_tree()["d"]["sb"][si]) == 0.0, "a branch that's 98.5% grown back can be cut")
+	ledger_same(L0, ledger(), "cutting a branch the moment it's grown back (the reserve pays the rest)", TIGHT)
+	# with nothing in reserve it has to wait
+	d = _tree()["d"]
+	d["sb"][1] = 0.985
+	d["store"] = 0.0
+	await _under("sb:1")
+	for k in 10:
+		req("tree_cut", {"eid": tid, "part": "sb:1", "slot": slot_of("blade")})
+		await frames(1)
+	check(float(_tree()["d"]["sb"][1]) > 0.9, "...unless the tree has nothing in reserve to finish it")
+	# fell the tree: what comes off it holds no more minerals than it had
+	var base: Vector3 = _tree()["xf"].origin
+	await stand_near(base, Vector3(1.3, 0, 0.0))
+	var L1 := ledger()
+	var blows := 0
+	while not bool(_tree()["d"].get("felled", false)) and blows < 80:
+		req("tree_fell", {"eid": tid, "slot": slot_of("axe")})
+		await frames(1)
+		blows += 1
+	check(bool(_tree()["d"].get("felled", false)), "the tree is felled")
+	check(float(World.pools.get("tree_nutr", 0.0)) >= 0.0, "its wood took no more minerals than the tree held (%.4f left)" % float(World.pools.get("tree_nutr", 0.0)))
+	ledger_same(L1, ledger(), "felling", TIGHT)
+
+
+func test_dig_grass() -> void:
+	print("-- digging grassy ground")
+	var spot := clear_soil_spot()
+	await stand_near(spot, Vector3(0, 0, 0.9))
+	give("digger", 1, {"q": 0.8, "dur": 1.0, "bind": 0.8, "cords": 1, "head": {"stone_kg": 0.25}})
+	var L0 := ledger()
+	req("dig", {"pos": spot, "slot": slot_of("digger")})
+	await frames(2)
+	var spot2 := clear_soil_spot([spot])
+	await stand_near(spot2, Vector3(0, 0, 0.9))
+	for i in 4:
+		req("dig", {"pos": spot2, "slot": -1})
+		await frames(1)
+	ledger_same(L0, ledger(), "digging into grass (the torn grass goes into the soil)", TIGHT)
+	while slot_of("earth") != -1:
+		req("fill", {"pos": spot2, "slot": slot_of("earth")})
+		await frames(1)
+
+
+func test_rim_and_abyss() -> void:
+	print("-- at the rim and over the edge")
+	var spot := edge_spot()
+	var c: Vector2 = spot["c"]
+	var dir: Vector2 = spot["dir"]
+	var r := 0.0
+	while World.terrain.is_inside(c.x + dir.x * r, c.y + dir.y * r):
+		r += 0.02
+	var mc := ground(c + dir * (r - 0.3))
+	await stand_near(mc, Vector3(-dir.x * 0.7, 0, -dir.y * 0.7))
+	for i in 5:
+		var a := i * TAU / 5.0
+		place("firewood", 1, {"moist": 0.2}, mc + Vector3(cos(a) * 0.1, 0, sin(a) * 0.1))
+	await frames(3)
+	var fw := items_near(mc, "firewood", 0.6)
+	give("earth", 6)
+	var aim := Vector3(mc.x + dir.x * 0.9, mc.y + 0.1, mc.z + dir.y * 0.9)
+	var L0 := ledger()
+	var sid := -1
+	for i in 6:
+		req("fire_cover", {"eid": sid if sid != -1 else int(fw[0]["id"]), "pos": aim, "slot": slot_of("earth")})
+		await frames(1)
+		sid = FireSim.site_at(mc)
+	for i in 10:
+		if sid == -1 or not World.has_entity(sid) or float(World.get_entity(sid)["d"].get("shell_l", 0.0)) <= 0.0:
+			break
+		req("fire_uncover", {"eid": sid, "pos": aim})
+		await frames(1)
+	ledger_same(L0, ledger(), "earth packed on and dug off a pile at the very rim", TIGHT)
+	# minerals set free over the abyss are lost (on the books), not vanished
+	var lost0 := float(World.pools.get("lost_nutr", 0.0))
+	var L1 := ledger()
+	World.pools["lost_nutr"] = lost0
+	TerrainActions.add_nutrients(Vector3(dir.x * 40.0, 0.0, dir.y * 40.0), 0.01)
+	check(absf(float(World.pools["lost_nutr"]) - lost0 - 0.01) < 1e-9, "minerals freed out over the abyss go over the edge")
+	World.pools["lost_nutr"] = lost0   # (undo the test's own conjuring)
+	ledger_same(L1, ledger(), "nothing else moved", TIGHT)
+	# a board slice a hair lighter than a board makes no board out of nothing
+	var a: Actions = World.actions
+	var poly := PackedVector2Array([Vector2(-0.16, -0.025), Vector2(0.16, -0.025), Vector2(0.16, 0.025), Vector2(-0.16, 0.025)])
+	var area := Geo.polygon_area(poly)
+	var len := TreeActions.BOARD_M3 / area
+	var ids0 := World.entities.keys()
+	var slice_kg := ItemDB.unit_mass("board") - 0.004
+	var said: float = TreeActions._classify_piece(a, poly, area, len, 0.16, Vector2.ZERO, slice_kg, 0.3, mc + Vector3(0, 0.3, 0), Basis())
+	var made := 0.0
+	for id in World.entities.keys():
+		if not id in ids0:
+			var e: Dictionary = World.entities[id]
+			made += float(Ledger.entity_contrib(e)["carbon"])
+			World.despawn(int(id))   # (test pieces)
+	check(made <= slice_kg + 1e-9 and absf(made - said) < 1e-9, "a slice a few grams short of a board yields no more wood than it has (%.3f kg from %.3f)" % [made, slice_kg])
+
+
+func test_knead_and_midair() -> void:
+	print("-- kneading dry clay; working in mid-air")
+	give("clay", 4, {"moist": 0.17})
+	await stand_near(flat_stone_top(), Vector3(0, 0, 0.8))
+	req("work_start", {"kind": "clay_prep", "surface": int(newest("flat_stone")["id"]), "pos": flat_stone_top(), "slot": slot_of("clay")})
+	await frames(3)
+	var w := _work()
+	check(not w.is_empty() and String(w["d"]["kind"]) == "clay_prep", "clay on the anvil stone")
+	if not w.is_empty():
+		var L0 := ledger()
+		for i in 160:
+			req("work_op", {"eid": int(w["id"]), "op": ["knead", 1.0]})
+			if i % 20 == 0:
+				await frames(1)
+		var m := float(World.get_entity(int(w["id"]))["d"]["moist"])
+		check(m >= 0.0, "kneading never takes clay past bone dry (%.3f)" % m)
+		req("work_cancel", {"eid": int(w["id"])})
+		await frames(2)
+		ledger_same(L0, ledger(), "kneading dry clay", TIGHT)
+	var spot := edge_spot()
+	var c: Vector2 = spot["c"]
+	var dir: Vector2 = spot["dir"]
+	var r := 0.0
+	while World.terrain.is_inside(c.x + dir.x * r, c.y + dir.y * r):
+		r += 0.02
+	var rim := c + dir * (r - 0.25)
+	await stand_near(ground(rim), Vector3.ZERO)
+	var pos := Vector3(rim.x + dir.x * 1.1, World.terrain.height(rim.x, rim.y) + 0.9, rim.y + dir.y * 1.1)
+	give("fiber", 2)
+	var works0 := World.entities_of("work").size()
+	req("work_start", {"kind": "cordage", "surface": -1, "pos": pos, "slot": slot_of("fiber")})
+	await frames(3)
+	check(World.entities_of("work").size() == works0, "work can't be started in mid-air past the rim")
+
+
+func test_island_renews() -> void:
+	print("-- the island renews itself")
+	# the mossy log, eaten bare, grows mushrooms again
+	var m: Dictionary = World.entities_of("mushrooms")[0]
+	m["d"]["substrate"] = 0.0
+	m["d"]["caps"] = [0.0, 0.0, 0.0, 0.0]
+	var L0 := ledger()
+	await sim_hours(36.0, 0.25)
+	var caps := 0.0
+	for cp in World.get_entity(int(m["id"]))["d"]["caps"]:
+		caps += float(cp)
+	check(float(World.get_entity(int(m["id"]))["d"]["substrate"]) > 0.1 and caps > 0.5, "a mossy log eaten bare grows mushrooms again (substrate %.2f kg, caps %.2f)" % [float(World.get_entity(int(m["id"]))["d"]["substrate"]), caps])
+	ledger_same(L0, ledger(), "a day and a half of mushrooms, humus and the soil breathing", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
+	# soaked ground drains to the pond
+	var t := World.terrain
+	for k in t.moist.size():
+		if t.inside[k] and not t.is_pond_cell(k):
+			t.moist[k] = maxf(t.moist[k], 0.95)
+	var pond0 := float(World.env["pond_l"])
+	var L1 := ledger()
+	await sim_hours(12.0, 0.25, false)
+	check(float(World.env["pond_l"]) > pond0 + 20.0, "soaked ground drains into the pond (%.0f L -> %.0f L)" % [pond0, float(World.env["pond_l"])])
+	ledger_same(L1, ledger(), "draining", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
+	# leaves left on the ground rot into it
+	var spot := clear_soil_spot()
+	var lv := place("leaves", 1, {}, spot)
+	await frames(2)
+	World.get_entity(lv)["d"]["rot"] = 95.0
+	var L2 := ledger()
+	await sim_hours(4.0, 0.25, false)
+	check(not World.has_entity(lv), "leaves lying on the ground rot away")
+	ledger_same(L2, ledger(), "rotting leaves", {"water": 0.05, "carbon": 0.001, "nutr": 0.0001})
+
+
 func suite_survival() -> void:
 	await test_bad_requests()
 	var L0 := ledger()
@@ -1807,11 +2062,17 @@ func suite_save() -> void:
 	await run_fire(0.25)
 	var s0 := site_near(fc)
 	check(not s0.is_empty() and float(s0["d"].get("flame", 0.0)) > 0.0, "the campfire is burning before the save")
+	var T0 := float(FireSim._runtime(s0)["T"]) if not s0.is_empty() else 0.0
+	var scorched0 := bool(FireSim._runtime(s0).get("scorched", false)) if not s0.is_empty() else false
 	var L2 := ledger()
 	var err3 := await reload_world()
 	check(err3 == "", "saved and reloaded with the fire lit")
 	var s1 := site_near(fc)
 	check(not s1.is_empty(), "the fire site came back")
+	if not s1.is_empty():
+		var rt1 := FireSim._runtime(s1)
+		check(absf(float(rt1["T"]) - T0) < 1.0, "at the same heat (%.0f C before, %.0f C after)" % [T0, float(rt1["T"])])
+		check(bool(rt1.get("scorched", false)) == scorched0, "and the ground under it stays scorched (not torn up again)")
 	ledger_same(L2, ledger(), "fire across a reload", {"water": 0.05})
 	await run_fire(0.1)
 	var s2 := site_near(fc)

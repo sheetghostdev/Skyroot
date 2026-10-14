@@ -65,7 +65,7 @@ func new_world(name: String, seed_value: int = 0) -> void:
 		"lost_mass": {},            # item id -> count lost to the abyss
 		"soil_organic_kg": 40.0,    # organic matter in the ground (roots, humus)
 		"debris_stone_kg": 0.0,     # knapping flakes
-		"tree_nutr": 0.8,           # nutrients held in the great tree's tissue
+		"tree_nutr": TreeSim.biomass(TreeSim.new_state()) * TreeSim.NUTR_PER_KG,   # minerals held in the great tree's wood
 		"plant_water_l": 6.0 * 0.03 * 2.5,  # juice in the ripe berries
 	}
 	var g := 0.0
@@ -606,6 +606,7 @@ func save_world(players_live: Dictionary = {}) -> Error:
 	if not is_host() or not running:
 		return ERR_UNAVAILABLE
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	FireSim.store_runtime()
 	# refresh records of connected players
 	for pid in players_live:
 		var p: Dictionary = players_live[pid]

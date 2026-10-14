@@ -25,6 +25,35 @@ static func _blocked(a: Actions, pos: Vector3) -> String:
 	return ""
 
 
+static func put_earth(center: Vector3, litres: float) -> void:
+	## Loose earth goes down on the ground here (spreading a little further when
+	## it's right at the edge); with no island under it, it falls into the abyss
+	## - still on the books.
+	if litres <= 1e-9:
+		return
+	var c := Vector2(center.x, center.z)
+	for r in [0.3, 0.6, 1.0]:
+		if not World.terrain.cells_in_radius(c, r).is_empty():
+			World.terrain_edited(World.terrain.fill(c, r, litres))
+			return
+	World.pools["lost_soil"] = float(World.pools.get("lost_soil", 0.0)) + litres
+
+
+static func add_nutrients(center: Vector3, amount: float, radius: float = 0.4) -> void:
+	## Minerals set free here soak into the soil around it (or, with no island
+	## under it - a deck out over the abyss - they're lost over the edge).
+	if amount == 0.0:
+		return
+	var c := Vector2(center.x, center.z)
+	for r in [radius, radius * 2.0 + 0.4]:
+		var cells := World.terrain.cells_in_radius(c, r)
+		if not cells.is_empty():
+			for k in cells:
+				World.terrain.nutr[k] += amount / cells.size()
+			return
+	World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + amount
+
+
 static func remove_grass(cells: PackedInt32Array, amount: float) -> void:
 	## Grass torn up is not lost: its carbon and nutrients go back into the soil.
 	var t := World.terrain
@@ -59,6 +88,9 @@ static func dig(a: Actions, pid: int, args: Dictionary) -> void:
 	var cells := World.terrain.cells_in_radius(Vector2(pos.x, pos.z), 0.3)
 	remove_grass(cells, 0.5)
 	var res := World.terrain.dig(Vector2(pos.x, pos.z), 0.3, vol, "clay")
+	var torn: Dictionary = res["torn"]
+	for k in torn:
+		remove_grass(PackedInt32Array([int(k)]), float(torn[k]))
 	if float(res["soil"]) + float(res["clay"]) <= 0.001:
 		World.notify(pid, "Nothing more comes up here - you've hit rock.")
 		return
@@ -110,8 +142,7 @@ static func fill(a: Actions, pid: int, args: Dictionary) -> void:
 	if not World.terrain.is_inside(pos.x, pos.z):
 		return
 	a.take_held(pid, args, 1)
-	var rect := World.terrain.fill(Vector2(pos.x, pos.z), 0.32, EARTH_L)
-	World.terrain_edited(rect)
+	put_earth(pos, EARTH_L)
 	World.fx("soil_place", pos)
 
 

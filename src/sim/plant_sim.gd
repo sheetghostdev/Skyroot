@@ -19,11 +19,13 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 	var temp_f := clampf((temp - 4.0) / 12.0, 0.15, 1.15)
 	# crops are tuned so a plant's "days" holds for a watered, fed crop in ordinary island weather
 	var crop_tf := clampf((temp - 2.0) / 12.0, 0.15, 1.2)
+	var trees: Array = []
 	for e in World.entities.values():
 		match String(e["t"]):
 			"plant":
 				_crop(e, hours, light, crop_tf)
 			"tree":
+				trees.append(e)
 				var res := TreeSim.tick(e["d"], hours, light * temp_f, e["xf"].origin, World.terrain, World.pools)
 				for drop in res["drops"]:
 					_drop_near_tree(e, String(drop[0]), int(drop[1]))
@@ -33,7 +35,23 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 				_bush(e, hours, light, temp_f)
 			"mushrooms":
 				_mushrooms(e, hours)
+	TreeSim.settle_surplus(trees, hours, World.terrain, World.pools)
+	_soil_breath(hours, temp_f)
 	_grass(hours, light, temp_f)
+
+
+const SOIL_RESP_H := 0.0005       # share of the soil's humus that rots back into the air each hour
+
+
+static func _soil_breath(hours: float, temp_f: float) -> void:
+	## Humus doesn't pile up for ever: the soil slowly breathes it back out as
+	## carbon the plants can fix again.
+	var org := float(World.pools.get("soil_organic_kg", 0.0))
+	if org <= 0.0:
+		return
+	var out := org * minf(1.0, SOIL_RESP_H * hours * clampf(temp_f, 0.2, 1.2))
+	World.pools["soil_organic_kg"] = org - out
+	World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) + out
 
 
 static func _cells(p: Vector3, r: float = ROOT_R) -> PackedInt32Array:
@@ -142,10 +160,21 @@ static func _bush(e: Dictionary, hours: float, light: float, temp_f: float) -> v
 		World.update(e["id"], {"berries": d["berries"]})
 
 
+const MUSH_SUBSTRATE := 6.0       # kg of rotting wood the mossy log holds when it's full
+const MUSH_FEED_H := 0.02         # kg an hour the log takes back from the humus around it
+
+
 static func _mushrooms(e: Dictionary, hours: float) -> void:
 	var d: Dictionary = e["d"]
 	var caps: Array = d.get("caps", [])
 	var sub := float(d.get("substrate", 0.0))
+	# the log goes on rotting: litter and humus in the soil around it feed the
+	# mycelium again, so the caps keep coming back
+	var feed := minf(maxf(0.0, MUSH_SUBSTRATE - sub), minf(hours * MUSH_FEED_H, maxf(0.0, float(World.pools.get("soil_organic_kg", 0.0)) - 5.0)))
+	if feed > 0.0:
+		World.pools["soil_organic_kg"] = float(World.pools["soil_organic_kg"]) - feed
+		sub += feed
+		d["substrate"] = sub
 	if sub <= 0.0:
 		return
 	var cells := _cells(e["xf"].origin, 0.6)

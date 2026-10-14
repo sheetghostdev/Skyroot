@@ -45,6 +45,10 @@ static func stack_kg(id: String, n: int, d: Dictionary) -> float:
 			return float(d.get("mass", 10.0)) * n
 		"torch":
 			return float(d.get("mass", ItemDB.unit_mass("stick"))) * n
+		"charred_wood":
+			# what's left of it: a half-burnt log is still heavy
+			if d.has("fm"):
+				return (float(d["fm"]) + float(d.get("ch", 0.0))) * n
 		"pot":
 			return (float(d.get("vol", 0.25)) * 1.8 + float(d.get("water", 0.0))) * n
 	return ItemDB.unit_mass(id) * n
