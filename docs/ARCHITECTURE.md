@@ -52,7 +52,7 @@ system twice a second:
 | plants | `sim/plant_sim.gd`, `tree_sim.gd` | crops, the tree, grass, bush, mushrooms grow from air carbon, soil water and nutrients |
 | drying | `sim/drying_sim.gd` | pottery, wood and grass dry or get rained on |
 | fire | `sim/fire_sim.gd` + `fire_model.gd` | every fire site: membership, enclosure (65 shell cells, ray-cast), per-piece pyrolysis/char/heat, cooking, pot firing, charcoal |
-| structures | `sim/structure_sim.gd` | support spans, creaking, collapse |
+| structures | `sim/structure_sim.gd` | support spans, creaking, collapse; what lay on a piece that came down is re-dropped a layer per frame |
 | compost | `sim/compost_sim.gd` | rot rate from mix, moisture, air, self-heating |
 | survival | `sim/survival.gd` | hunger, thirst, warmth, stamina, health, death |
 
@@ -110,8 +110,11 @@ leave/rejoin).
 ## Testing
 
 * `tests/test_runner.gd` — headless suites driving the real game through requests,
-  with ledger checks after every scenario (see the README).
-* `src/util/mp_test.gd` with `tools/mp_test.sh` / `tools/mp_crowd.sh` — real
-  multi-instance network tests.
+  with ledger checks after every scenario (see the README).  `tests/test_main.tscn`
+  starts it through `tests/test_boot.gd`, which exits with code 3 if the runner
+  doesn't compile.
+* `src/util/mp_test.gd` with `tools/mp_test.sh` / `tools/mp_crowd.sh` /
+  `tools/mp_crash.sh` — real multi-instance network tests.
+* `tools/run_tests.sh` — all of the above in one go.
 * `src/util/debug_shot.gd` — deterministic screenshots of set-up scenes for visual
   review.
