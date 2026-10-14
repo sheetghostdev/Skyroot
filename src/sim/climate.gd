@@ -27,7 +27,8 @@ static func temp_at(world3d: World3D, pos: Vector3, fires: Array = []) -> Dictio
 		var fp: Vector3 = f["pos"]
 		var kw: float = f["kw"]
 		var d2 := fp.distance_squared_to(pos)
-		heat += kw / (d2 + 1.2)
-	t += heat * 1.6
+		heat += kw / (d2 + 1.0)
+	# sitting close to a fire on a cold night is properly warm; a few steps away, much less
+	t += heat * 2.2
 	var rain := float(World.env.get("rain", 0.0))
 	return {"temp": t, "roof": roof, "walls": walls, "wet": rain > 0.2 and not roof, "fire_heat": heat}

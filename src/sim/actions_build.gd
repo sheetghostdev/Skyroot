@@ -17,13 +17,17 @@ static func check_place(bp_id: String, xf: Transform3D, sy: float, ignore: int =
 	if bp.is_empty():
 		return "Unknown blueprint."
 	var box := StructureSim.world_box(bp_id, xf, sy)
-	var shrunk := _shrink(box, 0.06)
+	var mine := StructureSim.obb(bp_id, xf, sy, 0.06)
 	for e in World.entities_of("structure"):
 		if int(e["id"]) == ignore:
 			continue
 		var d: Dictionary = e["d"]
-		var ob := StructureSim.world_box(String(d["bp"]), e["xf"], float(d.get("sy", 1.0)))
-		if shrunk.intersects(_shrink(ob, 0.06)) and not _compatible(bp, ItemDB.blueprint(String(d["bp"])), shrunk, ob):
+		var obp := String(d["bp"])
+		var osy := float(d.get("sy", 1.0))
+		if e["xf"].origin.distance_to(xf.origin) > 6.0:
+			continue
+		if StructureSim.obb_intersect(mine, StructureSim.obb(obp, e["xf"], osy, 0.06)) \
+				and not _compatible(bp_id, xf, sy, obp, e["xf"], osy):
 			return "Something is already built there."
 	for e in World.entities_near(xf.origin, 2.5):
 		var t := String(e["t"])
@@ -45,21 +49,16 @@ static func check_place(bp_id: String, xf: Transform3D, sy: float, ignore: int =
 	return ""
 
 
-static func _shrink(b: AABB, m: float) -> AABB:
-	## Pull each face in by m, but never past the middle (thin pieces stay thin, not inside out).
-	var mm := Vector3(minf(m, b.size.x * 0.4), minf(m, b.size.y * 0.4), minf(m, b.size.z * 0.4))
-	return AABB(b.position + mm, b.size - mm * 2.0)
-
-
-static func _compatible(a: Dictionary, b: Dictionary, ba: AABB, bb: AABB) -> bool:
+static func _compatible(bp_a: String, xf_a: Transform3D, sy_a: float, bp_b: String, xf_b: Transform3D, sy_b: float) -> bool:
 	## Some pieces are meant to overlap a little: railings and walls stand on
-	## decks, roofs rest on walls, furniture and ladders sit on floors.
-	var ka := String(a.get("kind", ""))
-	var kb := String(b.get("kind", ""))
+	## decks, roofs rest on walls, furniture and ladders sit on floors, and two
+	## walls may meet at a corner - but not stand inside one another.
+	var ka := String(ItemDB.blueprint(bp_a).get("kind", ""))
+	var kb := String(ItemDB.blueprint(bp_b).get("kind", ""))
 	if ka == "floor" and kb == "floor":
 		return false
 	if ka == kb and ka in ["wall", "post", "edge", "roof"]:
-		return ba.intersection(bb).get_volume() < 0.02
+		return not StructureSim.obb_intersect(StructureSim.obb(bp_a, xf_a, sy_a, 0.16), StructureSim.obb(bp_b, xf_b, sy_b, 0.16))
 	return true
 
 

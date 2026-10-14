@@ -1,0 +1,224 @@
+{
+  "title": "Growing food",
+  "order": 8,
+  "icon": "sprout",
+  "entries": [
+    {
+      "id": "planting",
+      "title": "Planting",
+      "summary": "Till the soil with a digging tool, plant seeds or a whole tuber, give each plant room, and keep the soil damp and fed.",
+      "keywords": ["plant", "planting", "sow", "seed", "till", "tilling", "farm", "farming", "garden", "crop", "field", "spacing", "grow", "harvest"],
+      "related": ["watering", "soil", "composting", "crop_tuber", "crop_grain", "crop_fiber"],
+      "items": ["digger", "seed_grain", "seed_fiber", "tuber", "seed_tree"],
+      "diagram": "farming",
+      "sections": [
+        {"text": "A crop grows only by taking: carbon from the air, water and nutrients from the soil around its roots. You can't make it grow faster than that - only make sure it has what it needs."},
+        {"h": "How to", "steps": [
+          "Make a digging tool (see [b]Hafting tools[/b]).",
+          "Hold it, aim at grassy or bare soil and hold [key]RMB[/key] to till a patch about seventy centimeters across. Tilling tears up the grass, whose goodness goes back into the soil. There must be at least six centimeters of soil left to till.",
+          "Hold a seed or a whole tuber and press [key]RMB[/key] on the tilled soil to plant it.",
+          "Leave at least 38 centimeters between plants. Each draws on the soil within about thirty centimeters of its stem, so crowded plants starve each other.",
+          "Keep the soil damp, and give it compost or ash when it tires.",
+          "When a plant is fully grown, press [key]E[/key] to harvest it."
+        ]},
+        {"h": "Reading a plant", "text": "Look at a growing plant to see how far along it is and whether anything is wrong: [i]thirsty[/i] means its soil is too dry, [i]soil spent[/i] means it can't find enough nutrients. Thirsty plants wilt; hungry ones turn yellow. Plants grow only in daylight, and more slowly in cold or heavily overcast weather. A plant that struggled on its way up gives a smaller harvest."},
+        {"h": "What to plant", "list": [
+          "[b]Skyroot tuber[/b]: plant one whole tuber; dig up three to five. See [b]Skyroot tubers[/b].",
+          "[b]Grain seeds[/b]: one seed per plant; each plant gives two or three sheaves. See [b]Island grain[/b].",
+          "[b]Fiber grass seeds[/b]: each plant gives four to six bundles of fiber and fresh seed. See [b]Fiber grass[/b].",
+          "[b]Tree seed[/b]: needs no tilling at all. See [b]The great tree[/b]."
+        ]},
+        {"h": "Harvesting", "text": "A crop you planted is harvested whole: you get its produce and leftovers, and its roots and stubble rot back into the soil with whatever nutrients the harvest didn't carry off. Wild plants are different - they keep part of themselves in the ground and grow back."},
+        {"tip": "The soil along the pond's shore stays damp from the pond itself, so crops planted near it rarely go thirsty."}
+      ],
+      "track": [
+        {"text": "Make a digging tool", "found": "first_digger"},
+        {"text": "Plant your first crop", "found": "first_planting"},
+        {"text": "Harvest tubers", "found": "harvest_tuber"},
+        {"text": "Harvest grain", "found": "harvest_grain"}
+      ]
+    },
+    {
+      "id": "watering",
+      "title": "Watering",
+      "summary": "Plants drink from the soil around their roots. Rain does most of the watering; in dry spells, carry water to them in a fired vessel.",
+      "keywords": ["water", "watering", "irrigate", "irrigation", "thirsty", "dry", "drought", "moisture", "soil", "pour", "rain", "wilting", "wilt"],
+      "related": ["water", "planting", "soil", "weather", "trees", "composting"],
+      "items": ["pot"],
+      "diagram": "water_cycle",
+      "sections": [
+        {"text": "A growing crop drinks about eight liters of water for every kilogram it grows and breathes it out into the air. It takes that water from the soil within about thirty centimeters of its stem. When that soil dries out, the plant goes [i]thirsty[/i], wilts and slows down; much drier, and it stops growing altogether."},
+        {"h": "How damp is damp enough?", "text": "Each crop grows at full speed when its soil is a little under a third full of water - tubers want a touch more, grain a touch less. Drier soil keeps it alive but slow, and soil that is nearly dry stops it."},
+        {"h": "How to water", "steps": [
+          "Fill a fired vessel at the pond ([key]E[/key]).",
+          "Look at the soil beside a plant, or at the plant itself, and press [key]LMB[/key]. Each pour is a quarter liter.",
+          "Pour several times: each quarter liter spreads into the soil about 45 centimeters around where it lands."
+        ]},
+        {"h": "Where the water goes", "text": "Water soaks into the soil where you pour it. If the soil there is already full, it spreads further out, and whatever still can't soak in trickles back to the pond. Damp soil slowly shares its water with drier soil beside it, and the sun and wind draw water out of the ground - a cover of grass shades it a little."},
+        {"h": "Rain and the pond", "text": "Rain soaks the whole island at once, and the soil around the pond's edge stays damp from the pond itself. Away from the pond, in a long dry spell, your crops depend on you."},
+        {"tip": "The berry bush and the great tree drink too. A watered bush ripens faster, and a tree with damp roots regrows its branches sooner."}
+      ],
+      "track": [
+        {"text": "Carry water in a fired vessel", "found": "first_water_vessel"},
+        {"text": "Have something planted to water", "found": "first_planting"}
+      ]
+    },
+    {
+      "id": "composting",
+      "title": "Composting",
+      "summary": "Heap greens and browns together, keep the heap damp and airy, and in a day or two most of it turns into dark compost that puts nutrients back into the soil.",
+      "keywords": ["compost", "heap", "pile", "rot", "greens", "browns", "scraps", "leaves", "straw", "turn", "fertilizer", "humus", "nutrients", "decompose", "manure"],
+      "related": ["soil", "food", "planting", "mat_fiber", "closed_island", "watering"],
+      "items": ["leaves", "grass", "food_scraps", "straw", "fiber", "compost"],
+      "diagram": "compost",
+      "sections": [
+        {"text": "Compost is rot put to work. Microbes in a damp, airy heap eat what you give them and breathe out carbon dioxide and water vapor; what they leave behind is compost - dark, crumbly, and holding every nutrient that went in. A big, busy heap even heats itself up."},
+        {"h": "Starting a heap", "steps": [
+          "Hold something compostable and aim at bare earth or grass.",
+          "Press [key]E[/key]: [i]Start a compost heap here[/i]. (Not with plant fiber in hand - there, [key]E[/key] twists cordage instead. Fiber can still go onto a heap that's already started.) Heaps need about 1.5 meters between them, and a little room from the tree, rocks, fires and plants.",
+          "To add more, hold a compostable item, aim at the heap and hold [key]LMB[/key]."
+        ]},
+        {"h": "Greens and browns", "list": [
+          "[b]Greens[/b] - fresh, wet and rich: leaves, cut grass, food scraps, berries, mushrooms, tubers and roasted food.",
+          "[b]Browns[/b] - dry and bulky: straw, plant fiber, cordage and grain sheaves.",
+          "[b]Not wood[/b]: twigs, sticks, firewood and boards would take years to rot. Burn them or build with them. Nothing that has been in a fire will rot either.",
+          "[b]Not ash[/b]: work ash straight into the soil instead."
+        ]},
+        {"h": "Keeping it working", "text": "Look at the heap to read it: its weight, how hot it is, the mix, how wet it is, how much air it has, how much finished compost is ready, and a word of advice.", "list": [
+          "[b]Mix[/b]: aim for about half browns by weight - anything from about 35% to 70% works. Mostly greens, and it turns wet, dense, sour and airless; mostly browns, and it stays dry and barely rots.",
+          "[b]Moisture[/b]: damp like a wrung-out sponge. Greens bring their own water; browns are dry. Water a dry heap from a filled vessel with [key]LMB[/key]. Rain wets a heap with no roof over it, and a hot heap slowly steams its water away.",
+          "[b]Air[/b]: the microbes use it up, and an airless heap slows down and smells sour. Turn it: with empty hands, a stick or a digging tool, hold [key]LMB[/key] on it. Every forkful lets air back in, and a digging tool needs fewer forkfuls.",
+          "[b]Size and heat[/b]: a heap of about three kilograms or more holds its own heat, warming to 40-60 °C and steaming on cool mornings - and that's when it works fastest. A small heap stays at air temperature and works slowly."
+        ]},
+        {"h": "How long", "text": "A well-kept heap turns most of its material into compost in a day and a half to two in-game days. A neglected one can take many days. Greens break down faster than browns."},
+        {"h": "Using compost", "steps": [
+          "When compost has formed, press [key]E[/key] on the heap with empty hands: [i]Take compost[/i] gives you one, weighing 0.6 kg, at a time.",
+          "Hold it, aim at soil and press [key]RMB[/key] to work it in. It puts nutrients back into the ground around where you aim.",
+          "Finished with a heap? With empty hands, press [key]RMB[/key] on it to spread it. Everything left - half-rotted material, nutrients and water - goes into the soil beneath, and the heap is gone."
+        ]},
+        {"h": "Nothing is lost", "text": "About half the weight of whatever rots escapes into the island's air as carbon dioxide and water vapor - and the tree, the grass and your crops take it back up as they grow. Every nutrient stays in the heap and ends up in the compost."},
+        {"tip": "Each compost needs both enough finished material and enough nutrients. Food scraps and leaves are rich; straw and sheaves are bulky. Heaped together they make the most compost."}
+      ],
+      "track": [
+        {"text": "Gather greens: leaves, grass or scraps", "have": "leaves"},
+        {"text": "Gather browns: straw", "have": "straw", "n": 4},
+        {"text": "Take your first compost", "found": "first_compost"}
+      ]
+    },
+    {
+      "id": "soil",
+      "title": "Soil and fertility",
+      "summary": "Soil holds the water and nutrients every plant lives on. Harvests carry nutrients away; compost, ash and everything that rots bring them back.",
+      "keywords": ["soil", "fertility", "fertile", "nutrients", "fertilizer", "compost", "ash", "spent", "depleted", "exhausted", "yellow", "moisture", "depth", "ground"],
+      "related": ["composting", "planting", "watering", "mat_soil", "closed_island", "fire"],
+      "items": ["compost", "ash", "earth", "food_scraps"],
+      "diagram": "economy",
+      "sections": [
+        {"text": "Every patch of soil holds a store of nutrients and a store of water, and plants take both. The water comes back with the rain. The nutrients come back only if something returns them."},
+        {"h": "Where nutrients go", "text": "A crop pulls nutrients up from the soil around its roots into its leaves, seeds and tubers. When you harvest it, what you take goes with you. You eat it; it comes back out of you as food scraps; the scraps go to the compost heap; the compost goes back into the soil. Break that loop anywhere - throw scraps away, leave compost lying unused - and the soil slowly runs down."},
+        {"h": "Spent soil", "text": "Each crop takes a share of the nutrients within reach of its roots; tubers take the most. Grow two or three crops in the same spot without putting anything back and the soil there is spent: new plants show [i]soil spent[/i], turn yellow, grow at as little as a quarter of their speed and yield less. The soil by the great tree starts out a little richer than the rest."},
+        {"h": "Putting nutrients back", "list": [
+          "[b]Compost[/b]: hold it, aim at soil and press [key]RMB[/key]. One compost returns about what one tuber plant takes, spread over a patch about a meter across.",
+          "[b]Ash[/b]: the same way. A scoop of ash is a little richer still; it is the minerals of everything burned.",
+          "[b]Leftovers[/b]: roots and stubble after a harvest, chaff from threshing, bark and chips from wood you work, grass you tear up - all of it goes back into the soil where it happened.",
+          "[b]A spread compost heap[/b] puts everything in it into the ground beneath."
+        ]},
+        {"h": "Soil water", "text": "Rain fills the soil, the pond keeps its shore damp, and plants, sun and wind draw the water out again. Wet soil slowly shares its water with drier soil next to it. See [b]Watering[/b]."},
+        {"h": "Depth", "text": "Crops need soil to root in: you can't till where less than six centimeters of soil is left, and nothing can be planted where there's less than five. Digging takes soil away, so fill holes back in with earth."},
+        {"tip": "Feed each bed after every harvest - a compost or a scoop of ash for each plant you took out keeps it productive."}
+      ],
+      "track": [
+        {"text": "Take finished compost from a heap", "found": "first_compost"},
+        {"text": "Scoop ash from a cold fire", "have": "ash"}
+      ]
+    },
+    {
+      "id": "crop_tuber",
+      "title": "Skyroot tubers",
+      "summary": "Starchy purple roots: edible raw, twice as good roasted. Plant a whole tuber in tilled soil and dig up three to five in about three and a half days.",
+      "keywords": ["tuber", "skyroot", "potato", "root", "crop", "plant", "harvest", "roast", "food", "seed tuber"],
+      "related": ["planting", "food", "cooking", "watering", "soil", "crop_grain"],
+      "items": ["tuber", "tuber_roasted", "leaves"],
+      "diagram": "crop_stages",
+      "sections": [
+        {"h": "Growing", "list": [
+          "[b]Plant[/b]: one whole tuber in tilled soil, with [key]RMB[/key].",
+          "[b]Time[/b]: about three and a half in-game days in ordinary weather, if it is watered and fed - longer in cold, gloomy weather, drought or poor soil.",
+          "[b]Water[/b]: the thirstiest crop. It wants its soil a little over 30% full.",
+          "[b]Nutrients[/b]: the hungriest crop too - each plant takes about as much as one compost puts back.",
+          "[b]Harvest[/b]: press [key]E[/key] when it's fully grown, for three to five tubers and a handful of leaves."
+        ]},
+        {"h": "Wild tubers", "text": "Two wild clumps grow near the great tree. Harvesting one gives you a few tubers but leaves the plant in the ground, and it grows back over two or three days."},
+        {"h": "Eating", "text": "Raw, a tuber fills 13% of your Food bar. Roasted at the edge of a fire it fills 26%, and heals a little. Four or five roasted tubers are more than a whole day's food."},
+        {"h": "Seed tubers", "text": "Every tuber is also a seed: keep a few from each harvest to plant again. Tubers can go on the compost heap as greens, but they are worth more planted or eaten."},
+        {"tip": "Roast them. The same harvest feeds you twice as long."}
+      ],
+      "track": [
+        {"text": "Get a tuber", "have": "tuber"},
+        {"text": "Plant it in tilled soil", "found": "first_planting"},
+        {"text": "Harvest tubers", "found": "harvest_tuber"}
+      ]
+    },
+    {
+      "id": "crop_grain",
+      "title": "Island grain",
+      "summary": "A hardy grain. Each plant gives two or three sheaves, and each sheaf threshes into ten seeds and a bundle of straw - food, seed and straw from one crop.",
+      "keywords": ["grain", "wheat", "seed", "seeds", "sheaf", "thresh", "straw", "porridge", "crop", "harvest", "cereal"],
+      "related": ["planting", "cooking", "food", "mat_fiber", "survival_rest", "crop_tuber"],
+      "items": ["seed_grain", "grain", "straw"],
+      "diagram": "crop_stages",
+      "sections": [
+        {"h": "Growing", "list": [
+          "[b]Plant[/b]: one grain seed per plant in tilled soil, with [key]RMB[/key].",
+          "[b]Time[/b]: about three in-game days in ordinary weather.",
+          "[b]Water[/b]: a little less than tubers - its soil about 28% full.",
+          "[b]Harvest[/b]: press [key]E[/key] when ripe, for two or three grain sheaves and a bundle of straw."
+        ]},
+        {"h": "Threshing", "text": "Hold a grain sheaf and press [key]LMB[/key] to thresh it: ten grain seeds and a bundle of straw. The chaff goes back into the soil."},
+        {"h": "The wild grain", "text": "A patch of wild grain grows beside the outcrop. It grows back after you harvest it, and it is your first source of seed and straw."},
+        {"h": "Uses", "list": [
+          "[b]Seeds[/b]: plant them, eat them raw (2.5% of your Food bar each), or cook them four at a time with water into porridge.",
+          "[b]Straw[/b]: tinder, roof thatch, sleeping mats, and browns for the compost heap.",
+          "[b]Sheaves[/b] can go on the compost heap as browns too."
+        ]},
+        {"tip": "One planted seed gives back twenty to thirty. Plant a row, keep a pouch of seed, and eat the rest."}
+      ],
+      "track": [
+        {"text": "Get grain seeds", "have": "seed_grain"},
+        {"text": "Plant grain", "found": "first_planting"},
+        {"text": "Harvest grain", "found": "harvest_grain"},
+        {"text": "Thresh six bundles of straw for a sleeping mat", "have": "straw", "n": 6}
+      ]
+    },
+    {
+      "id": "crop_fiber",
+      "title": "Fiber grass",
+      "summary": "Tall, tough grass whose stalks strip into long plant fiber for cordage and tinder. It grows wild around the pond; plant its seeds for more.",
+      "keywords": ["fiber", "fiber grass", "flax", "seed", "cordage", "rope", "tinder", "crop", "harvest", "pond"],
+      "related": ["cordage", "mat_fiber", "planting", "fire_drill", "composting"],
+      "items": ["fiber", "seed_fiber", "grass"],
+      "diagram": "crop_stages",
+      "sections": [
+        {"h": "Growing", "list": [
+          "[b]Plant[/b]: one fiber grass seed per plant in tilled soil, with [key]RMB[/key].",
+          "[b]Time[/b]: the quickest crop - about two and a half in-game days.",
+          "[b]Water[/b]: its soil about 30% full.",
+          "[b]Harvest[/b]: press [key]E[/key] when grown, for four to six bundles of plant fiber, one to three seeds and some cut grass."
+        ]},
+        {"h": "Wild clumps", "text": "Four clumps grow wild around the pond. Harvest them from the start - they grow back - and keep the seeds."},
+        {"h": "Uses", "list": [
+          "Two bundles twist into a cordage; every tool and most buildings need some.",
+          "Three bundles make tinder for the fire drill.",
+          "Fiber is a brown for the compost heap - add it to a heap, though you can't start one with it.",
+          "The cut grass that comes with it cures into straw, or goes on the compost heap."
+        ]},
+        {"tip": "Fiber grass is gentle on the soil: of the three crops, it takes the fewest nutrients."}
+      ],
+      "track": [
+        {"text": "Collect fiber grass seeds", "have": "seed_fiber"},
+        {"text": "Plant them", "found": "first_planting"},
+        {"text": "Harvest fiber grass", "found": "harvest_fiber"}
+      ]
+    }
+  ]
+}

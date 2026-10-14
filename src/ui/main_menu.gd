@@ -20,7 +20,7 @@ var _panels: Dictionary = {}
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UITheme.get_theme()
 	_backdrop = MenuBackdrop.new()
 	add_child(_backdrop)

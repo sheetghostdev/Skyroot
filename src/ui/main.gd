@@ -12,6 +12,8 @@ func _ready() -> void:
 	get_window().title = "Skyroot"
 	if Game.cli.has("shot"):
 		add_child(preload("res://src/util/debug_shot.gd").new())
+	if Game.cli.has("mptest"):
+		add_child(load("res://src/util/mp_test.gd").new())
 	if Game.cli.has("autostart"):
 		_autostart.call_deferred()
 	else:

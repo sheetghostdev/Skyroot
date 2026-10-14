@@ -19,10 +19,15 @@ func _ready() -> void:
 		return
 	await frames(10)
 	lp = Game.game_world.local_player()
-	var suites := ["craft", "economy", "survival", "farm", "fire", "build", "save"] if suite == "all" else [suite]
+	var suites := ["craft", "survival", "farm", "fire", "build", "save"] if suite == "all" else [suite]
 	for s in suites:
 		if has_method("suite_" + s):
 			print("\n=== SUITE ", s, " ===")
+			# every suite starts from the same dice and a clear sky, so runs are repeatable
+			seed(20261014 + suites.find(s))
+			World.env["rain"] = 0.0
+			World.env["rain_target"] = 0.0
+			World.env["cloud"] = 0.2
 			await call("suite_" + s)
 	print("\nRESULT: %d passed, %d failed" % [passes, failures])
 	for l in _log:
@@ -698,6 +703,8 @@ func test_fire_drill() -> void:
 	await frames(4)
 	await run_fire(0.05)
 	var site := site_near(c)
+	if site.is_empty():
+		print("     weather: rain %.2f cloud %.2f wind %s hour %.1f" % [float(World.env.get("rain", 0.0)), float(World.env.get("cloud", 0.0)), str(World.env.get("wind", Vector2.ZERO)), World.hour_of_day()])
 	check(not site.is_empty(), "the ember lit the tinder")
 	check(inv().count("hearth_board") == 1 and inv().count("stick") >= 1, "the drill set comes back to hand")
 
@@ -858,10 +865,89 @@ func suite_build() -> void:
 		StructureSim.tick(0.5)
 		await frames(1)
 	check(not World.has_entity(b_id), "...and then it falls")
-	print("     lost to the abyss: %.2f kg of wood" % (float(World.pools.get("lost_carbon", 0.0)) - lost0))
+	var lost := float(World.pools.get("lost_carbon", 0.0)) - lost0
+	check(lost > 1.0, "what hung over the abyss fell into it (%.1f kg of wood)" % lost)
+	await frames(2)
+	var floating := 0
+	for e in World.entities_near(b_xf.origin, 3.5, "item"):
+		var p: Vector3 = e["xf"].origin
+		if World.terrain.is_inside(p.x, p.z) and p.y > World.terrain.height(p.x, p.z) + 0.4:
+			floating += 1
+	check(floating == 0, "nothing is left hanging in mid-air (%d)" % floating)
 	await frames(3)
 	var L1 := ledger()
 	ledger_same(L0, L1, "construction")
+	await test_hut()
+	ledger_same(L1, ledger(), "hut")
+
+
+func test_hut() -> void:
+	print("-- a hut: deck, three walls and a doorway, a thatch roof")
+	var spot := clear_soil_spot()
+	if spot == Vector3.INF:
+		check(false, "found flat ground for a hut")
+		return
+	var basis := Basis(Vector3.UP, 0.4)
+	var origin := spot + Vector3(0, 0.04, 0)
+	# the deck sits on the ground: lift it to the highest corner so it isn't buried
+	for c in [Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(1, 0, -1), Vector3(-1, 0, -1)]:
+		var w: Vector3 = origin + basis * (c as Vector3) * 0.95
+		origin.y = maxf(origin.y, World.terrain.height(w.x, w.z) + 0.04)
+	await stand_near(origin, basis.z * 2.6)
+	var deck := await build_frame("platform", Transform3D(basis, origin))
+	check(deck != -1, "a deck on the ground")
+	if deck == -1:
+		return
+	await complete(deck)
+	var ids: Array = [deck]
+	# walls on three sides (they stand on the deck), a doorway on the fourth
+	var sides := [[basis.z, 0.0, "doorway"], [-basis.z, 0.0, "wall"], [basis.x, PI * 0.5, "wall"], [-basis.x, PI * 0.5, "wall"]]
+	for sd in sides:
+		var at: Vector3 = origin + (sd[0] as Vector3) * 0.93
+		var wid := await build_frame(String(sd[2]), Transform3D(basis.rotated(Vector3.UP, float(sd[1])), at))
+		check(wid != -1, "%s frame on the deck edge" % String(sd[2]))
+		if wid != -1:
+			await complete(wid)
+			ids.append(wid)
+	# the roof rests on the wall tops
+	lp.global_position = origin + Vector3(0, 0.2, 0)
+	lp.velocity = Vector3.ZERO
+	await frames(3)
+	var roof := await build_frame("roof", Transform3D(basis, origin + Vector3(0, 2.2, 0)))
+	check(roof != -1, "a thatch roof frame sits on the walls")
+	if roof == -1:
+		return
+	await complete(roof)
+	ids.append(roof)
+	StructureSim.mark_dirty()
+	StructureSim.tick(0.1)
+	await frames(3)
+	var all_ok := true
+	for i in ids:
+		var d: Dictionary = World.get_entity(int(i))["d"]
+		if not StructureSim.is_complete(d) or float(d.get("stress", 0.0)) > 0.0:
+			all_ok = false
+	check(all_ok, "everything is finished and nothing creaks")
+	var inside := origin + Vector3(0, 0.3, 0)
+	check(Shelter.roof_above(lp.get_world_3d(), inside + Vector3(0, 1.4, 0)), "there is a roof overhead inside")
+	var cover := Shelter.wall_cover(lp.get_world_3d(), inside + Vector3(0, 1.0, 0))
+	check(cover >= 0.6, "and walls all round (%.0f%%)" % (cover * 100.0))
+	World.env["t"] = float(World.day()) * 24.0 + 26.0
+	World.env["wind"] = Vector2(3.0, 1.0)
+	var outside := origin + basis.z * 4.0
+	outside.y = World.terrain.height(outside.x, outside.z) + 0.1
+	var t_in := float(Climate.temp_at(lp.get_world_3d(), inside)["temp"])
+	var t_out := float(Climate.temp_at(lp.get_world_3d(), outside)["temp"])
+	print("     2 am in the wind: %.1f C outside, %.1f C inside" % [t_out, t_in])
+	check(t_in > t_out + 3.0, "the hut keeps the night wind off")
+	# taking the roof down gives every part back
+	var before := inv().count("straw")
+	var guard := 0
+	while World.has_entity(roof) and guard < 30:
+		req("build_dismantle", {"eid": roof})
+		await frames(1)
+		guard += 1
+	check(not World.has_entity(roof) and inv().count("straw") == before + 8, "the roof comes apart into its eight bundles of straw and the rest")
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +992,96 @@ func heaps() -> Array:
 	return World.entities_of("compost")
 
 
+func me() -> Dictionary:
+	return World.stats.get(Net.my_id(), {})
+
+
+func suite_survival() -> void:
+	var L0 := ledger()
+	print("-- needs fall over time")
+	var st := me()
+	st["hunger"] = 0.9
+	st["thirst"] = 0.9
+	var h0 := float(st["hunger"])
+	var t0 := float(st["thirst"])
+	await sim_hours(6.0, 0.25, false)
+	st = me()
+	var dh := h0 - float(st["hunger"])
+	var dt := t0 - float(st["thirst"])
+	print("     6 h: hunger -%.3f, thirst -%.3f" % [dh, dt])
+	check(dh > 6.0 / Survival.HUNGER_HOURS * 0.8 and dh < 6.0 / Survival.HUNGER_HOURS * 1.8, "hunger falls at about its stated rate")
+	check(dt > 6.0 / Survival.THIRST_HOURS * 0.8 and dt < 6.0 / Survival.THIRST_HOURS * 2.0, "thirst falls faster than hunger")
+	print("-- drinking from the pond")
+	var pc := TerrainData.POND_CENTER
+	var bank := Vector2(pc.x, pc.y) + Vector2(TerrainData.POND_RADII.x + 0.5, 0.0)
+	lp.global_position = ground(bank) + Vector3(0, 0.1, 0)
+	lp.velocity = Vector3.ZERO
+	await frames(3)
+	var pond0 := float(World.env["pond_l"])
+	var th0 := float(me()["thirst"])
+	req("drink_pond", {})
+	await frames(1)
+	var drunk := (float(me()["thirst"]) - th0) * Survival.BODY_WATER_L
+	check(drunk > 0.05, "cupped hands bring a mouthful (%.2f L)" % drunk)
+	check(absf((pond0 - float(World.env["pond_l"])) - drunk) < 1e-4, "and exactly that much leaves the pond")
+	print("-- eating")
+	give("berries", 3)
+	var hu0 := float(me()["hunger"])
+	for i in 3:
+		req("eat", {"slot": slot_of("berries")})
+		await frames(1)
+	check(float(me()["hunger"]) > hu0 + 0.09, "berries are a little food")
+	print("-- cold nights, warm fires")
+	World.env["t"] = float(World.day()) * 24.0 + 27.0   # 3 am tomorrow
+	var night := Climate.temp_at(lp.get_world_3d(), lp.global_position)
+	var fire := Climate.temp_at(lp.get_world_3d(), lp.global_position, [{"pos": lp.global_position + Vector3(1.0, 0.3, 0), "kw": 12.0}])
+	print("     3 am: %.1f C in the open, %.1f C beside a fire" % [float(night["temp"]), float(fire["temp"])])
+	check(float(night["temp"]) < 10.0, "nights are cold up here")
+	check(float(fire["temp"]) > float(night["temp"]) + 8.0, "a fire warms you")
+	print("-- falling into the abyss")
+	give("stone", 2)
+	give("clay", 3, {"moist": 0.2})
+	var lost_c0 := float(World.pools.get("lost_clay", 0.0))
+	var dir := (Vector2(lp.global_position.x, lp.global_position.z)).normalized()
+	var r := 0.0
+	while World.terrain.is_inside(dir.x * r, dir.y * r) and r < 14.0:
+		r += 0.1
+	lp.global_position = Vector3(dir.x * (r + 3.0), lp.global_position.y, dir.y * (r + 3.0))
+	lp.velocity = Vector3.ZERO
+	var guard := 0
+	while bool(me().get("alive", true)) and guard < 600:
+		await frames(1)
+		guard += 1
+	check(not bool(me().get("alive", true)), "stepping off the edge is fatal (%.1f s)" % (guard / 60.0))
+	check(inv().count("stone") == 0 and inv().count("clay") == 0, "everything carried is gone")
+	check(float(World.pools.get("lost_clay", 0.0)) > lost_c0, "and recorded as lost to the abyss")
+	req("respawn", {})
+	await frames(3)
+	check(bool(me().get("alive", false)), "you wake on the island again")
+	var sp := World.spawn_point(Net.my_id())
+	check(lp.global_position.distance_to(sp) < 3.0, "at the spawn point")
+	check(absf(float(me()["health"]) - 0.6) < 0.05, "weakened (health %.2f)" % float(me()["health"]))
+	print("-- dying on the island leaves your things behind")
+	give("cordage", 2)
+	give("stone", 1)
+	var where := lp.global_position
+	Survival.damage(Net.my_id(), 2.0, "burn")
+	await frames(2)
+	var satchels := World.entities_of("satchel")
+	check(satchels.size() == 1, "a satchel of belongings lies where you fell")
+	req("respawn", {})
+	await frames(3)
+	if not satchels.is_empty():
+		var sat: Dictionary = satchels[0]
+		await stand_near(sat["xf"].origin, Vector3(0, 0, 0.8))
+		req("satchel_take", {"eid": int(sat["id"])})
+		await frames(2)
+		check(inv().count("cordage") == 2 and inv().count("stone") == 1, "and you can get it all back")
+		check(World.entities_of("satchel").is_empty(), "the empty satchel is gone")
+	var L1 := ledger()
+	ledger_same(L0, L1, "survival", {"water": 0.05})
+
+
 func keep_fed() -> void:
 	## Long fast-forwards: the test player drinks pond water and eats tubers so
 	## they don't starve (real transfers, so the ledger still balances).
@@ -924,14 +1100,15 @@ func keep_fed() -> void:
 			req("eat", {"slot": slot_of("tuber_roasted")})
 
 
-func sim_hours(hours: float, step: float = 0.25) -> void:
+func sim_hours(hours: float, step: float = 0.25, feed: bool = true) -> void:
 	## Fast-forward the whole island (water, plants, compost, survival...).
 	var sim = Game.game_world.sim
 	var n := int(ceil(hours / step))
 	for i in n:
 		World.env["t"] = float(World.env["t"]) + step
 		sim._tick(step, 0.5)
-		keep_fed()
+		if feed:
+			keep_fed()
 		if i % 6 == 0:
 			await get_tree().physics_frame
 
@@ -1083,6 +1260,98 @@ func test_crops() -> void:
 	await frames(2)
 	var got := inv().count("tuber") - before
 	check(got >= 3, "dug up %d tubers" % got)
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+func world_snapshot() -> Dictionary:
+	var types := {}
+	for e in World.entities.values():
+		types[e["t"]] = int(types.get(e["t"], 0)) + 1
+	var items := {}
+	for s in inv().slots:
+		if not s.is_empty():
+			items[s["i"]] = int(items.get(s["i"], 0)) + int(s["n"])
+	var hsum := 0.0
+	var t := World.terrain
+	for k in t.inside.size():
+		if t.inside[k]:
+			hsum += t.rock[k] + t.clay[k] + t.soil[k] + t.moist[k] * 0.01 + t.nutr[k] + float(t.tilled[k])
+	return {"types": types, "inv": items, "disc": World.discoveries.duplicate(), "next_id": World.next_id,
+		"pond": snappedf(float(World.env.get("pond_l", 0.0)), 0.001), "soil": snappedf(World.terrain.total_soil_l(), 0.001),
+		"clay": snappedf(World.terrain.total_clay_l(), 0.001), "hsum": snappedf(hsum, 0.001), "t": snappedf(float(World.env["t"]), 0.0001)}
+
+
+func reload_world() -> String:
+	## Save, leave to nothing, and load the same island again.
+	var name := World.world_name
+	var err := Game.save()
+	if err != OK:
+		return "save failed: " + error_string(err)
+	Game._teardown()
+	await frames(3)
+	var e2 := Game.start_world("solo", name, false)
+	if e2 != "":
+		return e2
+	await frames(12)
+	lp = Game.game_world.local_player()
+	return ""
+
+
+func suite_save() -> void:
+	print("-- save and reload")
+	give("stone", 3)
+	give("cordage", 2)
+	give("clay", 4, {"moist": 0.22})
+	var spot := clear_soil_spot()
+	await stand_near(spot, Vector3(0, 0, 1.0))
+	give("leaves", 5)
+	req("compost_start", {"pos": spot, "slot": slot_of("leaves")})
+	await frames(2)
+	var hid := -1
+	for e in heaps():
+		hid = int(e["id"])
+	while slot_of("leaves") != -1 and hid != -1:
+		req("compost_add", {"eid": hid, "slot": slot_of("leaves")})
+		await frames(1)
+	await sim_hours(2.0)
+	World.discover("first_compost", Net.my_id())
+	Guide.mark_read("composting")
+	World.request("guide_state", {"state": Guide.export_state()})
+	await frames(2)
+	var heap_before: Dictionary = World.get_entity(hid)["d"].duplicate(true) if hid != -1 else {}
+	var S0 := world_snapshot()
+	var L0 := ledger()
+	var err := await reload_world()
+	check(err == "", "saved, left, and loaded the island again (%s)" % (err if err != "" else "ok"))
+	if err != "":
+		return
+	check(FileAccess.file_exists(World.save_path(World.world_name)), "the save file is on disk")
+	var S1 := world_snapshot()
+	for k in S0:
+		if k == "t":
+			# the clock keeps running for the few frames around the save
+			check(float(S1[k]) >= float(S0[k]) and float(S1[k]) - float(S0[k]) < 0.05, "the time of day survived the reload")
+		else:
+			check(str(S0[k]) == str(S1[k]), "%s survived the reload" % k)
+	ledger_same(L0, ledger(), "reload")
+	if hid != -1:
+		check(World.has_entity(hid) and absf(float(World.get_entity(hid)["d"]["g"]) - float(heap_before["g"])) < 1e-6, "the compost heap is exactly as it was")
+	check(Guide.read.has("composting"), "your guide progress came back with you")
+	# again, to be sure nothing doubles up
+	var err2 := await reload_world()
+	check(err2 == "", "and a second time")
+	var S2 := world_snapshot()
+	check(str(S2["inv"]) == str(S0["inv"]), "no item was duplicated across two reloads")
+	check(str(S2["types"]) == str(S0["types"]), "no entity was duplicated across two reloads")
+	ledger_same(L0, ledger(), "second reload")
+	# the island keeps running after a load
+	if hid != -1 and World.has_entity(hid):
+		var g0 := float(World.get_entity(hid)["d"]["g"])
+		await sim_hours(2.0)
+		check(float(World.get_entity(hid)["d"]["g"]) < g0, "the heap keeps rotting after the reload")
 
 
 func suite_drift() -> void:

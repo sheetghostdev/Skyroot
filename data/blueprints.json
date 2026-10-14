@@ -30,34 +30,34 @@
     "model": "res://assets/models/build/wall.glb", "kind": "wall",
     "parts": ["pole", "pole", "pole", "stick", "stick", "stick", "stick", "stick", "stick", "earth|clay", "earth|clay", "earth|clay", "earth|clay", "earth|clay", "earth|clay"],
     "work": ["hammer", "hammer", "hammer", "weave", "weave", "weave", "weave", "weave", "weave", "daub", "daub", "daub", "daub", "daub", "daub"],
-    "size": [2.0, 2.2, 0.14], "offset": [0.0, 1.1, 0.0], "guide": "construction"
+    "size": [2.0, 2.2, 0.14], "offset": [0.0, 1.1, 0.0], "guide": "shelter"
   },
   "doorway": {
     "name": "Doorway wall", "desc": "A wattle wall with an opening to walk through.",
     "model": "res://assets/models/build/doorway.glb", "kind": "wall",
     "parts": ["pole", "pole", "pole", "stick", "stick", "stick", "stick", "earth|clay", "earth|clay", "earth|clay", "earth|clay"],
     "work": ["hammer", "hammer", "bind", "weave", "weave", "weave", "weave", "daub", "daub", "daub", "daub"],
-    "size": [2.0, 2.2, 0.14], "offset": [0.0, 1.1, 0.0], "door": [0.9, 1.9], "guide": "construction"
+    "size": [2.0, 2.2, 0.14], "offset": [0.0, 1.1, 0.0], "door": [0.9, 1.9], "guide": "shelter"
   },
   "roof": {
     "name": "Thatch roof", "desc": "A sloped panel of straw thatch on pole rafters. Keeps rain and cold off whoever sleeps beneath.",
     "model": "res://assets/models/build/roof.glb", "kind": "roof",
     "parts": ["pole", "pole", "stick", "stick", "stick", "straw", "straw", "straw", "straw", "straw", "straw", "straw", "straw", "cordage"],
     "work": ["bind", "bind", "bind", "bind", "bind", "thatch", "thatch", "thatch", "thatch", "thatch", "thatch", "thatch", "thatch", "bind"],
-    "size": [2.2, 0.3, 2.2], "offset": [0.0, 0.45, 0.0], "guide": "construction"
+    "size": [2.2, 1.1, 2.2], "offset": [0.0, 0.55, 0.0], "guide": "shelter"
   },
   "shelf": {
-    "name": "Storage shelf", "desc": "Two boards on four legs. Holds items, and keeps drying pottery off the damp ground.",
+    "name": "Storage shelf", "desc": "Two boards on four legs: somewhere to set things down off the ground - tools, food, drying pottery.",
     "model": "res://assets/models/build/shelf.glb", "kind": "furniture",
     "parts": ["stick", "stick", "stick", "stick", "board", "board", "cordage"],
     "work": ["hammer", "hammer", "hammer", "hammer", "hammer", "hammer", "bind"],
-    "size": [2.0, 1.0, 0.32], "offset": [0.0, 0.5, 0.0], "storage": 12, "guide": "construction"
+    "size": [2.0, 1.0, 0.32], "offset": [0.0, 0.5, 0.0], "guide": "construction"
   },
   "sleeping_mat": {
     "name": "Sleeping mat", "desc": "Woven straw with a straw pillow. Sleep here to rest and to wake here after misfortune.",
     "model": "res://assets/models/build/sleeping_mat.glb", "kind": "furniture",
     "parts": ["straw", "straw", "straw", "straw", "straw", "straw", "cordage"],
     "work": ["weave", "weave", "weave", "weave", "weave", "weave", "bind"],
-    "size": [0.8, 0.08, 1.9], "offset": [0.0, 0.04, 0.0], "bed": true, "guide": "survival_rest"
+    "size": [1.9, 0.18, 0.8], "offset": [0.0, 0.09, 0.0], "bed": true, "guide": "survival_rest"
   }
 }

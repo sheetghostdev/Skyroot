@@ -7,6 +7,8 @@ extends Node
 ## can't duplicate anything: the second one simply fails.
 
 const REACH := 3.0          # generous server-side reach (client uses 2.6)
+const CARRY_KG := 45.0      # most anyone can carry about
+const LIFT_KG := 35.0       # heavier single things stay where they are (split a log where it lies)
 const PICKUP_STACK := true
 
 var handlers: Dictionary = {}
@@ -18,7 +20,7 @@ func _ready() -> void:
 	for nm in ["pickup", "drop", "place", "outcrop_take", "pick_mushroom", "pick_berries", "eat", "drink_pond",
 			"drink_vessel", "drink_entity", "fill_vessel", "eat_vessel", "hurt", "fell", "exert", "guide_state", "dig", "fill",
 			"till", "cut_grass", "tree_cut", "tree_chop_limb", "tree_fell", "process", "process_held", "harvest", "plant",
-			"fertilize", "pour", "inv_move", "inv_split", "inv_drop_slot", "respawn", "satchel_take", "split", "chat_cmd"]:
+			"fertilize", "pour", "inv_move", "inv_split", "inv_drop_slot", "respawn", "satchel_take", "split", "chat_cmd", "break_pot"]:
 		handlers[nm] = Callable(self, "_a_" + nm)
 	ActionsCraft.register(self)
 	ActionsFire.register(self)
@@ -144,8 +146,6 @@ func lose_to_abyss(id: String, n: int, d: Dictionary) -> void:
 	var lost: Dictionary = World.pools.get("lost_mass", {})
 	lost[id] = int(lost.get(id, 0)) + n
 	World.pools["lost_mass"] = lost
-	if id == "pot":
-		World.pools["lost_water_l"] = float(World.pools.get("lost_water_l", 0.0)) + float(d.get("water", 0.0))
 	Ledger.record_loss(id, n, d)
 
 
@@ -196,7 +196,15 @@ func _a_pickup(pid: int, args: Dictionary) -> void:
 	if space <= 0:
 		World.notify(pid, "No room to carry that.")
 		return
-	var take := mini(n, space)
+	var unit_kg := Inventory.stack_kg(id, 1, x)
+	if unit_kg > LIFT_KG:
+		World.notify(pid, "Too heavy to lift. Split it where it lies.")
+		return
+	var by_weight := int(floor((CARRY_KG - inv(pid).carried_kg()) / maxf(unit_kg, 0.001) + 1e-6))
+	if by_weight <= 0:
+		World.notify(pid, "You can't carry any more weight. Put something down first.")
+		return
+	var take := mini(n, mini(space, by_weight))
 	if hot > 70.0:
 		Survival.damage(pid, clampf((hot - 70.0) / 400.0, 0.02, 0.15), "burn")
 		World.notify(pid, "Ouch - it's hot!", "warn")
@@ -208,6 +216,9 @@ func _a_pickup(pid: int, args: Dictionary) -> void:
 		World.update(eid, {"n": n - take})
 	World.fx("pickup", ent["xf"].origin)
 	_first_touch(pid, id)
+	if id == "charcoal":
+		# however it was made - an opened mound, a smothered fire - the first handful counts
+		World.discover("first_charcoal", pid)
 
 
 func _a_drop(pid: int, args: Dictionary) -> void:
@@ -468,6 +479,37 @@ func _a_eat(pid: int, args: Dictionary) -> void:
 	take_held(pid, args, 1)
 	Survival.eat(pid, id, food)
 	World.fx("eat", player_pos(pid) + Vector3(0, 1.5, 0))
+
+
+func _a_break_pot(pid: int, args: Dictionary) -> void:
+	## A cracked pot is broken up into potsherds; the crumbs of clay that are
+	## too small to keep go back to the ground.
+	var s := held(pid, args)
+	if String(s.get("i", "")) != "pot" or String(s["d"].get("state", "")) != "cracked":
+		return
+	var x: Dictionary = s["d"]
+	take_held(pid, args, 1)
+	var vol := float(x.get("vol", 0.25))
+	var n := int(floor(vol / Ledger.SHERD_L))
+	if n > 0:
+		give(pid, "potsherds", n)
+	World.pools["clay_spilled_l"] = float(World.pools.get("clay_spilled_l", 0.0)) + maxf(0.0, vol - n * Ledger.SHERD_L)
+	var pos := player_pos(pid)
+	var w := float(x.get("water", 0.0))
+	if w > 0.0:
+		WaterActions.soak(pos, w, 0.4)
+	var cont: Dictionary = x.get("contents", {})
+	for cid in cont:
+		if cid == "porridge":
+			# spilled porridge: its grain goes to the ground as scraps would
+			var seeds := int(cont[cid]) * WaterActions.PORRIDGE_SEEDS
+			spawn_item("seed_grain", seeds, {}, pos + Vector3(0, 0.5, 0))
+			var pw := minf(float(World.pools.get("porridge_water_l", 0.0)), int(cont[cid]) * WaterActions.PORRIDGE_WATER)
+			World.pools["porridge_water_l"] = float(World.pools.get("porridge_water_l", 0.0)) - pw
+			WaterActions.soak(pos, pw, 0.4)
+		else:
+			spawn_item(String(cid), int(cont[cid]), {}, pos + Vector3(0, 0.5, 0))
+	World.fx("pottery_crack", pos + Vector3(0, 1.0, 0))
 
 
 func _a_hurt(pid: int, args: Dictionary) -> void:

@@ -337,8 +337,10 @@ func _process(delta: float) -> void:
 		_held_t -= delta
 		held_name.modulate.a = clampf(_held_t, 0.0, 1.0)
 	if _hint_t > 0.0:
-		_hint_t -= delta
-		hint_card.modulate.a = clampf(_hint_t, 0.0, 1.0)
+		# a tip waits (hidden) while a full-screen panel is open
+		if panel == null:
+			_hint_t -= delta
+		hint_card.modulate.a = 0.0 if panel != null else clampf(_hint_t, 0.0, 1.0)
 		if _hint_t <= 0.0:
 			hint_card.visible = false
 			_next_hint()
@@ -578,7 +580,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		chat_input.grab_focus()
 		p.set_mode("ui")
 		get_viewport().set_input_as_handled()
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_X and hint_card.visible:
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_X and hint_card.visible and panel == null:
 		Guide.dismiss_hint(hint_id)
 		hint_card.visible = false
 		_next_hint()

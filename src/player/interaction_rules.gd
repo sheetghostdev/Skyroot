@@ -76,6 +76,8 @@ static func _self_options(out: Dictionary, held: String, hd: Dictionary, t: Dict
 			out["primary"] = opt("Drink (%.2f L)" % water, "drink_vessel", {}, "drink")
 	if held == "grain":
 		out["primary"] = opt("Thresh grain (seeds + straw)", "process_held", {}, "knead")
+	if held == "pot" and String(hd.get("state", "")) == "cracked":
+		out["primary"] = opt("Break it into potsherds", "break_pot", {}, "hammer")
 
 
 static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held: String, hd: Dictionary, tool: String) -> void:
@@ -88,7 +90,9 @@ static func _entity_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			var iid := String(d.get("i", ""))
 			var nm := ItemDB.display_name(iid, d.get("x", {}))
 			var n := int(d.get("n", 1))
-			if bool(d.get("hot", false)):
+			if Inventory.stack_kg(iid, 1, d.get("x", {})) > Actions.LIFT_KG:
+				out["interact"] = disabled("%s (too heavy to lift)" % nm, "Split it where it lies with an axe.")
+			elif bool(d.get("hot", false)):
 				out["interact"] = opt("Take %s (hot!)" % nm, "pickup", {"eid": eid}, "pick")
 			else:
 				out["interact"] = opt("Pick up %s%s" % [nm, " ×%d" % n if n > 1 else ""], "pickup", {"eid": eid}, "pick")
@@ -216,14 +220,31 @@ static func _work_surface(out: Dictionary, p: LocalPlayer, t: Dictionary, held: 
 			out["interact"] = opt("Shape a vessel", "work_start", args.merged({"kind": "pottery"}), "place")
 		"fiber":
 			if inv.count("fiber") >= 2:
-				out["interact"] = opt("Twist fibres into cordage", "work_start", args.merged({"kind": "cordage"}), "place")
+				out["interact"] = opt("Twist fibers into cordage", "work_start", args.merged({"kind": "cordage"}), "place")
 			else:
-				out["interact"] = disabled("Twist cordage", "You need at least two bundles of fibre.")
-		"stone_head":
-			if inv.count("stick") >= 1 and inv.count("cordage") >= 1:
-				out["interact"] = opt("Haft the head onto a handle", "work_start", args.merged({"kind": "haft"}), "place")
+				out["interact"] = disabled("Twist cordage", "You need at least two bundles of fiber.")
+		"stone_head", "blade":
+			# a shaped stone can always go back on the anvil to be worked further
+			var rework := "Keep knapping this stone"
+			if held == "blade":
+				rework = "Rework the blade"
+			elif String(hd.get("shape", "")) != "":
+				rework = "Rework the %s head" % String(hd["shape"])
+			var knap_opt: Dictionary
+			if not hard:
+				knap_opt = disabled(rework, "Knapping needs a hard anvil - use the flat stone or a boulder.")
+			elif inv.count("stone") < 1:
+				knap_opt = disabled(rework, "You need a stone to strike with.")
 			else:
-				out["interact"] = disabled("Haft the head", "Hafting needs a stick (handle) and cordage.")
+				knap_opt = opt(rework, "work_start", args.merged({"kind": "knap"}), "place")
+			if held == "stone_head" and String(hd.get("shape", "")) != "":
+				if inv.count("stick") >= 1 and inv.count("cordage") >= 1:
+					out["interact"] = opt("Haft the head onto a handle", "work_start", args.merged({"kind": "haft"}), "place")
+				else:
+					out["interact"] = disabled("Haft the head", "Hafting needs a stick (handle) and cordage.")
+				out["primary"] = knap_opt
+			else:
+				out["interact"] = knap_opt
 
 
 static func _work_options(out: Dictionary, p: LocalPlayer, t: Dictionary, d: Dictionary, eid: int, held: String) -> void:
@@ -251,7 +272,9 @@ static func _plant_options(out: Dictionary, t: Dictionary, d: Dictionary, eid: i
 		if need == "" or tool == need or tool == "chop" or need == "cut" and held == "":
 			out["interact"] = opt("Harvest %s" % nm.to_lower(), "harvest", {"eid": eid}, "pick" if tool == "" else "cut")
 		else:
-			out["interact"] = opt("Harvest %s (slow by hand)" % nm.to_lower(), "harvest", {"eid": eid}, "pick")
+			var slow := opt("Harvest %s (slow by hand)" % nm.to_lower(), "harvest", {"eid": eid}, "pick")
+			slow["speed"] = 0.5
+			out["interact"] = slow
 	else:
 		var notes: PackedStringArray = []
 		if float(d.get("thirst", 0.0)) > 0.35:

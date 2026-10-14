@@ -61,6 +61,38 @@ static func world_box(bp_id: String, xf: Transform3D, sy: float = 1.0) -> AABB:
 	return bb
 
 
+static func obb(bp_id: String, xf: Transform3D, sy: float = 1.0, shrink: float = 0.0) -> Dictionary:
+	## The piece as an oriented box (centre, half extents, axes), each face pulled
+	## in by `shrink` (never past 40% of that extent, so thin pieces stay boxes).
+	var b := local_box(bp_id, sy)
+	var half := b.size * 0.5
+	half -= Vector3(minf(shrink, half.x * 0.8), minf(shrink, half.y * 0.8), minf(shrink, half.z * 0.8))
+	return {"c": xf * b.get_center(), "h": half,
+		"a": [xf.basis.x.normalized(), xf.basis.y.normalized(), xf.basis.z.normalized()]}
+
+
+static func obb_intersect(p: Dictionary, q: Dictionary) -> bool:
+	## Separating-axis test for two oriented boxes.
+	var axes: Array = []
+	axes.append_array(p["a"])
+	axes.append_array(q["a"])
+	for i in 3:
+		for j in 3:
+			var cr: Vector3 = (p["a"][i] as Vector3).cross(q["a"][j])
+			if cr.length_squared() > 1e-6:
+				axes.append(cr.normalized())
+	var d: Vector3 = (q["c"] as Vector3) - (p["c"] as Vector3)
+	var ph: Vector3 = p["h"]
+	var qh: Vector3 = q["h"]
+	for ax in axes:
+		var a3: Vector3 = ax
+		var ra := ph.x * absf((p["a"][0] as Vector3).dot(a3)) + ph.y * absf((p["a"][1] as Vector3).dot(a3)) + ph.z * absf((p["a"][2] as Vector3).dot(a3))
+		var rb := qh.x * absf((q["a"][0] as Vector3).dot(a3)) + qh.y * absf((q["a"][1] as Vector3).dot(a3)) + qh.z * absf((q["a"][2] as Vector3).dot(a3))
+		if absf(d.dot(a3)) > ra + rb:
+			return false
+	return true
+
+
 static func grounded(bp_id: String, xf: Transform3D, sy: float = 1.0) -> bool:
 	## Does the piece's underside rest on the island?
 	var b := local_box(bp_id, sy)
@@ -207,6 +239,11 @@ static func collapse(id: int) -> void:
 	var parts: Array = bp.get("parts", [])
 	var box := local_box(String(d["bp"]), float(d.get("sy", 1.0)))
 	var a: Actions = World.actions
+	var gw = Game.game_world
+	if gw and gw.entities:
+		var v: Node = gw.entities.view(id)
+		if v and v.has_method("drop_collision"):
+			v.drop_collision()
 	World.despawn(id)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = id

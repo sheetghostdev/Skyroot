@@ -38,6 +38,26 @@ func item_at(i: int) -> String:
 	return String(get_slot(i).get("i", ""))
 
 
+static func stack_kg(id: String, n: int, d: Dictionary) -> float:
+	## How heavy a stack is to carry.
+	match id:
+		"wood_piece":
+			return float(d.get("mass", 10.0)) * n
+		"torch":
+			return float(d.get("mass", ItemDB.unit_mass("stick"))) * n
+		"pot":
+			return (float(d.get("vol", 0.25)) * 1.8 + float(d.get("water", 0.0))) * n
+	return ItemDB.unit_mass(id) * n
+
+
+func carried_kg() -> float:
+	var kg := 0.0
+	for s in slots:
+		if not s.is_empty():
+			kg += stack_kg(String(s["i"]), int(s["n"]), s["d"])
+	return kg
+
+
 func count(id: String) -> int:
 	var n := 0
 	for s in slots:

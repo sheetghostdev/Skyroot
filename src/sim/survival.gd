@@ -149,9 +149,8 @@ static func respawn(pid: int) -> void:
 	st["thirst"] = float(st["thirst"]) + w / BODY_WATER_L
 	st["body_water_l"] = float(st.get("body_water_l", 0.0)) + w
 	if float(st["hunger"]) < 0.3:
-		var add := 0.3 - float(st["hunger"])
+		# the body's last reserves: no matter changes hands, so the island's ledger is untouched
 		st["hunger"] = 0.3
-		World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) - add * 0.8
 	var pos := World.spawn_point(pid)
 	var bed := int(st.get("bed", -1))
 	if bed >= 0 and World.has_entity(bed):

@@ -404,9 +404,10 @@ static func _inert_substep(s: Dictionary, ids: Array, kinds: Array, h: float, pr
 		if st != "fired" and st != "cracked":
 			var m := float(x.get("moist", 0.0))
 			if Ti > 100.0 and m > 0.0:
-				if m > 0.06 and not bool(x.get("sc", false)):
+				# a pot the guide calls dry (Pottery.moisture_state) never bursts; damper ones may
+				if m > 0.07 and not bool(x.get("sc", false)):
 					x["sc"] = true
-					if randf() < clampf((m - 0.05) * 12.0, 0.0, 0.95):
+					if randf() < clampf((m - 0.07) * 9.0, 0.0, 0.95):
 						_crack(me, "The damp clay burst with steam.")
 						continue
 				var vol := float(x.get("vol", 0.25))
@@ -775,7 +776,7 @@ static func describe(d: Dictionary) -> String:
 			lines.append("Thick white steam: the wood is drying out.")
 		"charring":
 			if float(d.get("smoke", 0.0)) > 0.15:
-				lines.append("Dense, yellow-grey smoke pours out: the wood is charring.")
+				lines.append("Dense, yellow-gray smoke pours out: the wood is charring.")
 			else:
 				lines.append("Hot inside and charring steadily; thin smoke from the vents.")
 		"finishing":

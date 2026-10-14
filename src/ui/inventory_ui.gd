@@ -9,11 +9,11 @@ var detail_title: Label
 var detail_text: Label
 var detail_guide: Button
 var hovered := -1
-var storage_panel: Control
+var weight_lbl: Label
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var dim := ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -51,6 +51,8 @@ func _ready() -> void:
 		hb.add_child(_slot(i))
 	var help := UITheme.label("Click: pick up / place    Right-click: split    Shift-click: move to pack/hotbar    Q: drop", 13, UITheme.TEXT_DIM)
 	left.add_child(help)
+	weight_lbl = UITheme.label("", 14, UITheme.TEXT)
+	left.add_child(weight_lbl)
 	var right := VBoxContainer.new()
 	right.custom_minimum_size = Vector2(330, 0)
 	right.add_theme_constant_override("separation", 10)
@@ -66,6 +68,7 @@ func _ready() -> void:
 	detail_guide.visible = false
 	right.add_child(detail_guide)
 	Events.inventory_changed.connect(_refresh)
+	hud.icons.icon_ready.connect(func(_k): for s in slots: s.queue_redraw())
 	_refresh()
 
 
@@ -86,6 +89,9 @@ func _refresh() -> void:
 		s.stack = inv.get_slot(s.index)
 		s.selected = s.index == picked or (picked < 0 and lp and s.index == lp.hotbar)
 		s.queue_redraw()
+	var kg := inv.carried_kg()
+	weight_lbl.text = "Carrying %.1f of %d kg%s" % [kg, int(Actions.CARRY_KG), ("  - heavy: you move slower" if kg > 22.0 else "")]
+	weight_lbl.add_theme_color_override("font_color", UITheme.TEXT if kg < 22.0 else Color(1.0, 0.78, 0.5))
 	if hovered >= 0:
 		_on_hover(hovered)
 

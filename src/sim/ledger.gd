@@ -76,10 +76,12 @@ static func item_contrib(id: String, n: int, x: Dictionary) -> Dictionary:
 
 
 static func record_loss(id: String, n: int, x: Dictionary) -> void:
+	## Something went over the edge: it stays in the books as lost.
 	var c := item_contrib(id, n, x)
 	for k in c:
 		if float(c[k]) != 0.0:
-			World.pools["lost_" + k] = float(World.pools.get("lost_" + k, 0.0)) + float(c[k])
+			var pool: String = "lost_water_l" if k == "water" else "lost_" + String(k)
+			World.pools[pool] = float(World.pools.get(pool, 0.0)) + float(c[k])
 
 
 static func compute() -> Dictionary:

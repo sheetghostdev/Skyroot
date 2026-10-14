@@ -1,0 +1,171 @@
+{
+  "title": "First steps",
+  "order": 1,
+  "icon": "compass",
+  "entries": [
+    {
+      "id": "getting_started",
+      "title": "Your first hour",
+      "summary": "You wake on a small floating island with empty hands and a little over ten minutes of daylight. Here is what to do first, and in what order, before the first night falls.",
+      "keywords": ["start", "begin", "new", "first", "beginner", "help", "what to do", "tutorial", "plan", "first night", "order"],
+      "related": ["controls", "island", "survival_needs", "knapping", "fire_drill", "water"],
+      "items": ["stone", "twig", "stick", "fiber", "blade", "hearth_board"],
+      "sections": [
+        {"h": "The short version", "text": "An in-game day lasts twenty real minutes, and you wake at half past seven in the morning. That leaves you a little over ten real minutes before dark. Use them to knap a stone blade, find water and food, and get a fire going. Everything else can wait for tomorrow."},
+        {"h": "Reading the screen", "text": "Your five needs sit at the bottom left: Health, Food, Water, Stamina and Warmth. The clock, the weather and the temperature where you stand are at the top right. Whatever you look at shows its options beside the crosshair: each keycap tells you which button does what with the thing you are holding right now.", "diagram": "vitals", "caption": "Food, Water and Warmth are yours to look after; Health pays when they run out."},
+        {"h": "Your first ten minutes", "steps": [
+          "Pick up two stones with [key]E[/key]. Loose cobbles lie in the grass near where you woke, and more can be pried out of the rocky outcrop to the east. One becomes a tool; the other is your hammer.",
+          "Gather the dry twigs and the two sticks lying under the great tree, just to the north. They are the driest fuel on the island: save them for your fire.",
+          "Go to the flat stone a few steps south-east of where you woke. Hold a stone, aim at the top of the flat stone and press [key]E[/key] to knap. Choose the cutting blade with [key]1[/key], thin one long edge with light taps of [key]LMB[/key] from both faces ([key]RMB[/key] turns the stone over), and press [key]Enter[/key] when the tip says it looks usable.",
+          "Drink at the pond to the west: look at the water and press [key]E[/key], a few times. You start a little thirsty, and work makes you thirstier.",
+          "Harvest a clump of wild fiber grass by the pond with [key]E[/key]. Three bundles of fiber are tinder for your first fire; the wild grain beside the outcrop gives straw as well.",
+          "Eat what the island offers: berries from the bush in the north-west, mushrooms from the mossy log in the north, and the wild tubers that grow near the tree.",
+          "Before dark, make fire with a fire drill. Carve one stick into a hearth board with your blade, set the board on bare ground with dry twigs and sticks heaped around it, and spin your second stick in its notch. See [b]The fire drill[/b]."
+        ]},
+        {"h": "After the first night", "list": [
+          "Twist plant fiber into cordage, knap an axe head and a digging blade, and haft them onto sticks. The axe opens up the tree's big limbs; the digging tool opens up the ground.",
+          "Dig clay by the pond, shape a vessel, dry it and fire it. With a fired pot you can carry water to yourself and to your crops.",
+          "Plant tubers and grain, start a compost heap, and build walls, a roof and a sleeping mat before the cold nights wear you down."
+        ]},
+        {"tip": "Everything here was already on the island, and nothing new will ever arrive. Take what you need, put back what you can, and think twice before anything goes over the edge."},
+        {"warn": "The island ends in sheer cliffs above an endless abyss. Whatever falls - including you - is gone for good. Hold [key]Ctrl[/key] to crouch near the edge: crouching, you won't step off it."}
+      ],
+      "track": [
+        {"text": "Pick up two stones", "have": "stone", "n": 2},
+        {"text": "Knap a cutting blade at the flat stone", "found": "first_blade"},
+        {"text": "Gather three bundles of plant fiber for tinder", "have": "fiber", "n": 3},
+        {"text": "Carve a stick into a hearth board", "have": "hearth_board"},
+        {"text": "Light a fire before dark", "found": "first_fire"},
+        {"text": "Make an axe", "found": "first_axe"}
+      ]
+    },
+    {
+      "id": "controls",
+      "title": "Controls",
+      "summary": "Every key and button: moving, looking, using things, your pack, close-up work, the guide, building, chat, saving and screenshots.",
+      "keywords": ["keys", "keyboard", "mouse", "bindings", "buttons", "drop", "throw", "rotate", "chat", "save", "screenshot", "hud", "third person", "camera", "hotbar", "inventory", "crouch", "sprint", "jump"],
+      "related": ["getting_started", "using_guide", "construction", "coop"],
+      "sections": [
+        {"h": "Moving", "list": [
+          "[key]W[/key] [key]A[/key] [key]S[/key] [key]D[/key] or the arrow keys to walk, the mouse to look.",
+          "[key]Shift[/key] to sprint while moving forward. Sprinting burns Stamina; when it runs low you slow down.",
+          "[key]Space[/key] to jump, which costs a little Stamina. It also lets go of a ladder and gets you up from a sleeping mat.",
+          "[key]Ctrl[/key] or [key]C[/key] to crouch. While crouching you won't walk off a ledge - use it near the cliffs.",
+          "[key]V[/key] switches between first and third person. The camera pulls back, but your reach doesn't change: you can only touch what is within about 2.6 meters of your eyes.",
+          "In the pond you wade at about two thirds of your usual speed - and you get wet."
+        ]},
+        {"h": "Hands and tools", "text": "Look at something and the options beside the crosshair show what each button will do with what you are holding. Many actions - cutting, digging, chopping, packing earth, installing a part - keep repeating for as long as you hold the button down.", "list": [
+          "[key]E[/key] - interact: pick things up, drink, harvest, start work on a surface, climb, lie down.",
+          "[key]LMB[/key] - primary: use what you hold. Cut, dig, chop, eat, drink, strike, pour, fit a part.",
+          "[key]RMB[/key] - secondary: put down what you hold, plant, till, feed a fire, poke a vent.",
+          "[key]R[/key] turns the thing you are about to put down; a faint ghost shows where it will go.",
+          "[key]Q[/key] tosses one of the held item a short way ahead; [key]Ctrl[/key]+[key]Q[/key] tosses the whole stack. Near the edge, it may go over.",
+          "[key]1[/key] to [key]9[/key] or the mouse [key]Wheel[/key] choose a hotbar slot."
+        ]},
+        {"h": "Your pack", "text": "[key]Tab[/key] or [key]I[/key] opens your pack: nine hotbar slots and eighteen more. Click a stack to pick it up and click another slot to put it there; stacks of the same thing merge. Right-click splits a stack in half, [key]Shift[/key]-click moves it between the hotbar and the pack, and [key]Q[/key] over an item drops it at your feet ([key]Ctrl[/key]+[key]Q[/key] for the whole stack). Hover over an item to read about it."},
+        {"h": "Close-up work", "text": "Knapping, kneading clay, shaping pottery, twisting cord, hafting and the fire drill happen close up, with the mouse free. Each shows its own controls along the bottom of the screen. [key]Enter[/key] finishes the work; [key]Esc[/key] steps away and leaves it where it is, so you - or anyone else - can carry on later with [key]E[/key]."},
+        {"h": "Panels and the rest", "list": [
+          "[key]H[/key] opens this Survival Guide. While a hint card is showing, [key]H[/key] opens its entry and [key]X[/key] dismisses the hint for good.",
+          "[key]B[/key] opens the build menu.",
+          "[key]T[/key] opens chat: type, then [key]Enter[/key] to send or [key]Esc[/key] to cancel.",
+          "[key]Esc[/key] opens the island menu: resume, settings, leave. It also closes panels, leaves build mode and gets you up from sleep. The world does not pause.",
+          "[key]F5[/key] saves the island at once (host only).",
+          "[key]F12[/key] takes a screenshot, saved in a screenshots folder in the game's user data.",
+          "[key]F1[/key] hides or shows the whole HUD."
+        ]},
+        {"tip": "Mouse sensitivity, inverted look, field of view, head bob and contextual hints can all be changed under Settings in the island menu."}
+      ]
+    },
+    {
+      "id": "island",
+      "title": "A tour of the island",
+      "summary": "Where everything is: the great tree, the pond and its clay bank, the outcrop and the flat stone, the berry bush, the mossy log, the grass and the cliffs.",
+      "keywords": ["map", "where", "tour", "pond", "tree", "outcrop", "flat stone", "boulder", "clay bank", "bush", "berries", "mushrooms", "log", "cliff", "edge", "directions", "work surface", "anvil"],
+      "related": ["closed_island", "mat_stone", "mat_clay", "trees", "food", "water"],
+      "items": ["stone", "twig", "stick", "berries", "mushroom", "tuber", "fiber", "clay"],
+      "diagram": "island",
+      "sections": [
+        {"text": "The island is about sixteen meters from east to west and thirteen from north to south, rising gently toward the great tree. The sun rises in the east, crosses the southern sky and sets in the west - use it to find your way. You first wake near the middle."},
+        {"h": "The great tree", "text": "Just north of the middle stands the island's only tree. Its eight small leafy branches can be cut with a blade and its five big limbs with an axe, and it sheds twigs, leaves and winged seeds around its foot as it grows. Dry twigs and two sticks already lie beneath it, and two clumps of wild tubers grow close by."},
+        {"h": "The pond and the clay bank", "text": "To the west lies the pond, the island's only open water. Drink from it, fill vessels at it, wade in it - slowly. Clumps of wild fiber grass grow around its shore. On its south-east side the grass thins out over a low, flat clay bank, where a few centimeters of soil cover a deep bed of clay."},
+        {"h": "Stone", "text": "The rocky outcrop to the east has eight loose cobbles you can pry free, and seven more lie scattered in the grass. That is every loose stone on the island. The outcrop itself, the flat stone south-east of the middle and the three boulders near the rim stay where they are: they are your anvils."},
+        {"h": "Places to work", "text": "The flat stone, the top of the outcrop and the boulders are hard enough for knapping. They, the mossy log and plain bare ground all serve for kneading clay, shaping pottery, twisting cord and hafting tools. Prepare clay by the pond, where water is at hand."},
+        {"h": "Wild food", "list": [
+          "[b]The berry bush[/b] in the north-west. Pick it when the berries are ripe; it fruits again over a day or two if its soil stays damp.",
+          "[b]The mossy log[/b] to the north, with mushrooms growing on it. The caps grow back in damp weather, feeding on the rotting log - which won't last forever.",
+          "[b]Wild tubers[/b] near the tree and [b]wild grain[/b] beside the outcrop. Wild plants keep their roots when harvested and grow back."
+        ]},
+        {"h": "Grass, soil and the edge", "text": "Grass covers most of the island, over soil about forty centimeters deep with bedrock beneath. Cut grass dries into straw; the soil grows crops. Toward the rim the ground slopes away, then drops off in sheer cliffs. Below is nothing but cloud and the abyss."},
+        {"warn": "Crouch with [key]Ctrl[/key] whenever you work near the edge. Crouching, you can't walk off it."}
+      ]
+    },
+    {
+      "id": "closed_island",
+      "title": "Nothing comes from nothing",
+      "summary": "The island is a closed world: water, carbon, nutrients, clay, soil and stone are only ever moved around, never created. Only what falls into the abyss is lost.",
+      "keywords": ["economy", "conservation", "closed", "cycle", "finite", "renewable", "abyss", "lost", "carbon", "nutrients", "recycle", "balance", "edge", "fall"],
+      "related": ["island", "composting", "soil", "water", "weather", "mat_stone"],
+      "diagram": "economy",
+      "sections": [
+        {"text": "Nothing is ever added to the island from outside, and nothing simply vanishes. The game keeps an exact account of six things - water, carbon (living and dead plant matter), nutrients, clay, soil and stone - and every action only moves them from one place to another."},
+        {"h": "What goes around", "list": [
+          "[b]Water[/b] evaporates from the pond, the soil and everything drying in the air. When the air can hold no more, it rains back down onto the pond, the soil, open pots and compost heaps. Plants drink from the soil and breathe the water out again - and so do you.",
+          "[b]Carbon[/b] is drawn out of the island's air by the tree, the grass, the bush and your crops as they grow. Burning, eating and rotting put it back into the air, ready to be grown again.",
+          "[b]Nutrients[/b] live in the soil. Plants take them up, harvests carry them to you, everything you eat comes back out as food scraps, and compost and ash return them to the soil.",
+          "[b]Clay, soil and stone[/b] never grow back. Dig thoughtfully: every flake knapped off a stone is gone."
+        ]},
+        {"h": "Renewable - but only so fast", "text": "Wood, food and fiber regrow, but only as fast as sunlight, water and nutrients allow. Cut the tree's branches and they regrow from its reserves over hours to days. Take every nutrient out of a patch of soil and nothing will grow there until you put some back."},
+        {"h": "The abyss", "text": "Anything dropped, tossed, poured or spilled over the edge is lost forever: an item, a pot of water, a whole collapsed platform. If you fall, everything you carry goes with you.", "diagram": "abyss", "caption": "Over the edge is the only way out of the island's accounts."},
+        {"tip": "Put things back where they came from: scraps and leaves to the compost heap, compost and ash to the soil, earth back into holes."}
+      ]
+    },
+    {
+      "id": "coop",
+      "title": "Playing together",
+      "summary": "Up to four islanders can share one island over a local network or the internet. The host's machine runs the world and keeps the save.",
+      "keywords": ["multiplayer", "co-op", "coop", "friends", "host", "join", "lan", "ip", "port", "server", "together", "save", "players", "chat", "satchel"],
+      "related": ["controls", "using_guide", "health", "survival_rest"],
+      "sections": [
+        {"h": "Hosting", "steps": [
+          "In the main menu choose [b]Play[/b] and leave [b]Open to friends[/b] ticked - it is by default. The port is 7777 unless you change it.",
+          "Continue one of your islands, or wake on a new one.",
+          "In game, press [key]Esc[/key]: the island menu shows the addresses your friends can use. On the same network they use your local IP address; over the internet you have to forward the port on your router."
+        ]},
+        {"h": "Joining", "steps": [
+          "Choose [b]Join a friend[/b] and enter your name, the host's IP address and the port.",
+          "Press [b]Join island[/b]. An island holds four people at most, and everyone needs the same version of the game."
+        ]},
+        {"h": "One world", "list": [
+          "The host's machine runs the island. Everyone sees the same world, and every change happens for everyone.",
+          "Discoveries are shared: the first time anyone makes a blade, a fire or a pot, every islander hears about it, and it goes into the Island journal under their name.",
+          "Your pack, your needs, where you stood and your guide progress are kept by the host under your name. Join again with the same name to pick up where you left off.",
+          "Only the host saves: every three minutes, when leaving, or at once with [key]F5[/key]. When the host leaves, the island closes for everyone.",
+          "The world never pauses, not even in the island menu.",
+          "If everyone lies down to sleep at the same time, the night passes quickly."
+        ]},
+        {"h": "Working together", "list": [
+          "Close-up work belongs to whoever is at it; the others can watch and bring materials. Once they step away with [key]Esc[/key], anyone can carry on.",
+          "Building frames take parts from anyone: one of you hauls boards while another lashes the cord.",
+          "A fallen friend's belongings wait in a satchel where they fell. Anyone can pick it up and bring it home.",
+          "[key]T[/key] opens chat."
+        ]},
+        {"tip": "Divide the work: one tends fire and food, one knaps and builds, one farms. Drying, growing, composting and charring all go on whether anyone is watching or not."}
+      ]
+    },
+    {
+      "id": "using_guide",
+      "title": "Using this guide",
+      "summary": "How to search the guide, pin a checklist to your screen, read the Island journal and use the hint cards.",
+      "keywords": ["guide", "help", "pin", "checklist", "journal", "hints", "search", "new", "tracker", "discoveries"],
+      "related": ["controls", "getting_started", "coop"],
+      "sections": [
+        {"text": "Press [key]H[/key] at any time. Every entry is open from the start. Entries marked with an orange dot are new to you: they relate to something you just handled, or to something another islander just discovered."},
+        {"h": "Finding things", "text": "Browse by category on the left, or search: [key]Ctrl[/key]+[key]F[/key] or [key]/[/key] jumps to the search box. Search for a material (clay), a process (charcoal) or a problem (cold, cracked)."},
+        {"h": "Pinned checklists", "text": "Most entries end with a checklist. Pin the entry and its checklist stays at the top right of your screen while you play - up to three at once - and ticks itself off: some steps while you carry the right things, some when anyone on the island makes a discovery, some when a building is finished."},
+        {"h": "The Island journal", "text": "Every first on the island - the first blade, the first fire, the first pot - is written into the Island journal with the name of whoever managed it. Open it with the button at the top of the guide."},
+        {"h": "Hint cards", "text": "When you meet something new, a small hint card appears on the left. [key]H[/key] opens the matching entry; [key]X[/key] dismisses that hint for good. You can switch hints off with Contextual hints in Settings."},
+        {"tip": "Hover over an item in your pack and press [b]Read about it in the guide[/b] to jump straight to its entry."}
+      ]
+    }
+  ]
+}

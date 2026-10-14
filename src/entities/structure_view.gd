@@ -137,5 +137,12 @@ func _process(delta: float) -> void:
 	model.transform = sag * _base_xf
 
 
+func drop_collision() -> void:
+	## It is falling: nothing may land on it any more (called before its parts are dropped).
+	if body != null:
+		body.free()
+		body = null
+
+
 func interaction_point(_part: String) -> Vector3:
 	return global_position

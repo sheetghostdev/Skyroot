@@ -58,7 +58,7 @@ func _tinder_text() -> String:
 	for t in ActionsFire.TINDER:
 		if inv.count(t) >= int(ActionsFire.TINDER[t]):
 			return "Tinder ready: %s." % ItemDB.display_name(t).to_lower()
-	return "No tinder! You'll need 2 straw or 3 plant fibres for the ember."
+	return "No tinder! You'll need 2 straw or 3 plant fibers for the ember."
 
 
 func _draw_overlay() -> void:

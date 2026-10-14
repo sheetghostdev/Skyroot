@@ -1,0 +1,142 @@
+{
+  "title": "Clay & pottery",
+  "order": 5,
+  "icon": "pot",
+  "entries": [
+    {
+      "id": "clay_prep",
+      "title": "Preparing clay",
+      "summary": "Raw clay is gritty and a little too dry to shape. Knead it with a little water until it is smooth and evenly damp.",
+      "keywords": ["clay", "prepare", "knead", "wedge", "water", "moisture", "grit", "prepared clay", "wet", "dry", "sticky", "crumbly"],
+      "related": ["mat_clay", "pottery", "drying", "water"],
+      "items": ["clay", "clay_prepared", "pot"],
+      "diagram": "clay_prep",
+      "sections": [
+        {"text": "Clay straight from the bank is lumpy, full of grit and a little too dry: shape it like that and it cracks. Kneading - pressing, folding and pressing again - works the grit out and spreads the water evenly through the lump."},
+        {"h": "How to", "steps": [
+          "Hold raw clay and press [key]E[/key] on a work surface or on bare ground. Up to four lumps from the stack go onto it at once.",
+          "Knead: press [key]LMB[/key], drag down and let go to fold. A longer press works the clay harder.",
+          "Watch the Moisture gauge; its green band is the sweet spot. Too dry? [key]RMB[/key] splashes in a little water.",
+          "Keep kneading until Evenness is nearly full, then press [key]Enter[/key]. You get back as many lumps of prepared clay as you put in."
+        ]},
+        {"h": "The sweet spot", "text": "Clay shapes well when it is between about 20% and 31% water. Raw clay comes up at around 17%, depending on how damp the ground was. Each splash is about a hundredth of a liter - a lot for a single lump, not much for four. Kneading in the open air slowly dries the clay, which is also how you rescue clay that is too wet."},
+        {"h": "Water for kneading", "text": "Splashes come from the pond if you are working near it - the clay bank is ideal - or from a fired vessel with water in it, carried in your pack. Anywhere else you'll be told there is no water within reach."},
+        {"h": "When it goes wrong", "list": [
+          "[b]Too dry[/b] (below about 19%): it cracks and crumbles and hardly improves as you knead. Add water.",
+          "[b]Too wet[/b] (above 31%): sticky; kneading does only half as much. Keep kneading to work water out.",
+          "[b]Still lumpy[/b]: you can't finish until it is smooth. Knead more."
+        ]},
+        {"tip": "Changed your mind? Gather up the work ([key]LMB[/key] on it, outside the close-up) and your clay comes back as raw lumps, as damp as you left it."}
+      ],
+      "track": [
+        {"text": "Dig some raw clay", "have": "clay", "n": 2},
+        {"text": "Knead it into prepared clay", "found": "first_prepared_clay"}
+      ]
+    },
+    {
+      "id": "pottery",
+      "title": "Shaping pottery",
+      "summary": "Shape prepared clay into a bowl, cup or jar with your hands: open the hollow, pull the walls up, form the rim and smooth it with wet hands.",
+      "keywords": ["pottery", "pot", "bowl", "cup", "jar", "vessel", "shape", "sculpt", "clay", "wall", "rim", "hollow", "smooth", "trim", "ceramic"],
+      "related": ["clay_prep", "drying", "pit_firing", "water", "cooking"],
+      "items": ["clay_prepared", "pot"],
+      "diagram": "pottery",
+      "sections": [
+        {"text": "Clay doesn't appear or disappear as you work it - it moves. Pull a wall up and it grows taller and thinner; press a hollow open and the clay you push aside thickens the walls. A lump becomes a vessel by being moved around, not by being added to."},
+        {"h": "Starting", "text": "Hold prepared clay and press [key]E[/key] on a work surface or on bare ground. Up to four lumps - a quarter liter each - go onto the work at once; more clay makes a bigger pot. Close up, the clay turns slowly by itself. The [key]Wheel[/key] turns it further, and [key]W[/key] and [key]S[/key] let you look from higher or lower."},
+        {"h": "The gestures", "list": [
+          "[b]Wall[/b]: [key]LMB[/key] on the outside and drag. Sideways narrows or widens it at that height; upward pulls the clay up into a taller, thinner wall.",
+          "[b]Top[/b]: [key]LMB[/key] on top of the solid lump and drag down to open and deepen a hollow; drag sideways to widen the opening.",
+          "[b]Inside wall[/b]: [key]LMB[/key] inside the opening and drag to widen it from within.",
+          "[b]Rim[/b]: [key]LMB[/key] on the rim. Drag outward to flare it, or down to press it firm and strong.",
+          "[b]Smooth[/b]: hold [key]RMB[/key] and move over the surface. Wet hands even out the walls and smooth away lumps, using a little water from the pond.",
+          "[b]Trim[/b]: hold [key]T[/key] and click to cut the top off at that height. Whole lumps' worth of the offcut come back to you as prepared clay.",
+          "[b]Add clay[/b]: [key]R[/key] adds another lump of prepared clay from your pack.",
+          "Hold [key]Shift[/key] while dragging for fine control."
+        ]},
+        {"h": "What it becomes", "text": "The shape decides the name. A wide, shallow hollow is a [b]bowl[/b]; a deeper one holding up to about 0.9 liters is a [b]cup[/b]; an opening clearly narrower than the belly, on a pot holding at least a quarter liter, makes a [b]jar[/b]. Any other hollow shape is a [b]vessel[/b], and a solid lump stays a clay shape. While you work, the panel shows how much it will hold, how thick the walls and floor are, and gauges for evenness, rim and smoothness."},
+        {"h": "Good pottery", "list": [
+          "Walls about 6 to 7 millimeters thick. Under 3.5 mm they may crack drying or firing; over about 13 mm they trap water and can burst in the fire.",
+          "The same thickness all the way up.",
+          "A smooth surface and a firm, pressed rim.",
+          "A base wide enough to stand on without tipping.",
+          "A floor that isn't pierced - press too deep and the pot will leak."
+        ]},
+        {"h": "Finishing", "text": "Press [key]Enter[/key] and the wet pot is set down right where you made it, with a few words on how it turned out. It is soft and full of water: let it dry completely before it goes anywhere near a fire. Until you press [key]Enter[/key], you can still gather the work up ([key]LMB[/key] on it, outside the close-up) and get your clay back."},
+        {"warn": "Unfired clay holds no water and doesn't survive rain: soaked, it slumps back into raw clay."}
+      ],
+      "track": [
+        {"text": "Carry prepared clay", "have": "clay_prepared"},
+        {"text": "Shape your first pot", "found": "first_pot"},
+        {"text": "Fire it", "found": "first_fired_pot"}
+      ]
+    },
+    {
+      "id": "drying",
+      "title": "Drying",
+      "summary": "Wet pottery must dry completely before firing. Clay dries in warm, dry, breezy air; rain undoes it, so dry your pots under a roof.",
+      "keywords": ["dry", "drying", "leather hard", "bone dry", "wet", "moisture", "rain", "roof", "crack", "season", "cure", "slump", "damp"],
+      "related": ["pottery", "pit_firing", "weather", "shelter", "mat_wood", "mat_fiber"],
+      "items": ["pot", "clay", "grass", "firewood"],
+      "diagram": "drying",
+      "sections": [
+        {"text": "A freshly shaped pot is about a quarter water. Heat it like that and the water flashes to steam inside the clay and bursts it. So pottery dries first, slowly, in the air: wet, then leather-hard, then dry. A pot's name and description tell you which, and how much water is left in it."},
+        {"h": "What speeds it up", "list": [
+          "Warm air - afternoons are far better than nights.",
+          "Wind, and dry air. When the air turns humid before rain, everything dries slowly.",
+          "Sun, if the pot stands out in the open.",
+          "Thin walls. A thick-walled pot can take twice as long to dry as one with ordinary walls."
+        ]},
+        {"text": "Set the pot down to dry - nothing dries in your pack. In fair weather it takes about a day."},
+        {"h": "Rain", "text": "Rain soaks unfired clay. A pot that gets too wet loses its shape and slumps back into lumps of raw clay, and the whole island hears about it. Anything with a roof over it is safe from rain - a thatch roof, or any finished building above it."},
+        {"h": "Bone dry - and then some", "text": "When the description says bone dry, it is nearly ready. But a pot fired with the last trace of damp still in it can still burst, so give it a few more hours before it goes into the fire."},
+        {"h": "Other things that dry", "list": [
+          "Cut grass cures into straw in about a day in the open.",
+          "Wood seasons from green to dry in a day or two.",
+          "Lumps of clay left lying dry out too. Raw clay can be kneaded with water back to the right dampness."
+        ]},
+        {"tip": "Dry pottery under a roof. It dries a little slower out of the sun, but no shower can undo a day's drying."}
+      ],
+      "track": [
+        {"text": "Shape a pot", "found": "first_pot"},
+        {"text": "Raise a roof to dry it under", "built": "roof"},
+        {"text": "Fire it once it is bone dry", "found": "first_fired_pot"}
+      ]
+    },
+    {
+      "id": "pit_firing",
+      "title": "Firing pottery",
+      "summary": "Heat turns dry clay into ceramic for good. Pots need a bright red heat - over 550 °C, ideally 750 °C or more - in a fire that heats and cools them gently.",
+      "keywords": ["fire", "firing", "kiln", "pit", "pottery", "ceramic", "fired", "crack", "heat", "potsherds", "bake", "cracked"],
+      "related": ["drying", "pottery", "fire", "charcoal", "water", "cooking"],
+      "items": ["pot", "firewood", "charcoal", "stone", "earth", "potsherds"],
+      "diagram": "pit_firing",
+      "sections": [
+        {"text": "Above about 550 °C the clay itself changes: it stops being clay and becomes ceramic - hard, waterproof and permanent. A pot has to soak in that heat for a while: about ten in-game minutes at a bright 750 °C, twice as long at 650 °C, quicker if the fire is hotter still. A pit fire gets there more reliably than an open campfire, and far more gently."},
+        {"h": "Why pots crack", "list": [
+          "[b]Damp clay[/b]: water left in the clay flashes to steam and bursts it. Fire only bone-dry pots - and give them a few extra hours.",
+          "[b]Sudden heat[/b]: a pot heated or cooled too fast can crack. Open, windy fires are the worst; a closed-in pit, which heats and cools slowly, protects them.",
+          "[b]A weak form[/b]: very thin, very thick or uneven walls and a thin floor all make a pot more likely to crack - even at the very end of a good firing.",
+          "[b]Cold water[/b] on a hot pot cracks it as often as not."
+        ]},
+        {"h": "A pit fire", "steps": [
+          "Dig a shallow pit with your hands or a digging tool. Its earth walls hold heat in as well as anything can.",
+          "Set your bone-dry pots in it with [key]RMB[/key], and pile fuel around and over them: tinder and twigs where you will light it, then sticks and plenty of dry firewood. Charcoal burns hottest of all.",
+          "Light it with a burning stick or with the fire drill.",
+          "Once it burns well, close it in: stones around the rim, and some earth packed over the top - but leave openings. A fire without air dies, and a sealed one only chars its wood.",
+          "Keep it burning hot for a good while, then let it burn down and cool by itself.",
+          "When it has cooled, take the pots out. A pot that made it is now called fired: a fired bowl, cup or jar."
+        ]},
+        {"h": "Taking them out", "text": "Hot pottery burns your hands - anything hotter than about 70 °C does. If the prompt says [i]hot![/i], wait. Never cool hot pots with water."},
+        {"h": "Cracked pots and potsherds", "text": "A cracked pot can't be mended and won't hold water. Broken fired pottery - potsherds - holds heat well as part of a firing pit's cover."},
+        {"tip": "Fire several pots at once: they share the same heat. The middle of the fire bed is hottest; pots at the edge may need longer."}
+      ],
+      "track": [
+        {"text": "Shape a pot and let it dry", "found": "first_pot"},
+        {"text": "Gather dry firewood", "have": "firewood", "n": 6},
+        {"text": "Have fire on the island", "found": "first_fire"},
+        {"text": "Fire your first pot", "found": "first_fired_pot"}
+      ]
+    }
+  ]
+}

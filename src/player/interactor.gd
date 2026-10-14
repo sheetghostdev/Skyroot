@@ -39,7 +39,7 @@ func _physics_process(_delta: float) -> void:
 	_emit()
 	_update_ghost()
 	if not busy():
-		for key in ["primary", "secondary"]:
+		for key in ["interact", "primary", "secondary"]:
 			var opt: Dictionary = options.get(key, {})
 			if opt.get("hold", false) and Input.is_action_pressed(key) and opt.get("enabled", true):
 				_start(opt)
@@ -104,7 +104,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if player == null or player.mode != "play":
 		return
 	if event.is_action_pressed("interact"):
-		_start(options.get("interact", {}))
+		var oi: Dictionary = options.get("interact", {})
+		if not oi.get("hold", false):
+			_start(oi)
 	elif event.is_action_pressed("primary"):
 		var o: Dictionary = options.get("primary", {})
 		if not o.get("hold", false):

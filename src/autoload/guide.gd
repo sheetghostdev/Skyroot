@@ -187,7 +187,8 @@ func _on_discovery(discovery_id: String, who: String) -> void:
 	var def: Dictionary = discovery_defs.get(discovery_id, {})
 	if def.is_empty():
 		return
-	var me := who == Settings.player_name
+	# the host may have renamed us ("Wren 2"), so compare with the name we actually play under
+	var me := who == Net.player_name(Net.my_id())
 	var text := String(def.get("text", "")).replace("{who}", "You" if me else who)
 	Events.toast.emit("%s - %s" % [String(def.get("title", "Discovery")), text], "discovery")
 	Sfx.ui("discovery", -4.0)

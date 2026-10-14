@@ -1,0 +1,70 @@
+{
+  "title": "Trees & wood",
+  "order": 7,
+  "icon": "tree",
+  "entries": [
+    {
+      "id": "trees",
+      "title": "The great tree",
+      "summary": "The island's only tree gives branches, limbs, leaves, twigs and seeds, and regrows what you take as fast as sunlight, water and nutrients allow. Felling it is a big decision.",
+      "keywords": ["tree", "branch", "limb", "trunk", "fell", "felling", "chop", "cut", "regrow", "sapling", "stump", "seed", "plant tree", "leaves", "twigs", "roots", "forest"],
+      "related": ["woodworking", "mat_wood", "tool_assembly", "soil", "watering", "closed_island"],
+      "items": ["branch", "limb", "log", "seed_tree", "twig", "leaves"],
+      "diagram": "tree_regrow",
+      "sections": [
+        {"text": "The tree is alive, and it grows only one way: by taking carbon from the island's air, and water and nutrients from the soil within about three meters of its trunk. What it makes goes into a reserve first, and from there into new branches, new limbs and a thicker trunk."},
+        {"h": "Branches", "text": "Its eight small branches can be cut with a blade or an axe: aim at one and hold [key]LMB[/key]. After a few strokes the leafy branch drops to the ground. A cut branch grows back from the tree's reserve - in about ten in-game hours at best. Until then it shows as a young branch, with how far it has grown, and it can't be cut."},
+        {"h": "Limbs", "text": "The five big limbs need an axe: hold [key]LMB[/key] on one, and it takes a good number of blows. A large limb is heavy and full of useful wood (see [b]Working wood[/b]). Limbs grow back too, more slowly: a day at the very least."},
+        {"h": "What it drops", "text": "When it has reserves to spare, the tree lets fall a twig every several hours, a handful of leaves about once a day and a winged seed every day or so. Look around its foot."},
+        {"h": "Helping it grow", "list": [
+          "Don't strip it all at once: with few leaves the tree makes little.",
+          "Keep the soil around it moist in dry weather. Water and compost around its roots both help.",
+          "It doesn't grow at night, and grows slowly in cold, cloudy weather."
+        ]},
+        {"h": "Felling the tree", "text": "With an axe you can fell the trunk itself: around thirty blows with a good axe, more with a poor one. It creaks when it's nearly through. It comes down as two great logs, a couple of limbs and some firewood, along with every full-grown branch and limb that was still on it."},
+        {"text": "The roots survive the felling. From their stored reserves the stump pushes up a sapling, which - given sun, water and nutrients - becomes a young tree and then a full tree again. That takes days, and until it is grown there are no branches to cut."},
+        {"warn": "Felling the tree trades a steady, regrowing supply of branches and limbs for one load of logs. Make sure you need those boards before you do it."},
+        {"h": "Planting a tree", "text": "Hold a tree seed and press [key]RMB[/key] on any soil - no tilling needed - at least two and a half meters from other plants and trees. A seedling starts from almost nothing and grows slowly; water it in dry weather."}
+      ],
+      "track": [
+        {"text": "Carry a cutting blade", "have": "blade"},
+        {"text": "Cut a leafy branch", "have": "branch"},
+        {"text": "Chop off a large limb with an axe", "have": "limb"},
+        {"text": "Find a tree seed under the tree", "have": "seed_tree"}
+      ]
+    },
+    {
+      "id": "woodworking",
+      "title": "Working wood",
+      "summary": "Cut branches into sticks and twigs, chop limbs into poles and firewood, carve hearth boards, and split logs into boards - careful splits for boards, quick ones for firewood.",
+      "keywords": ["wood", "process", "cut up", "chop", "split", "log", "board", "plank", "firewood", "pole", "stick", "twig", "hearth board", "carve", "season", "lumber"],
+      "related": ["trees", "mat_wood", "tool_assembly", "construction", "fire", "charcoal"],
+      "items": ["branch", "limb", "log", "wood_piece", "board", "firewood", "pole", "stick", "twig", "hearth_board"],
+      "diagram": "log_split",
+      "sections": [
+        {"text": "Wood is worked where it lies. Set the piece on the ground ([key]RMB[/key]), hold the right tool and hold [key]LMB[/key] on it; after a few strokes it comes apart into smaller things. Bark, crumbs and chips aren't wasted - they go back into the soil where you worked."},
+        {"h": "What comes from what", "list": [
+          "[b]Leafy branch[/b] (blade or axe): 2 sticks, 3 twigs and a handful of leaves.",
+          "[b]Large limb[/b] (axe): 2 poles, 3 sticks, 2 firewood, 2 twigs and 2 handfuls of leaves.",
+          "[b]Stick[/b] (blade or axe): carved into a hearth board for the fire drill."
+        ]},
+        {"h": "Splitting logs", "text": "Logs and big split pieces need an axe, and you split them with single, aimed blows of [key]LMB[/key] on the end. The wood splits along the line you strike: aim at the middle to halve it, nearer one side to take off a slab. A poor axe sometimes just bites in without splitting."},
+        {"h": "Boards or firewood", "text": "What a split piece becomes depends on its shape. A slab about 2 to 7.5 centimeters thick and at least 15 centimeters wide becomes rough boards, with the offcuts as firewood. Anything small - under about 6 kilograms - becomes firewood. Everything else stays a half log, a slab or a piece of split wood, ready to be split again.", "steps": [
+          "Split the log down the middle into two half logs.",
+          "Take slabs off each half by striking close to one side.",
+          "Split any slab that is still too thick until it comes apart into boards."
+        ]},
+        {"h": "Poles and sticks", "text": "Poles - long and straight - come only from limbs, and they are the backbone of every building. Sticks come from branches and limbs: handles, spindles, wattle rods and kindling."},
+        {"h": "Seasoning", "text": "Everything cut from the tree starts out green. Lay it out in sun and wind for a day or two before you burn it or stack it into a charcoal mound."},
+        {"tip": "Platforms and shelves are built from boards, and boards only come from logs. Split carefully: a patient splitter gets several boards out of each log, and the offcuts still make firewood."}
+      ],
+      "track": [
+        {"text": "Cut up a branch for sticks", "have": "stick", "n": 2},
+        {"text": "Chop up a limb for poles", "have": "pole", "n": 2},
+        {"text": "Make some firewood", "have": "firewood", "n": 4},
+        {"text": "Split a log", "found": "first_split"},
+        {"text": "Split six boards", "have": "board", "n": 6}
+      ]
+    }
+  ]
+}

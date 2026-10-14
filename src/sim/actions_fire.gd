@@ -493,7 +493,7 @@ static func drill_finish(a: Actions, pid: int, e: Dictionary) -> void:
 			tinder = t
 			break
 	if tinder == "":
-		World.craft_result(pid, int(e["id"]), "You need tinder for the ember: a couple of straw bundles or a few fibres.", "warn")
+		World.craft_result(pid, int(e["id"]), "You need tinder for the ember: a couple of straw bundles or a few fibers.", "warn")
 		return
 	var need2: int = TINDER[tinder]
 	inv.remove(tinder, need2)

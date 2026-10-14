@@ -276,7 +276,10 @@ func _physics_process(delta: float) -> void:
 	stamina = lerpf(stamina, st, 0.1)
 	sprinting = (mode == "play" or mode == "build") and Input.is_action_pressed("sprint") and input.y < -0.2 and not crouching and stamina > 0.04
 	var speed := CROUCH if crouching else (SPRINT if sprinting else WALK)
-	speed *= speed_mult * (0.62 if _in_water else 1.0) * (0.75 if stamina < 0.08 else 1.0)
+	# a heavy load slows you down
+	var load_kg := World.my_inventory.carried_kg() if World.my_inventory else 0.0
+	var load_f := lerpf(1.0, 0.7, clampf((load_kg - 22.0) / 23.0, 0.0, 1.0))
+	speed *= speed_mult * load_f * (0.62 if _in_water else 1.0) * (0.75 if stamina < 0.08 else 1.0)
 	var basis := Basis(Vector3.UP, yaw)
 	var wish := basis * Vector3(input.x, 0.0, input.y)
 	if wish.length() > 1.0:
