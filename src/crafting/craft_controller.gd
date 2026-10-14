@@ -41,6 +41,13 @@ func open(id: int) -> void:
 	if session:
 		close(false)
 	var e := World.get_entity(id)
+	if e.is_empty():
+		# asked to open before the workpiece has arrived here: wait for it a moment
+		var t := 0.0
+		while not World.has_entity(id) and t < 2.0:
+			await get_tree().process_frame
+			t += get_process_delta_time()
+		e = World.get_entity(id)
 	if e.is_empty() or e["t"] != "work":
 		return
 	var gw = Game.game_world
@@ -100,7 +107,10 @@ func close(release: bool = true) -> void:
 
 func on_result(id: int, text: String, kind: String) -> void:
 	_show_result(text, kind)
-	if id == eid and session:
+	# a finished piece leaves the bench; a "not yet" (keep kneading, no ember yet)
+	# keeps you at the work.  (On a client the removal may arrive a moment later -
+	# the work-removed handler closes the view then.)
+	if id == eid and session and not World.has_entity(id):
 		close(false)
 
 

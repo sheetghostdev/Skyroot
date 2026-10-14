@@ -82,33 +82,47 @@ func _refresh(keys: Array) -> void:
 			p2.position = to + Vector3(0, 0.06, 0)
 			var tw := create_tween()
 			tw.tween_property(p2, "position", to, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		_update_body(n >= parts.size())
+		_update_body(n >= parts.size(), n)
 
 
-func _update_body(complete: bool) -> void:
+func _update_body(complete: bool, n: int) -> void:
+	## Every installed part is solid (a half-built deck holds you on the boards
+	## that are in); parts still to come are only an outline you can aim at.
 	var kind := String(bp.get("kind", ""))
-	if complete and body == null and kind != "ladder":
+	if body != null:
+		body.collision_layer = 0
+		body.queue_free()
+		body = null
+	if n > 0 and kind != "ladder":
 		body = StaticBody3D.new()
 		body.collision_layer = LAYER_STRUCT
 		body.collision_mask = 0
 		body.set_meta("eid", entity_id)
 		body.set_meta("part", "structure")
-		for p in parts:
-			var mi: MeshInstance3D = p
+		for i in mini(n, parts.size()):
+			var mi: MeshInstance3D = parts[i]
 			if mi.mesh == null:
 				continue
 			var cs := CollisionShape3D.new()
-			cs.shape = mi.mesh.create_trimesh_shape()
+			cs.shape = _part_shape(mi.mesh)
 			cs.transform = _rel(mi)
 			body.add_child(cs)
 		add_child(body)
-	elif not complete and body != null:
-		body.queue_free()
-		body = null
 	# the frame's aiming volume stays while building (and on ladders, which you climb through)
 	area.visible = true
 	for c in area.get_children():
 		(c as CollisionShape3D).disabled = complete and kind != "ladder"
+
+
+static var _shape_cache: Dictionary = {}
+
+
+func _part_shape(mesh: Mesh) -> Shape3D:
+	# the same part mesh is shared by every copy of a blueprint: build its shape once
+	var key := mesh.get_rid().get_id()
+	if not _shape_cache.has(key):
+		_shape_cache[key] = mesh.create_trimesh_shape()
+	return _shape_cache[key]
 
 
 func _rel(n: Node3D) -> Transform3D:

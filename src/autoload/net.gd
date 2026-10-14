@@ -7,7 +7,7 @@ extends Node
 ## host at ~20 Hz (unreliable).  Everything else - items, terrain, crafting
 ## workpieces, fires, buildings - is owned by the host (see World).
 
-const PROTOCOL := 3
+const PROTOCOL := 4
 const MAX_PLAYERS := 4
 const DEFAULT_PORT := 7777
 const COLORS := [Color("c98d3a"), Color("3f9a94"), Color("b3523c"), Color("7d9a52")]
@@ -18,6 +18,7 @@ signal session_ended(reason: String)
 signal roster_changed
 
 var players: Dictionary = {}   # peer id -> {"name": String, "color": int}
+var _tokens: Dictionary = {}   # host only: peer id -> that player's private token (never sent to anyone)
 var _joining := false
 var _reject_reason := ""
 
@@ -120,6 +121,7 @@ func close() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	players.clear()
 	poses.clear()
+	_tokens.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +135,7 @@ func _on_peer_connected(_pid: int) -> void:
 func _on_peer_disconnected(pid: int) -> void:
 	if not is_host():
 		return
+	_tokens.erase(pid)
 	if players.has(pid):
 		var pose: Dictionary = poses.get(pid, {})
 		World.on_player_left(pid, player_name(pid), pose.get("p", World.spawn_point(pid)), pose.get("y", 0.0))
@@ -146,8 +149,13 @@ func _on_peer_disconnected(pid: int) -> void:
 		_rpc_chat.rpc("", "%s left the island." % left_name)
 
 
+func my_token() -> String:
+	## Who this player is, privately: this install plus the name they play under.
+	return (Settings.client_token + "|" + Settings.player_name.strip_edges()).sha256_text()
+
+
 func _on_connected_to_server() -> void:
-	_rpc_hello.rpc_id(1, Settings.player_name, PROTOCOL)
+	_rpc_hello.rpc_id(1, Settings.player_name, PROTOCOL, my_token())
 
 
 func _on_connection_failed() -> void:
@@ -168,13 +176,22 @@ func _on_server_disconnected() -> void:
 # ---------------------------------------------------------------------------
 
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_hello(requested_name: String, protocol: int) -> void:
+func _rpc_hello(requested_name: String, protocol: int, token: String = "") -> void:
 	if not is_host():
 		return
 	var pid := multiplayer.get_remote_sender_id()
 	if protocol != PROTOCOL:
 		_kick(pid, "Version mismatch (host %d, you %d)." % [PROTOCOL, protocol])
 		return
+	# the same player coming back after a crash: their old connection is still
+	# hanging on - let it go now (saving their things) so they get them back
+	if token != "":
+		for old in _tokens.keys():
+			if old != pid and old != 1 and String(_tokens[old]) == token and players.has(old):
+				_on_peer_disconnected(int(old))
+				if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+					multiplayer.multiplayer_peer.disconnect_peer(int(old), true)
+	_tokens[pid] = token
 	if players.size() >= MAX_PLAYERS:
 		_kick(pid, "The island is full (4 players).")
 		return

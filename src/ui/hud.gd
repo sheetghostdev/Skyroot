@@ -406,7 +406,8 @@ func _refresh_vitals() -> void:
 		m.set_shader_parameter("amount", clampf((_hp_last - hp) * 6.0, 0.25, 0.9))
 	_hp_last = hp
 	if not bool(st.get("alive", true)) and lp() and lp().mode != "dead":
-		_show_death(String(st.get("death_cause", "")))
+		# (after a reload or rejoin we only know the cause, not the words)
+		_show_death(Survival._death_text(String(st.get("death_cause", ""))))
 	elif bool(st.get("alive", true)) and death_panel and death_panel.visible:
 		death_panel.visible = false
 		if lp():
@@ -504,8 +505,16 @@ func _send_chat(text: String) -> void:
 
 
 func _show_death(text: String) -> void:
+	# whatever you were doing ends here: step out of any close-up work and close panels
+	var cc := get_tree().get_first_node_in_group("crafting")
+	if cc and cc.has_method("is_open") and cc.is_open():
+		cc.close(true)
+	if panel:
+		close_panel()
 	var p := lp()
 	if p:
+		if p.has_method("wake") and p.mode == "sleep":
+			p.wake()
 		p.set_mode("dead")
 	if death_panel == null:
 		death_panel = VBoxContainer.new()

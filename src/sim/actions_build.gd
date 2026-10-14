@@ -135,6 +135,15 @@ static func _build_dismantle(pid: int, args: Dictionary, a: Actions) -> void:
 	var parts: Array = ItemDB.blueprint(String(d["bp"])).get("parts", [])
 	var n := int(d.get("installed", 0))
 	var was_complete := n >= parts.size()
+	if n > 0 and String(ItemDB.blueprint(String(d["bp"])).get("kind", "")) == "floor":
+		# nobody gets the floor pulled out from under them
+		var box := StructureSim.world_box(String(d["bp"]), e["xf"], float(d.get("sy", 1.0)))
+		for opid in Net.players:
+			var pp: Vector3 = a.player_pos(int(opid))
+			if pp.x > box.position.x - 0.15 and pp.x < box.end.x + 0.15 and pp.z > box.position.z - 0.15 and pp.z < box.end.z + 0.15 \
+					and pp.y > box.position.y - 0.4 and pp.y < box.end.y + 1.0:
+				World.notify(pid, "Step off it first." if int(opid) == pid else "%s is standing on it." % Net.player_name(int(opid)), "warn")
+				return
 	if n <= 0:
 		World.despawn(eid)
 		World.fx("pickup", e["xf"].origin)

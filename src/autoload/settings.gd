@@ -4,6 +4,7 @@ extends Node
 const PATH := "user://settings.cfg"
 
 var player_name := ""
+var client_token := ""          # private random id of this install (never shared with other players)
 var last_ip := "127.0.0.1"
 var port := 7777
 var mouse_sensitivity := 0.0024
@@ -109,11 +110,20 @@ func load_settings() -> void:
 	if cfg.load(PATH) != OK:
 		if player_name == "":
 			player_name = _default_name()
+		_ensure_token()
 		return
 	for key in _keys():
 		set(key, cfg.get_value("settings", key, get(key)))
 	if player_name.strip_edges() == "":
 		player_name = _default_name()
+	_ensure_token()
+
+
+func _ensure_token() -> void:
+	if client_token == "":
+		var c := Crypto.new()
+		client_token = c.generate_random_bytes(16).hex_encode()
+		save_settings()
 
 
 func save_settings() -> void:
@@ -126,7 +136,7 @@ func save_settings() -> void:
 func _keys() -> Array:
 	return ["player_name", "last_ip", "port", "mouse_sensitivity", "invert_y", "fov", "head_bob",
 		"master_volume", "sfx_volume", "ambience_volume", "shadows_quality", "render_scale",
-		"grass_density", "show_hints", "fullscreen", "vsync", "ssao"]
+		"grass_density", "show_hints", "fullscreen", "vsync", "ssao", "client_token"]
 
 
 func _default_name() -> String:

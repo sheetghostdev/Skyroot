@@ -123,6 +123,8 @@ static func die(pid: int, cause: String) -> void:
 
 
 static func _death_text(cause: String) -> String:
+	if cause.contains(" "):
+		return cause   # already words
 	match cause:
 		"abyss": return "You fell into the abyss. Everything you carried is gone."
 		"fall": return "You fell badly."

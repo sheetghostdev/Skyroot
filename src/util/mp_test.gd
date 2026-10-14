@@ -106,6 +106,12 @@ func _run() -> void:
 			await _crowd_host()
 		"crowd":
 			await _crowd()
+		"crash_host":
+			await _crash_host()
+		"crash_a":
+			await _crash_a()
+		"crash_b":
+			await _crash_b()
 	_finish()
 
 
@@ -291,6 +297,9 @@ func _client() -> void:
 		return false, 10.0)
 	var work: Dictionary = found[0] if not found.is_empty() else {}
 	check(not work.is_empty(), "my pottery workpiece appeared")
+	var cc := get_tree().get_first_node_in_group("crafting")
+	await _wait(func(): return cc != null and cc.is_open(), 5.0)
+	check(cc != null and cc.is_open(), "and its close-up opened by itself")
 	if not work.is_empty():
 		var wid := int(work["id"])
 		for i in 8:
@@ -395,3 +404,47 @@ func _fifth() -> void:
 	Net.join_failed.connect(func(r): reason.append(r))
 	await _wait(func(): return not reason.is_empty(), 30.0)
 	check(not reason.is_empty() and String(reason[0]).contains("full"), "the fifth player is told the island is full (%s)" % (reason[0] if not reason.is_empty() else "no answer"))
+
+
+# ---------------------------------------------------------------------------
+# A client's game crashes and they come straight back (tools/mp_crash.sh)
+# ---------------------------------------------------------------------------
+
+func _crash_host() -> void:
+	var joined := await _wait(func(): return _client_pid("Ana") != -1, 60.0)
+	check(joined, "Ana joined")
+	var cpid := _client_pid("Ana")
+	await _wait_msg("READY", 30.0)
+	World.inventory_of(cpid).add("stone", 3)
+	World.mark_inventory(cpid)
+	_say("GIFT")
+	await _wait_msg("GOT", 30.0)
+	var back := await _wait_msg("BACK", 60.0)
+	var parts := back.split(" ")
+	check(parts.size() >= 2 and parts[0] == "Ana" and parts[parts.size() - 1] == "3", "after a crash Ana comes back as Ana with her 3 stones (%s)" % back)
+	check(not Net.players.has(cpid), "her crashed connection was let go at once")
+	var anas := 0
+	for pid in Net.players:
+		if Net.player_name(pid).begins_with("Ana"):
+			anas += 1
+	check(anas == 1, "and there is only one of her on the island")
+	_say("DONE")
+	await _frames(30)
+	World.delete_save(World.world_name)
+
+
+func _crash_a() -> void:
+	await _frames(20)
+	_say("READY")
+	await _wait_msg("GIFT", 30.0)
+	await _wait(func(): return World.my_inventory.count("stone") >= 3, 10.0)
+	_say("GOT")
+	_log("holding %d stones, waiting to be killed" % World.my_inventory.count("stone"))
+	await get_tree().create_timer(300.0).timeout
+
+
+func _crash_b() -> void:
+	await _frames(30)
+	_say("BACK %s %d" % [Net.player_name(Net.my_id()), World.my_inventory.count("stone")])
+	var done := await _wait_msg("DONE", 90.0)
+	check(done != "", "the host is satisfied")

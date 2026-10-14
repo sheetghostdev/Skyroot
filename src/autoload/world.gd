@@ -510,7 +510,16 @@ func _play_fx(kind: String, pos: Vector3, params: Dictionary) -> void:
 
 func open_craft(pid: int, eid: int) -> void:
 	if Net.is_online():
+		# the workpiece must exist on their side before its close-up opens
+		_send_ops_now()
 		_rpc_open_craft.rpc_id(pid, eid)
+
+
+func _send_ops_now() -> void:
+	if _ops.size() > 0:
+		if Net.is_online() and Net.client_count() > 0:
+			_rpc_ops.rpc(_ops)
+		_ops = []
 
 
 @rpc("authority", "call_remote", "reliable")
