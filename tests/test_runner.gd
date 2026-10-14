@@ -1689,13 +1689,24 @@ func suite_longrun() -> void:
 	var sim = Game.game_world.sim
 	for day in 10:
 		for hour in 24:
+			var Lh := ledger()
+			var Ph := ledger_parts()
 			for half in 2:
 				World.env["t"] = float(World.env["t"]) + 0.5
 				var t0 := Time.get_ticks_usec()
 				sim._tick(0.5, 0.5)
 				tick_us += Time.get_ticks_usec() - t0
 				ticks += 1
+			var Lm := ledger()
+			if absf(float(Lm["nutr"]) - float(Lh["nutr"])) > 0.00005 or absf(float(Lm["carbon"]) - float(Lh["carbon"])) > 0.0005:
+				print("     !! day %d hour %d: the island's tick moved nutr %+.5f carbon %+.4f" % [day + 1, hour, float(Lm["nutr"]) - float(Lh["nutr"]), float(Lm["carbon"]) - float(Lh["carbon"])])
+				print_parts_diff(Ph, ledger_parts())
+			var Pm := ledger_parts()
 			forage_step()
+			var Lf := ledger()
+			if absf(float(Lf["nutr"]) - float(Lm["nutr"])) > 0.00005 or absf(float(Lf["carbon"]) - float(Lm["carbon"])) > 0.0005:
+				print("     !! day %d hour %d: foraging moved nutr %+.5f carbon %+.4f" % [day + 1, hour, float(Lf["nutr"]) - float(Lm["nutr"]), float(Lf["carbon"]) - float(Lm["carbon"])])
+				print_parts_diff(Pm, ledger_parts())
 			if hour % 4 == 0:
 				await get_tree().physics_frame
 		var items := World.entities_of("item").size()

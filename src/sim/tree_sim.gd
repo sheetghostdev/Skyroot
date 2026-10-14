@@ -172,10 +172,10 @@ static func tick(d: Dictionary, hours: float, light: float, pos: Vector3, terrai
 	water_need = grow * WATER_PER_KG
 	nutr_need = grow * NUTR_PER_KG
 	if grow > 0.0:
-		draw_from_cells(terrain, cells, water_need, nutr_need)
+		var got := draw_from_cells(terrain, cells, water_need, nutr_need)
 		pools["atmo_carbon_kg"] = float(pools["atmo_carbon_kg"]) - grow
-		pools["atmo_water_l"] = float(pools.get("atmo_water_l", 0.0)) + water_need
-		pools["tree_nutr"] = float(pools.get("tree_nutr", 0.0)) + nutr_need
+		pools["atmo_water_l"] = float(pools.get("atmo_water_l", 0.0)) + got.x
+		pools["tree_nutr"] = float(pools.get("tree_nutr", 0.0)) + got.y
 		d["store"] = float(d.get("store", 0.0)) + grow
 	var store := float(d.get("store", 0.0))
 	if bool(d.get("felled", false)):
@@ -239,20 +239,47 @@ static func _shed(d: Dictionary, pools: Dictionary, out: Dictionary, id: String)
 	out["drops"].append([id, 1])
 
 
-static func draw_from_cells(terrain: TerrainData, cells: PackedInt32Array, water_l: float, nutr: float) -> void:
+static func draw_from_cells(terrain: TerrainData, cells: PackedInt32Array, water_l: float, nutr: float) -> Vector2:
+	## Take water (litres) and nutrients from these soil cells, as evenly as they
+	## allow (cells that run short leave their share to the others).  Returns
+	## what was actually taken, so callers never count more than the soil gave.
 	var cap_l := TerrainData.FIELD_CAPACITY * TerrainData.CELL_AREA * 1000.0
-	var per_cell_w := water_l / cells.size()
-	var carry := 0.0
-	for k in cells:
-		var avail := maxf(0.0, terrain.moist[k] - 0.05) * cap_l
-		var want := per_cell_w + carry
-		var take := minf(avail, want)
-		carry = want - take
-		terrain.moist[k] -= take / cap_l
-	var per_cell_n := nutr / cells.size()
-	var carry_n := 0.0
-	for k in cells:
-		var want := per_cell_n + carry_n
-		var take := minf(terrain.nutr[k], want)
-		carry_n = want - take
-		terrain.nutr[k] -= take
+	var got_w := 0.0
+	var want_w := water_l
+	for _pass in 4:
+		if want_w <= 1e-9:
+			break
+		var open := 0
+		for k in cells:
+			if terrain.moist[k] > 0.05 + 1e-7:
+				open += 1
+		if open == 0:
+			break
+		var share := want_w / open
+		for k in cells:
+			var avail := maxf(0.0, terrain.moist[k] - 0.05) * cap_l
+			var take := minf(avail, share)
+			if take > 0.0:
+				terrain.moist[k] -= take / cap_l
+				got_w += take
+				want_w -= take
+	var got_n := 0.0
+	var want_n := nutr
+	for _pass in 4:
+		if want_n <= 1e-12:
+			break
+		var open_n := 0
+		for k in cells:
+			if terrain.nutr[k] > 1e-9:
+				open_n += 1
+		if open_n == 0:
+			break
+		var share_n := want_n / open_n
+		for k in cells:
+			var take_n := minf(terrain.nutr[k], share_n)
+			if take_n > 0.0:
+				terrain.nutr[k] -= take_n
+				got_n += take_n
+				want_n -= take_n
+	return Vector2(got_w, got_n)
+

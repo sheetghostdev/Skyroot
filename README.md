@@ -83,6 +83,8 @@ what you hold right now.
 
 ## Tests
 
+`tools/run_tests.sh` runs everything below and prints a summary.
+
 Headless suites (each prints `ok` / `FAIL` lines and a summary; exit code 0 = pass):
 
 ```

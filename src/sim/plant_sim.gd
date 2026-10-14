@@ -90,11 +90,11 @@ static func _crop(e: Dictionary, hours: float, light: float, temp_f: float) -> v
 		if dg > 0.0 and db > 0.0:
 			dn = dg * nutr_total
 			var dw := db * CROP_WATER_L_PER_KG
-			TreeSim.draw_from_cells(World.terrain, cells, dw, dn)
+			var got := TreeSim.draw_from_cells(World.terrain, cells, dw, dn)
 			World.pools["atmo_carbon_kg"] = float(World.pools["atmo_carbon_kg"]) - db
-			World.pools["atmo_water_l"] = float(World.pools.get("atmo_water_l", 0.0)) + dw
+			World.pools["atmo_water_l"] = float(World.pools.get("atmo_water_l", 0.0)) + got.x
 			d["g"] = g + dg
-			d["nutr"] = float(d.get("nutr", 0.0)) + dn
+			d["nutr"] = float(d.get("nutr", 0.0)) + got.y
 			d["bio"] = float(d.get("bio", 0.0)) + db
 			# vigour remembers stress (affects yield)
 			d["vig"] = lerpf(float(d.get("vig", 1.0)), water_f * (0.4 + 0.6 * nutr_f), clampf(hours * 0.1, 0.0, 1.0))
@@ -127,7 +127,14 @@ static func _bush(e: Dictionary, hours: float, light: float, temp_f: float) -> v
 		soil_w += maxf(0.0, World.terrain.moist[k] - 0.06) * cl
 	if water > soil_w * 0.3:
 		return
-	TreeSim.draw_from_cells(World.terrain, cells, water, nutr)
+	var got := TreeSim.draw_from_cells(World.terrain, cells, water, nutr)
+	if got.y < nutr - 1e-9 or got.x < water - 1e-7:
+		# the soil couldn't spare it after all: give it back and wait
+		WaterActions.soak(e["xf"].origin, got.x, 0.8)
+		var back := _cells(e["xf"].origin, 0.8)
+		for k in back:
+			World.terrain.nutr[k] += got.y / maxf(1.0, back.size())
+		return
 	World.pools["atmo_carbon_kg"] = float(World.pools["atmo_carbon_kg"]) - kg
 	World.pools["plant_water_l"] = float(World.pools.get("plant_water_l", 0.0)) + water
 	d["berries"] = b + db
@@ -161,7 +168,11 @@ static func _mushrooms(e: Dictionary, hours: float) -> void:
 		if from_soil > 0.0:
 			if _avail_nutr(cells) < from_soil * 4.0:
 				break
-			TreeSim.draw_from_cells(World.terrain, cells, 0.0, from_soil)
+			var got := TreeSim.draw_from_cells(World.terrain, cells, 0.0, from_soil)
+			if got.y < from_soil - 1e-9:
+				for k in cells:
+					World.terrain.nutr[k] += got.y / maxf(1.0, cells.size())
+				break
 		nu -= from_wood
 		sub -= kg
 		caps[i] = c + dc
