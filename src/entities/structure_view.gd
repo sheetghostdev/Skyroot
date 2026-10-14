@@ -104,8 +104,17 @@ func _update_body(complete: bool, n: int) -> void:
 			if mi.mesh == null:
 				continue
 			var cs := CollisionShape3D.new()
-			cs.shape = _part_shape(mi.mesh)
-			cs.transform = _rel(mi)
+			if kind == "floor":
+				# deck boards are solid edge to edge: nothing set down drops
+				# through the gaps between them
+				var bb := mi.mesh.get_aabb()
+				var bs := BoxShape3D.new()
+				bs.size = bb.size + Vector3(0.07, 0.0, 0.07)
+				cs.shape = bs
+				cs.transform = _rel(mi) * Transform3D(Basis(), bb.get_center())
+			else:
+				cs.shape = _part_shape(mi.mesh)
+				cs.transform = _rel(mi)
 			body.add_child(cs)
 		add_child(body)
 	# the frame's aiming volume stays while building (and on ladders, which you climb through)

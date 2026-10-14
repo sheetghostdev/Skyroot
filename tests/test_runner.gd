@@ -1,7 +1,8 @@
 extends Node
 ## Automated gameplay tests.  Runs a real (solo-hosted) island and drives it
 ## through the same requests a player's clicks produce.
-##   godot --headless --path . res://tests/test_main.tscn -- --suite=all|craft|economy|survival|save
+##   godot --headless --path . res://tests/test_main.tscn -- --suite=all|craft|survival|farm|fire|build|save|longrun
+##   (or several, comma-separated: --suite=farm,fire)
 
 var failures := 0
 var passes := 0
@@ -19,7 +20,8 @@ func _ready() -> void:
 		return
 	await frames(10)
 	lp = Game.game_world.local_player()
-	var suites := ["craft", "survival", "farm", "fire", "build", "save", "longrun"] if suite == "all" else [suite]
+	var suites: Array = ["craft", "survival", "farm", "fire", "build", "save", "longrun"] if suite == "all" else Array(suite.split(","))
+	Events.toast.connect(func(t, k): print("     [toast] ", t))
 	for s in suites:
 		if has_method("suite_" + s):
 			print("\n=== SUITE ", s, " ===")
@@ -28,6 +30,7 @@ func _ready() -> void:
 			World.env["rain"] = 0.0
 			World.env["rain_target"] = 0.0
 			World.env["cloud"] = 0.2
+			await unload()
 			await call("suite_" + s)
 	print("\nRESULT: %d passed, %d failed" % [passes, failures])
 	for l in _log:
@@ -59,6 +62,26 @@ func inv() -> Inventory:
 
 
 var injected := Ledger.empty()
+
+
+func unload() -> void:
+	## Test-only: set aside everything carried (in a stash out of the way, still
+	## on the books) so each suite starts with free hands and a light pack.
+	var items: Array = []
+	for sl in inv().slots:
+		if not sl.is_empty():
+			items.append(sl.duplicate(true))
+	if items.is_empty():
+		return
+	inv().clear()
+	World.mark_inventory(Net.my_id())
+	World.spawn("satchel", Transform3D(Basis(), Vector3(0, -40, 0)), {"items": items, "owner": "(test stash)"})
+	await frames(2)
+
+
+func dropped_satchels() -> Array:
+	## Satchels left by a death (not the test's own stash).
+	return World.entities_of("satchel").filter(func(e): return String(e["d"].get("owner", "")) != "(test stash)")
 
 
 func give(id: String, n: int = 1, d: Dictionary = {}) -> void:
@@ -110,7 +133,7 @@ func ledger() -> Dictionary:
 
 func ledger_same(a: Dictionary, b: Dictionary, label: String, tol: Dictionary = {}) -> void:
 	for k in Ledger.KEYS:
-		var t := float(tol.get(k, 0.0005 if k != "water" else 0.01))
+		var t := float(tol.get(k, (0.00002 if k == "nutr" else 0.0001) if k != "water" else 0.01))
 		var diff := absf(float(a[k]) - float(b[k]))
 		check(diff <= t, "%s: %s conserved (%.5f -> %.5f, diff %.6f)" % [label, k, a[k], b[k], diff])
 
@@ -266,10 +289,12 @@ func test_outcrop() -> void:
 
 
 func _work() -> Dictionary:
+	## My newest work in progress (older ones may lie about from earlier tests).
+	var best := {}
 	for e in World.entities.values():
-		if e["t"] == "work" and int(e["d"].get("by", 0)) == Net.my_id():
-			return e
-	return {}
+		if e["t"] == "work" and int(e["d"].get("by", 0)) == Net.my_id() and (best.is_empty() or int(e["id"]) > int(best["id"])):
+			best = e
+	return best
 
 
 func auto_knap(target: String) -> Dictionary:
@@ -511,6 +536,13 @@ func site_near(p: Vector3) -> Dictionary:
 	return World.get_entity(sid) if sid != -1 else {}
 
 
+func _count_near(p: Vector3, id: String, r: float) -> int:
+	var n := 0
+	for e in items_near(p, id, r):
+		n += int(e["d"].get("n", 1))
+	return n
+
+
 func items_near(p: Vector3, id: String, r: float = 0.8) -> Array:
 	var out: Array = []
 	for e in World.entities_near(p, r, "item"):
@@ -660,6 +692,27 @@ func test_campfire() -> void:
 	await run_fire(0.1)
 	var s2 := site_near(c2)
 	check(not s2.is_empty() and bool(s2["d"].get("lit", false)), "the burning stick lit a second fire")
+	# lay the burning stick in the new fire for a while, then take it back out
+	var hp0 := float(World.stats[Net.my_id()]["health"])
+	req("place", {"slot": slot_of("torch"), "xf": Transform3D(Basis(), c2 + Vector3(0.12, 0.03, 0.0))})
+	await frames(2)
+	var tid := -1
+	for e in items_near(c2, "torch"):
+		tid = int(e["id"])
+	check(tid != -1, "the burning stick lies in the second fire")
+	if tid != -1:
+		await run_fire(0.08)
+		var Lt := ledger()
+		req("pickup", {"eid": tid})
+		await frames(2)
+		var ts: Dictionary = inv().slots[slot_of("torch")] if slot_of("torch") != -1 else {}
+		check(not ts.is_empty() and not ts["d"].has("fm") and float(ts["d"].get("mass", 1.0)) < ItemDB.unit_mass("stick"),
+			"taken back out, it burns on in the hand with what the fire left of it")
+		check(float(World.stats[Net.my_id()]["health"]) >= hp0, "a burning stick is picked up by its cold end")
+		for i in 160:
+			FireSim._torches(60.0)
+		check(slot_of("torch") == -1, "...until it burns out")
+		ledger_same(Lt, ledger(), "a burning stick carried after a spell in the fire")
 	# let everything burn out
 	await run_fire(5.0)
 	site = World.get_entity(sid)
@@ -847,6 +900,7 @@ func test_charcoal_mound() -> void:
 
 func test_fire_drill() -> void:
 	print("-- the fire drill: carve a hearth board, spin for an ember, tip it into tinder")
+	await unload()   # (the earlier fires leave a heavy pack: the drill set must fit back in it)
 	var c := ground(Vector2(-1.3, 0.2))
 	await stand_near(c, Vector3(0, 0, 0.9))
 	give("blade", 1, {"seed": 7, "cuts": [], "q": 0.7, "stone_kg": 0.3, "dur": 1.0})
@@ -956,7 +1010,6 @@ func edge_spot() -> Dictionary:
 
 
 func suite_build() -> void:
-	Events.toast.connect(func(t, k): print("     [toast] ", t))
 	var L0 := ledger()
 	var spot := edge_spot()
 	var c: Vector2 = spot["c"]
@@ -1018,15 +1071,29 @@ func suite_build() -> void:
 		req("bed_set", {"eid": m_id})
 		await frames(2)
 		check(int(World.stats[Net.my_id()].get("bed", -1)) == m_id, "sleeping on the mat makes it home")
-	# take the far platform apart: every part comes back
-	var have_boards := inv().count("board")
+	# take the far platform apart: every part comes back (what's too heavy to
+	# carry is set down at your feet)
+	var carried0 := inv().count("board")
+	var near0 := _count_near(lp.global_position, "board", 1.5)
 	var guard := 0
 	while World.has_entity(c_id) and guard < 20:
 		req("build_dismantle", {"eid": c_id})
 		await frames(1)
 		guard += 1
+	await frames(3)
+	var carried := inv().count("board") - carried0
+	var set_down := _count_near(lp.global_position, "board", 1.5) - near0
 	check(not World.has_entity(c_id), "the far platform came apart")
-	check(inv().count("board") == have_boards + 6, "its six boards came back")
+	check(carried + set_down == 6, "its six boards came back (%d in the pack, %d set down at my feet)" % [carried, set_down])
+	check(inv().carried_kg() <= Actions.CARRY_KG + 0.001, "and nobody carries more than they can (%.1f kg)" % inv().carried_kg())
+	# things left lying on the decks come down with them
+	var on_a := place("stone", 1, {}, origin + Vector3(0.3, 0.3, 0.2))
+	# (dropped right on the line between two boards)
+	var on_b := place("stone", 1, {}, b_xf.origin + out * 0.6 + Vector3(0, 0.3, 0))
+	await frames(2)
+	var a_rest: Vector3 = World.get_entity(on_a)["xf"].origin if on_a != -1 else Vector3.ZERO
+	check(on_a != -1 and a_rest.y > World.terrain.height(a_rest.x, a_rest.z) + 0.08, "a stone set down on the deck lies on its boards")
+	check(on_b != -1 and absf(World.get_entity(on_b)["xf"].origin.y - b_xf.origin.y) < 0.1, "a stone dropped between two boards doesn't fall through the gap")
 	# now pull the grounded platform out from under the other one
 	await stand_near(origin - out * 2.6, Vector3.ZERO)
 	var lost0 := float(World.pools.get("lost_carbon", 0.0))
@@ -1051,7 +1118,15 @@ func suite_build() -> void:
 		var p: Vector3 = e["xf"].origin
 		if World.terrain.is_inside(p.x, p.z) and p.y > World.terrain.height(p.x, p.z) + 0.4:
 			floating += 1
+			print("     (left hanging: %s at %s, %.2f m above the ground)" % [String(e["d"]["i"]), p, p.y - World.terrain.height(p.x, p.z)])
 	check(floating == 0, "nothing is left hanging in mid-air (%d)" % floating)
+	if on_a != -1 and World.has_entity(on_a):
+		var pa: Vector3 = World.get_entity(on_a)["xf"].origin
+		var above := pa.y - World.terrain.height(pa.x, pa.z)
+		check(above < 0.15, "the stone on the deck came down to the ground when the deck was taken apart (%.2f m up)" % above)
+	else:
+		check(false, "the stone on the grounded deck is still on the island")
+	check(on_b != -1 and not World.has_entity(on_b), "the stone on the outer deck went over the edge with it")
 	await frames(3)
 	var L1 := ledger()
 	ledger_same(L0, L1, "construction")
@@ -1258,7 +1333,7 @@ func suite_survival() -> void:
 	var where := lp.global_position
 	Survival.damage(Net.my_id(), 2.0, "burn")
 	await frames(2)
-	var satchels := World.entities_of("satchel")
+	var satchels := dropped_satchels()
 	check(satchels.size() == 1, "a satchel of belongings lies where you fell")
 	req("respawn", {})
 	await frames(3)
@@ -1268,7 +1343,7 @@ func suite_survival() -> void:
 		req("satchel_take", {"eid": int(sat["id"])})
 		await frames(2)
 		check(inv().count("cordage") == 2 and inv().count("stone") == 1, "and you can get it all back")
-		check(World.entities_of("satchel").is_empty(), "the empty satchel is gone")
+		check(dropped_satchels().is_empty(), "the empty satchel is gone")
 	await test_vessel_and_drying()
 	var L1 := ledger()
 	ledger_same(L0, L1, "survival", {"water": 0.05})
@@ -1293,11 +1368,14 @@ func test_vessel_and_drying() -> void:
 	lp.global_position = ground(Vector2(pc.x, pc.y) + Vector2(TerrainData.POND_RADII.x + 0.5, 0.0)) + Vector3(0, 0.1, 0)
 	lp.velocity = Vector3.ZERO
 	await frames(3)
+	# (the island's clock is held for a moment so the pond doesn't also evaporate meanwhile)
+	Game.game_world.sim.set_process(false)
 	var pond0 := float(World.env["pond_l"])
 	req("fill_vessel", {"slot": _vessel_slot()})
 	await frames(2)
 	var w := float(inv().get_slot(_vessel_slot())["d"].get("water", 0.0))
 	check(w > 0.05 and absf((pond0 - float(World.env["pond_l"])) - w) < 1e-4, "the pot holds %.2f L, taken from the pond" % w)
+	Game.game_world.sim.set_process(true)
 	check(World.discoveries.has("first_water_vessel"), "the first water vessel is in the journal")
 	me()["thirst"] = 0.5
 	req("drink_vessel", {"slot": _vessel_slot()})
@@ -1374,6 +1452,39 @@ func sim_hours(hours: float, step: float = 0.25, feed: bool = true) -> void:
 			await get_tree().physics_frame
 
 
+func test_tree_seed() -> void:
+	print("-- planting a tree seed")
+	var spot := Vector3.INF
+	var best := -1.0
+	for ix in range(-10, 11):
+		for iz in range(-10, 11):
+			var x := ix * 0.5
+			var z := iz * 0.5
+			if not World.terrain.is_inside(x, z) or World.terrain.layer_at(x, z) != "soil":
+				continue
+			var p := ground(Vector2(x, z))
+			if World.terrain.soil[World.actions.cell_index_at(p)] < 0.1:
+				continue
+			var near := 99.0
+			for e in World.entities.values():
+				if String(e["t"]) != "item":
+					near = minf(near, Vector2(e["xf"].origin.x - x, e["xf"].origin.z - z).length())
+			if near > 2.7 and near > best:
+				best = near
+				spot = p
+	check(spot != Vector3.INF, "found room for a young tree")
+	if spot == Vector3.INF:
+		return
+	await stand_near(spot, Vector3(0, 0, 0.9))
+	give("seed_tree", 1)
+	var L0 := ledger()
+	var trees0 := World.entities_of("tree").size()
+	req("plant", {"pos": spot, "slot": slot_of("seed_tree")})
+	await frames(2)
+	check(World.entities_of("tree").size() == trees0 + 1, "a tree seed planted in open soil becomes a seedling")
+	ledger_same(L0, ledger(), "planting a tree", {"nutr": 0.00002})
+
+
 func test_grass_cutting() -> void:
 	print("-- cutting grass")
 	var spot := clear_soil_spot()
@@ -1392,6 +1503,7 @@ func test_grass_cutting() -> void:
 
 func suite_farm() -> void:
 	await test_grass_cutting()
+	await test_tree_seed()
 	var L0 := ledger()
 	await test_compost()
 	var L1 := ledger()

@@ -26,6 +26,8 @@ static func plant(a: Actions, pid: int, args: Dictionary) -> void:
 	a.take_held(pid, args, 1)
 	var y := World.terrain.height(pos.x, pos.z)
 	if sp == "tree":
+		# the seed's minerals join the tree's own
+		World.pools["tree_nutr"] = float(World.pools.get("tree_nutr", 0.0)) + ItemDB.nutrients(id)
 		var d := TreeSim.seedling_state()
 		World.spawn("tree", Transform3D(Basis(Vector3.UP, randf() * TAU), Vector3(pos.x, y, pos.z)), d)
 		World.hint_to(pid, "tree_planted")

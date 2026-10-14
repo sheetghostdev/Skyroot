@@ -14,6 +14,7 @@ var _pool2d: Array[AudioStreamPlayer] = []
 var _i3 := 0
 var _i2 := 0
 var _amb: Dictionary = {}         # name -> AudioStreamPlayer
+var _shut := false               # quitting: nothing new starts (or the mixer can't let go of it in time)
 var _last_play: Dictionary = {}   # name -> msec, to avoid machine-gun repeats
 
 
@@ -112,7 +113,7 @@ func get_stream(sound: String, loop: bool = false) -> AudioStream:
 
 
 func play(sound: String, pos: Variant = null, vol_db: float = 0.0, pitch: float = 1.0, pitch_jitter: float = 0.06) -> void:
-	if not has(sound):
+	if _shut or not has(sound):
 		return
 	var now := Time.get_ticks_msec()
 	if now - int(_last_play.get(sound, -1000)) < 35:
@@ -145,7 +146,7 @@ func ui(sound: String, vol_db: float = -4.0) -> void:
 
 func set_ambient(sound: String, volume: float, fade: float = 2.0) -> void:
 	## Crossfading 2D ambience loop. volume 0..1 (0 stops it).
-	if not has(sound):
+	if _shut or not has(sound):
 		return
 	var p: AudioStreamPlayer = _amb.get(sound)
 	if p == null:
@@ -165,7 +166,9 @@ func set_ambient(sound: String, volume: float, fade: float = 2.0) -> void:
 
 
 func shutdown() -> void:
-	## Silence everything so no playback is left mid-mix when the engine stops.
+	## Silence everything so no playback is left mid-mix when the engine stops
+	## (the mixer needs a moment after this to let go of what was playing).
+	_shut = true
 	for n in get_tree().root.find_children("*", "AudioStreamPlayer3D", true, false):
 		n.stop()
 	for n2 in get_tree().root.find_children("*", "AudioStreamPlayer", true, false):
@@ -212,7 +215,7 @@ func make_loop_player(sound: String, parent: Node3D, vol_db: float = 0.0, max_di
 	## A positional looping player (fires, mounds, drill...) owned by `parent`.
 	var p := AudioStreamPlayer3D.new()
 	p.bus = "SFX"
-	p.stream = get_stream(sound, true)
+	p.stream = get_stream(sound, true) if not _shut else null
 	p.volume_db = vol_db
 	p.max_distance = max_dist
 	p.unit_size = 3.0

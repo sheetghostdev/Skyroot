@@ -31,8 +31,15 @@ func _process(delta: float) -> void:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(path)
 		print("SHOT_SAVED ", path)
-		get_tree().quit()
 		path = ""
+		_quit()
+
+
+func _quit() -> void:
+	## Let the sound go quietly (the mixer needs a moment to let go), then leave.
+	Sfx.shutdown()
+	await get_tree().create_timer(0.3).timeout
+	get_tree().quit()
 
 
 func _setup() -> void:
@@ -229,7 +236,7 @@ func _perf(secs: float) -> void:
 		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 	print("PERF frames %d  frame %.2f ms (worst %.1f)  process %.2f ms  physics %.2f ms  draw calls %.0f  primitives %.0f  nodes %d  entities %d" % [
 		n, t_frame / n, worst, t_proc / n, t_phys / n, calls / n, prims / n, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), World.entities.size()])
-	get_tree().quit()
+	_quit()
 
 
 func _smoke() -> void:
@@ -272,7 +279,7 @@ func _smoke() -> void:
 	lp.set_third_person(false)
 	await _frames(30)
 	print("SMOKE_DONE")
-	get_tree().quit()
+	_quit()
 
 
 func _structure(bp: String, xf: Transform3D, fraction: float = 1.0) -> int:

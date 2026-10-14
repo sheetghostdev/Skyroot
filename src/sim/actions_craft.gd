@@ -7,7 +7,7 @@ extends RefCounted
 ## chip or the same pot rise.
 
 const KINDS := ["knap", "clay_prep", "pottery", "cordage", "haft", "fire_drill"]
-const OP_RATE := 40  # max ops per second accepted per workpiece
+const OP_RATE := 40  # most operations a second accepted from one crafter
 
 
 static func register(a: Actions) -> void:
@@ -160,10 +160,25 @@ static func _owner_ok(pid: int, eid: int) -> Dictionary:
 # Operations
 # ---------------------------------------------------------------------------
 
+static var _op_budget: Dictionary = {}   # pid -> [ops it may still send, msec]
+
+
+static func _rate_ok(pid: int) -> bool:
+	## A visitor can't flood a workpiece with operations: OP_RATE a second, in
+	## bursts of up to as many (the close-ups send 7-25 a second).
+	if pid == Net.my_id():
+		return true
+	var now := Time.get_ticks_msec()
+	var b: Array = _op_budget.get(pid, [float(OP_RATE), now])
+	var left := minf(float(OP_RATE), float(b[0]) + (now - int(b[1])) * 0.001 * OP_RATE)
+	_op_budget[pid] = [maxf(0.0, left - 1.0), now]
+	return left >= 1.0
+
+
 static func _work_op(pid: int, args: Dictionary, a: Actions) -> void:
 	var eid := int(args.get("eid", -1))
 	var e := _owner_ok(pid, eid)
-	if e.is_empty():
+	if e.is_empty() or not _rate_ok(pid):
 		return
 	var op: Array = args.get("op", [])
 	if op.is_empty():
@@ -283,10 +298,8 @@ static func _pot_op(a: Actions, pid: int, e: Dictionary, op: Array, args: Dictio
 		if inv.count("clay_prepared") < 1:
 			World.notify(pid, "You have no prepared clay to add.")
 			return
-		var i := inv.find("clay_prepared")
-		var s := inv.get_slot(i)
+		var s := inv.take_from(inv.find("clay_prepared"), 1)
 		var lm := float(s["d"].get("moist", ItemDB.default_moist("clay_prepared")))
-		inv.remove("clay_prepared", 1)
 		World.mark_inventory(pid)
 		# mix moisture by volume
 		var v0 := float(pot["vol"])

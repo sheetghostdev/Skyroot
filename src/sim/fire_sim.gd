@@ -355,7 +355,7 @@ static func _init_fuel(md: Dictionary) -> void:
 	elif iid == "torch":
 		x["fm"] = float(x.get("mass", ItemDB.unit_mass("stick")))
 		x["ch"] = 0.0
-		x["nu"] = ItemDB.nutrients("stick")
+		x["nu"] = float(x.get("nu", ItemDB.nutrients("stick")))
 	else:
 		x["fm"] = n * ItemDB.unit_mass(iid)
 		x["ch"] = 0.0
@@ -919,9 +919,16 @@ static func _leach(e: Dictionary, dt: float, rain: float) -> void:
 	for k in cells:
 		World.terrain.nutr[k] += an * f / cells.size()
 	World.pools["soil_mineral_kg"] = float(World.pools.get("soil_mineral_kg", 0.0)) + ac * f
-	d["ash_n"] = an * (1.0 - f)
-	d["ash_c"] = ac * (1.0 - f)
-	if an * (1.0 - f) < 0.0005 and ac * (1.0 - f) < 0.002:
+	var na := an * (1.0 - f)
+	var nc := ac * (1.0 - f)
+	# everyone sees the bed thin out (in steps: a quarter of a handful of ash each)
+	var step := ItemDB.nutrients("ash") * 0.25
+	if int(na / step) != int(an / step):
+		World.update(int(e["id"]), {"ash_n": na, "ash_c": nc})
+	else:
+		d["ash_n"] = na
+		d["ash_c"] = nc
+	if na < 0.0005 and nc < 0.002:
 		_maybe_remove(e)
 
 
@@ -966,7 +973,7 @@ static func _torches(dt: float) -> void:
 				World.pools["atmo_carbon_kg"] = float(World.pools.get("atmo_carbon_kg", 0.0)) + mass
 				var p: Vector3 = World.actions.player_pos(pid) if World.actions else Vector3.ZERO
 				var cells := World.terrain.cells_in_radius(Vector2(p.x, p.z), 0.5)
-				var nu := ItemDB.nutrients("stick")
+				var nu := float(x.get("nu", ItemDB.nutrients("stick")))
 				if cells.size() > 0:
 					for k in cells:
 						World.terrain.nutr[k] += nu / cells.size()

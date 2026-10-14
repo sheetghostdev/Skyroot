@@ -150,8 +150,10 @@ static func _build_dismantle(pid: int, args: Dictionary, a: Actions) -> void:
 		return
 	var used: Array = d.get("used", []).duplicate()
 	var id := String(used.pop_back()) if used.size() >= n else String(parts[n - 1]).get_slice("|", 0)
-	a.give(pid, id, 1, {}, e["xf"].origin)
+	# (a part too many to carry is set down at your feet, not dropped off the edge)
+	a.give(pid, id, 1)
 	World.update(eid, {"installed": n - 1, "used": used})
+	StructureSim.resettle_later(StructureSim.world_box(String(d["bp"]), e["xf"], float(d.get("sy", 1.0))))
 	World.fx("build", e["xf"].origin + Vector3(0, 0.3, 0), {"amount": 3})
 	a.exert(pid, 0.01)
 	if was_complete:

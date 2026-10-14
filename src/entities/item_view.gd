@@ -4,10 +4,26 @@ extends EntityView
 var model: Node3D
 var body: CollisionObject3D
 var _key := ""
+var _fall: Tween
 
 
 func _build() -> void:
 	_rebuild()
+
+
+func on_changed(ent: Dictionary, keys: Array) -> void:
+	var was := transform.origin
+	super.on_changed(ent, keys)
+	if not keys.has("xf") or model == null:
+		return
+	# moved straight down (what held it up has gone): it falls there
+	var drop := was.y - transform.origin.y
+	if drop > 0.12 and Vector2(was.x - transform.origin.x, was.z - transform.origin.z).length() < 0.05:
+		if _fall:
+			_fall.kill()
+		model.position = transform.basis.inverse() * Vector3(0, drop, 0)
+		_fall = create_tween()
+		_fall.tween_property(model, "position", Vector3.ZERO, sqrt(2.0 * drop / 9.8)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
 func _refresh(keys: Array) -> void:
@@ -52,6 +68,9 @@ func _override_surfaces(charred: float, glow: float) -> void:
 func _rebuild() -> void:
 	var d := data()
 	_key = ItemVisual.visual_key(String(d.get("i", "")), int(d.get("n", 1)), d.get("x", {}))
+	if _fall:
+		_fall.kill()
+		_fall = null
 	if model:
 		model.queue_free()
 	if body:

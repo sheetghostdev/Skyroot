@@ -19,11 +19,43 @@ const COLLAPSE_AFTER := 10.0   # seconds of warning before something gives way
 static var _dirty := true
 static var _warn: Dictionary = {}    # structure id -> seconds it has been failing
 static var _creak_t := 0.0
+static var _settle: Array = []       # [physics frame, box, pass]: places that lost what held things up
 
 
 static func reset() -> void:
 	_dirty = true
 	_warn.clear()
+	_settle.clear()
+
+
+static func resettle_later(box: AABB) -> void:
+	## Whatever lay on a piece that was taken apart or fell comes down once its
+	## colliders have gone (a couple of physics frames later).
+	var b := box.grow(0.08)
+	b.size.y += 0.6
+	var due := Engine.get_physics_frames() + 2
+	for s in _settle:
+		if (s[1] as AABB).is_equal_approx(b):
+			s[0] = maxi(int(s[0]), due)
+			return
+	_settle.append([due, b, 0])
+
+
+static func settle_step() -> void:
+	## Every physics frame on the host: what lost its support comes down, a
+	## layer at a time (a pile settles over a few frames).
+	if _settle.is_empty() or World.actions == null:
+		return
+	var now := Engine.get_physics_frames()
+	var due: Array = []
+	var keep: Array = []
+	for s in _settle:
+		(due if now >= int(s[0]) else keep).append(s)
+	_settle = keep
+	for s in due:
+		# something that came down may have been holding something else up
+		if World.actions.resettle(s[1]) > 0 and int(s[2]) < 30:
+			_settle.append([now + 2, s[1], int(s[2]) + 1])
 
 
 static func mark_dirty() -> void:
@@ -245,6 +277,7 @@ static func collapse(id: int) -> void:
 		if v and v.has_method("drop_collision"):
 			v.drop_collision()
 	World.despawn(id)
+	resettle_later(world_box(String(d["bp"]), e["xf"], float(d.get("sy", 1.0))))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = id
 	for i in mini(int(d.get("installed", 0)), parts.size()):

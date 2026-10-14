@@ -80,14 +80,27 @@ func held_id(pid: int, args: Dictionary) -> String:
 
 
 func give(pid: int, id: String, n: int, d: Dictionary = {}, near: Vector3 = Vector3.INF) -> void:
-	## Add to inventory; anything that doesn't fit is dropped at the player's feet.
-	var left := inv(pid).add(id, n, d)
+	## Add to inventory; anything that doesn't fit, or is more than they can
+	## carry, is set down at their feet (or `near`).
+	var fit := mini(n, room_by_weight(pid, id, d))
+	var left := n - fit
+	if fit > 0:
+		left += inv(pid).add(id, fit, d)
 	World.mark_inventory(pid)
 	if left > 0:
 		var p := near if near != Vector3.INF else player_pos(pid)
-		spawn_item(id, left, d, p + Vector3(0, 0.4, 0))
-		World.notify(pid, "Your hands are full - dropped %s." % ItemDB.display_name(id, d).to_lower())
+		spawn_item(id, left, d, p + Vector3(_rng.randf_range(-0.25, 0.25), 0.4, _rng.randf_range(-0.25, 0.25)))
+		World.notify(pid, ("That's more than you can carry - set down %s." if fit < n else "Your hands are full - dropped %s.") \
+			% ItemDB.display_name(id, d).to_lower())
 	_first_touch(pid, id)
+
+
+func room_by_weight(pid: int, id: String, d: Dictionary = {}) -> int:
+	## How many more of these someone can carry before the load is too much.
+	var unit_kg := Inventory.stack_kg(id, 1, d)
+	if unit_kg <= 0.0:
+		return 1 << 30
+	return maxi(0, int(floor((CARRY_KG - inv(pid).carried_kg()) / unit_kg + 1e-6)))
 
 
 func _first_touch(pid: int, id: String) -> void:
@@ -140,6 +153,47 @@ func settle_point(pos: Vector3) -> Vector3:
 	if p.y < -6.0:
 		return Vector3.INF  # caught on the underside: tumbles off into the abyss
 	return p
+
+
+func resettle(box: AABB) -> int:
+	## What was lying in `box` comes down onto whatever is beneath it now, or off
+	## the island: the deck or shelf under it was taken apart or fell.  Returns
+	## how many things moved.
+	var found: Array = []
+	for e in World.entities.values():
+		if (e["t"] == "item" or e["t"] == "work") and box.has_point(e["xf"].origin):
+			found.append(e)
+	found.sort_custom(func(p, q): return float(p["xf"].origin.y) < float(q["xf"].origin.y))
+	var space := get_viewport().world_3d.direct_space_state
+	var moved := 0
+	for e in found:
+		var eid := int(e["id"])
+		var xf: Transform3D = e["xf"]
+		var lift := 0.005
+		if e["t"] == "item":
+			lift = item_lift(String(e["d"]["i"]), e["d"].get("x", {}))
+		var q := PhysicsRayQueryParameters3D.create(xf.origin + Vector3(0, 0.05, 0), xf.origin + Vector3(0, -60, 0),
+			EntityView.LAYER_TERRAIN | EntityView.LAYER_STRUCT | EntityView.LAYER_ITEMS)
+		var v := entity_view(eid)
+		var own = v.get("body") if v else null
+		if own is CollisionObject3D:
+			q.exclude = [(own as CollisionObject3D).get_rid()]
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty() and float((hit["position"] as Vector3).y) >= xf.origin.y - lift - 0.03:
+			continue  # still held up
+		moved += 1
+		if hit.is_empty() or float((hit["position"] as Vector3).y) < -6.0:
+			if e["t"] == "item":
+				lose_to_abyss(String(e["d"]["i"]), int(e["d"]["n"]), e["d"].get("x", {}))
+			else:
+				Ledger.record_entity_loss(e)
+			World.despawn(eid)
+			World.fx("drop", xf.origin)
+			continue
+		xf.origin = (hit["position"] as Vector3) + Vector3(0, lift, 0)
+		World.set_xf(eid, xf)
+		World.fx("drop", xf.origin, {"vol": -4.0})
+	return moved
 
 
 func lose_to_abyss(id: String, n: int, d: Dictionary) -> void:
@@ -204,12 +258,12 @@ func _a_pickup(pid: int, args: Dictionary) -> void:
 	if unit_kg > LIFT_KG:
 		World.notify(pid, "Too heavy to lift. Split it where it lies.")
 		return
-	var by_weight := int(floor((CARRY_KG - inv(pid).carried_kg()) / maxf(unit_kg, 0.001) + 1e-6))
+	var by_weight := room_by_weight(pid, id, x)
 	if by_weight <= 0:
 		World.notify(pid, "You can't carry any more weight. Put something down first.")
 		return
 	var take := mini(n, mini(space, by_weight))
-	if hot > 70.0:
+	if hot > 70.0 and id != "torch":
 		Survival.damage(pid, clampf((hot - 70.0) / 400.0, 0.02, 0.15), "burn")
 		World.notify(pid, "Ouch - it's hot!", "warn")
 	inv(pid).add(id, take, x)
@@ -296,7 +350,11 @@ func _a_satchel_take(pid: int, args: Dictionary) -> void:
 	var items: Array = ent["d"].get("items", [])
 	var rest: Array = []
 	for s in items:
-		var left := inv(pid).add(String(s["i"]), int(s["n"]), s["d"])
+		var n := int(s["n"])
+		var fit := mini(n, room_by_weight(pid, String(s["i"]), s["d"]))
+		var left := n - fit
+		if fit > 0:
+			left += inv(pid).add(String(s["i"]), fit, s["d"])
 		if left > 0:
 			rest.append(Inventory.make(s["i"], left, s["d"]))
 	World.mark_inventory(pid)
@@ -327,6 +385,9 @@ func _a_outcrop_take(pid: int, args: Dictionary) -> void:
 		return
 	if inv(pid).space_for("stone") <= 0:
 		World.notify(pid, "No room to carry a stone.")
+		return
+	if room_by_weight(pid, "stone") <= 0:
+		World.notify(pid, "You can't carry any more weight. Put something down first.")
 		return
 	loose[idx] = 0
 	World.update(eid, {"loose": loose})

@@ -67,7 +67,7 @@ static func item_contrib(id: String, n: int, x: Dictionary) -> Dictionary:
 			out["nutr"] = ItemDB.nutrients("log") * float(x.get("mass", 10.0)) / ItemDB.unit_mass("log")
 		"torch":
 			out["carbon"] = float(x.get("mass", ItemDB.unit_mass("stick")))
-			out["nutr"] = ItemDB.nutrients("stick")
+			out["nutr"] = float(x.get("nu", ItemDB.nutrients("stick")))
 		_:
 			if ItemDB.is_organic(id) or ItemDB.material(id) in ["charcoal", "ash"] or id == "compost":
 				out["carbon"] = n * ItemDB.unit_mass(id)
@@ -78,6 +78,15 @@ static func item_contrib(id: String, n: int, x: Dictionary) -> Dictionary:
 static func record_loss(id: String, n: int, x: Dictionary) -> void:
 	## Something went over the edge: it stays in the books as lost.
 	var c := item_contrib(id, n, x)
+	for k in c:
+		if float(c[k]) != 0.0:
+			var pool: String = "lost_water_l" if k == "water" else "lost_" + String(k)
+			World.pools[pool] = float(World.pools.get(pool, 0.0)) + float(c[k])
+
+
+static func record_entity_loss(e: Dictionary) -> void:
+	## A whole thing in the world (work in progress, say) went over the edge.
+	var c := entity_contrib(e)
 	for k in c:
 		if float(c[k]) != 0.0:
 			var pool: String = "lost_water_l" if k == "water" else "lost_" + String(k)

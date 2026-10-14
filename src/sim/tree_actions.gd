@@ -33,9 +33,7 @@ static func cut_small(a: Actions, pid: int, args: Dictionary) -> void:
 		return
 	var shp: Array = d["shp"].duplicate()
 	shp[i] = float(shp[i]) - (0.36 if tool == "cut" else 0.5) * Tools.power(a.held(pid, args))
-	World.fx("leaves", at, {"sound": "cut_grass" if tool == "cut" else "chop", "amount": 6})
-	if v:
-		v.call("shake", 0.3)
+	World.fx("leaves", at, {"sound": "cut_grass" if tool == "cut" else "chop", "amount": 6, "shake": eid, "shake_s": 0.3})
 	Tools.wear(pid, args, 0.006)
 	a.exert(pid, 0.02)
 	if float(shp[i]) <= 0.0:
@@ -69,9 +67,7 @@ static func chop_limb(a: Actions, pid: int, args: Dictionary) -> void:
 		return
 	var lhp: Array = d["lhp"].duplicate()
 	lhp[j] = float(lhp[j]) - 0.15 * Tools.power(a.held(pid, args))
-	World.fx("wood_chips", at)
-	if v:
-		v.call("shake", 0.5)
+	World.fx("wood_chips", at, {"shake": eid, "shake_s": 0.5})
 	Tools.wear(pid, args, 0.008)
 	a.exert(pid, 0.035)
 	if float(lhp[j]) <= 0.0:
@@ -98,10 +94,8 @@ static func fell(a: Actions, pid: int, args: Dictionary) -> void:
 	if not a.in_reach(pid, args, base, 0.8):
 		return
 	d["trunk"] = float(d.get("trunk", 1.0)) - 0.034 * Tools.power(a.held(pid, args))
-	World.fx("wood_chips", base)
-	var v := a.entity_view(eid)
-	if v:
-		v.call("shake", 0.8)
+	# (the shake goes out with the effect, so everyone sees the tree take the blow)
+	World.fx("wood_chips", base, {"shake": eid, "shake_s": 0.8})
 	Tools.wear(pid, args, 0.01)
 	a.exert(pid, 0.04)
 	if float(d["trunk"]) > 0.0:

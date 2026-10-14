@@ -178,6 +178,8 @@ func _host() -> void:
 		check((pose["p"] as Vector3).distance_to(claimed) < 1.0, "Ana's movement reached the host (%.2f m off)" % (pose["p"] as Vector3).distance_to(claimed))
 	# Ana shapes a pot; the host watches it take shape
 	World.inventory_of(cpid).add("clay_prepared", 1)
+	var blade_d := {"seed": 5, "cuts": [], "q": 0.8, "stone_kg": 0.3, "dur": 1.0}
+	World.inventory_of(cpid).add("blade", 1, blade_d)
 	World.mark_inventory(cpid)
 	_say("CLAY")
 	var shaped := await _wait_msg("SHAPED", 40.0)
@@ -212,11 +214,12 @@ func _host() -> void:
 	var cpid2 := _client_pid("Ana")
 	check(World.inventory_of(cpid2).count("stone") == stones, "she has exactly the stones she left with")
 	check(_count_everywhere("charcoal") == 1, "and still exactly one charcoal piece on the island")
-	# nothing was created or destroyed by all that coming and going (the host's clay gift aside)
+	# nothing was created or destroyed by all that coming and going (the host's gifts aside)
 	var L1 := Ledger.compute()
 	var clay_gift := Ledger.item_contrib("clay_prepared", 1, {})
+	var blade_gift := Ledger.item_contrib("blade", 1, blade_d)
 	for k in Ledger.KEYS:
-		var diff := float(L1[k]) - float(clay_gift[k]) - float(L0[k])
+		var diff := float(L1[k]) - float(clay_gift[k]) - float(blade_gift[k]) - float(L0[k])
 		check(absf(diff) < (0.01 if k == "water" else 0.0005), "the island's %s balances (%+.5f)" % [k, diff])
 	check(Game.save() == OK, "the host saves the island")
 	_say("DONE")
@@ -309,6 +312,39 @@ func _client() -> void:
 		_say("SHAPED %.2f" % float(st["capacity_l"]))
 	var fine := await _wait_msg("FINE", 30.0)
 	check(fine != "", "the host has seen enough")
+	if cc != null and cc.is_open():
+		cc.close(true)
+		await _frames(20)
+	# cut at a branch of the great tree: it shakes on my screen, not only the host's
+	var tree := {}
+	for e in World.entities.values():
+		if e["t"] == "tree" and not bool(e["d"].get("felled", false)):
+			tree = e
+	var tv: Node = Game.game_world.entities.view(int(tree["id"])) if not tree.is_empty() else null
+	var si := -1
+	if tv:
+		for i in TreeSim.SMALL:
+			if float(tree["d"]["sb"][i]) >= 0.98:
+				si = i
+				break
+	if si != -1:
+		var tip: Vector3 = tv.interaction_point("sb:%d" % si)
+		var o: Vector3 = tree["xf"].origin
+		var foot := Vector3(tip.x, 0, tip.z) + (Vector3(tip.x, 0, tip.z) - Vector3(o.x, 0, o.z)).normalized() * 0.4
+		foot.y = World.terrain.height(foot.x, foot.z) + 0.05
+		lp.global_position = foot
+		lp.velocity = Vector3.ZERO
+		await _frames(30)
+		var shp0 := float(tree["d"]["shp"][si])
+		World.request("tree_cut", {"eid": int(tree["id"]), "part": "sb:%d" % si, "slot": World.my_inventory.find("blade"), "eye": lp.eye_position()})
+		var shake := 0.0
+		for f in 60:
+			await get_tree().physics_frame
+			shake = maxf(shake, float(tv.get("_shake")))
+		check(float(World.get_entity(int(tree["id"]))["d"]["shp"][si]) < shp0, "my cut at a branch reached the host")
+		check(shake > 0.0, "and the tree shook on my screen too (%.2f)" % shake)
+	else:
+		check(false, "found a branch to cut")
 	_say("BYE")
 	await _frames(10)
 

@@ -59,8 +59,14 @@ static func _fire_torch(pid: int, args: Dictionary, a: Actions) -> void:
 	var s := a.held(pid, args)
 	if not s["d"].is_empty() and s["d"].has("fm"):
 		return
+	var td := {"mass": ItemDB.unit_mass("stick")}
+	if int(s["n"]) > 1 and a.inv(pid).space_for("torch", td) <= 0:
+		# (a burning stick needs a hand of its own: it can't go back in a full pack)
+		World.notify(pid, "No room to hold a burning stick. Free up a slot first.")
+		return
 	a.take_held(pid, args, 1)
-	a.give(pid, "torch", 1, {"mass": ItemDB.unit_mass("stick")})
+	a.inv(pid).add("torch", 1, td, int(args.get("slot", -1)))
+	World.mark_inventory(pid)
 	World.fx("sparks", site["xf"].origin + Vector3(0, 0.3, 0), {"sound": "fire_ignite", "amount": 6})
 	World.hint_to(pid, "item:torch")
 
@@ -119,7 +125,11 @@ static func prepare_pickup(eid: int) -> void:
 			World.despawn(eid)
 		else:
 			World.update(eid, {"n": k, "x": {}, "site": -1, "char": 0.0})
-	elif iid != "charred_wood" and iid != "torch":
+	elif iid == "torch":
+		# a burning stick taken back out of a fire burns on in the hand with
+		# whatever the fire left of it
+		World.update(eid, {"site": -1, "x": {"mass": fm + ch, "nu": nu, "moist": float(x.get("moist", 0.1))}})
+	elif iid != "charred_wood":
 		World.update(eid, {"i": "charred_wood", "n": 1, "site": -1, "char": snappedf(ch / maxf(fm + ch, 1e-6), 0.01),
 			"x": {"fm": fm, "ch": ch, "nu": nu, "m0": m0, "from": iid, "moist": float(x.get("moist", 0.1))}})
 	else:
@@ -354,10 +364,11 @@ static func _fire_uncover(pid: int, args: Dictionary, a: Actions) -> void:
 		for i in shell.size():
 			shell[i] = 0.0
 		vents.clear()
-	if got >= TerrainActions.EARTH_L - 0.001:
+	if got >= TerrainActions.EARTH_L - 1e-6:
 		a.give(pid, "earth", 1)
-	else:
-		# too little to carry: it goes back on the ground
+		got -= TerrainActions.EARTH_L
+	if got > 1e-9:
+		# too little to carry (or the last crumbs of the mound): it goes back on the ground
 		var rect := World.terrain.fill(Vector2(pos.x, pos.z), 0.3, got)
 		World.terrain_edited(rect)
 	World.update(int(site["id"]), {"shell": shell, "shell_l": total, "vents": vents})

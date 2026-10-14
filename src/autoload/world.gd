@@ -104,6 +104,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if is_host():
 		_flush(delta)
+		StructureSim.settle_step()
 
 
 func _flush(delta: float) -> void:
@@ -503,6 +504,12 @@ func _rpc_fx(kind: String, pos: Vector3, params: Dictionary) -> void:
 
 
 func _play_fx(kind: String, pos: Vector3, params: Dictionary) -> void:
+	if params.has("shake"):
+		# the thing that took the blow (a tree) shakes on every screen
+		var gw = Game.game_world
+		var v: Node = gw.entities.view(int(params["shake"])) if gw and gw.entities else null
+		if v and v.has_method("shake"):
+			v.call("shake", float(params.get("shake_s", 0.5)))
 	var fxn := get_tree().get_first_node_in_group("fx")
 	if fxn:
 		fxn.play(kind, pos, params)

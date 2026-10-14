@@ -54,8 +54,9 @@ what you hold right now.
   wild tubers, fiber grass, wild grain, a berry bush and mushrooms on a mossy log.
   Changes persist.
 * **Survival** — hunger, thirst, stamina, health and warmth.  Night is cold; fire,
-  walls, a roof and staying dry help.  Falling off the edge is final for what you
-  carry; dying on the island leaves a satchel you can recover.
+  walls, a roof and staying dry help.  You can carry about 45 kg, and a heavy load
+  slows you down.  Falling off the edge is final for what you carry; dying on the
+  island leaves a satchel you can recover.
 * **Physical crafting** — knapping (blade, axe head, digging head, judged by the actual
   shape you made), cordage, hafting, clay preparation, pottery (a lathe profile you
   pull and thin; bowl, cup or jar; it can collapse or crack), drying, pit firing,
@@ -101,6 +102,7 @@ Multiplayer, as separate game instances on one machine:
 tools/mp_test.sh     # host + client: shared world, no duplication, leave and rejoin
 OPEN_LATER=1 tools/mp_test.sh   # the same, with a solo island opened to friends mid-session
 tools/mp_crowd.sh    # four players at once; a fifth is told the island is full
+tools/mp_crash.sh    # a client is killed and restarts: back as themselves, with their things
 ```
 
 Visual checks use `--shot=<png>` with xvfb (see `src/util/debug_shot.gd` for scene
