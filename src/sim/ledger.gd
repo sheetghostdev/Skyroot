@@ -152,6 +152,7 @@ static func entity_contrib(e: Dictionary) -> Dictionary:
 			for c in d.get("caps", []):
 				caps += float(c)
 			out["carbon"] = float(d.get("substrate", 0.0)) + caps * ItemDB.unit_mass("mushroom")
+			out["nutr"] = float(d.get("nutr", 0.0)) + caps * ItemDB.nutrients("mushroom")
 		"outcrop":
 			var n := 0
 			for l in d.get("loose", []):

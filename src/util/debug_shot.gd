@@ -5,6 +5,7 @@ extends Node
 ##   --menu (capture the title screen)  --hidehud
 ##   --fire=camp|mound|kiln|ash|drill  --fhours=H  (build, light and fast-forward a fire in view)
 ##   --compost=H  (three heaps in view - fresh, H hours old, all straw - fast-forwarded)
+##   --build=hut|frames  (a finished hut on a deck, or half-built frames, in view)
 
 var path := ""
 var delay := 8.0
@@ -66,6 +67,8 @@ func _setup() -> void:
 		_fire_setup.call_deferred(String(Game.cli["fire"]))
 	if Game.cli.has("compost"):
 		_compost_setup.call_deferred(float(Game.cli["compost"]))
+	if Game.cli.has("build"):
+		_build_setup.call_deferred(String(Game.cli["build"]))
 
 
 func _frames(n: int) -> void:
@@ -187,6 +190,48 @@ func _compost_setup(hours: float) -> void:
 		CompostSim.tick(0.2)
 		if i % 10 == 0:
 			await _frames(1)
+
+
+func _structure(bp: String, xf: Transform3D, fraction: float = 1.0) -> int:
+	var parts: Array = ItemDB.blueprint(bp).get("parts", [])
+	var n := int(round(parts.size() * fraction))
+	var used: Array = []
+	for i in n:
+		used.append(String(parts[i]).get_slice("|", 0))
+	return World.spawn("structure", xf, {"bp": bp, "installed": n, "used": used, "sy": 1.0, "by": "Shot", "stress": 0.0})
+
+
+func _build_setup(kind: String) -> void:
+	var lp: LocalPlayer = Game.game_world.local_player()
+	var c := Vector3(-0.8, 0.0, 3.3)
+	var basis := Basis(Vector3.UP, 0.35)
+	var top := -INF
+	for o in [Vector3(1, 0, 1), Vector3(-1, 0, 1), Vector3(1, 0, -1), Vector3(-1, 0, -1), Vector3.ZERO]:
+		var w: Vector3 = c + basis * (o as Vector3) * 0.95
+		top = maxf(top, World.terrain.height(w.x, w.z))
+	c.y = top + 0.04
+	var cam := Vector3(1.2, 0.0, -0.2)
+	if Game.cli.has("cam"):
+		var cv := String(Game.cli["cam"]).split(",")
+		cam = Vector3(float(cv[0]), 0.0, float(cv[1]))
+	lp.global_position = Vector3(cam.x, World.terrain.height(cam.x, cam.z) + 0.05, cam.z)
+	var to := c - cam
+	lp.yaw = atan2(-to.x, -to.z)
+	lp.pitch = deg_to_rad(-8.0)
+	await _frames(4)
+	if kind == "frames":
+		_structure("platform", Transform3D(basis, c), 0.5)
+		_structure("wall", Transform3D(basis.rotated(Vector3.UP, PI * 0.5), c + basis.x * 0.93), 0.4)
+		_structure("ladder", Transform3D(basis, c - basis.z * 1.2), 0.0)
+	else:
+		_structure("platform", Transform3D(basis, c))
+		_structure("wall", Transform3D(basis, c - basis.z * 0.93))
+		_structure("wall", Transform3D(basis.rotated(Vector3.UP, PI * 0.5), c + basis.x * 0.93))
+		_structure("doorway", Transform3D(basis.rotated(Vector3.UP, PI * 0.5), c - basis.x * 0.93))
+		_structure("roof", Transform3D(basis, c + Vector3(0, 2.2, 0)))
+		_structure("sleeping_mat", Transform3D(basis.rotated(Vector3.UP, PI * 0.5), c + basis.x * 0.35 + Vector3(0, 0.0, 0)))
+		_structure("railing", Transform3D(basis, c + basis.z * 0.93))
+	StructureSim.mark_dirty()
 
 
 func _spawn(id: String, n: int, x: Dictionary, p: Vector3) -> int:

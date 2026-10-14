@@ -340,8 +340,16 @@ func _a_pick_mushroom(pid: int, args: Dictionary) -> void:
 	if idx < 0 or idx >= caps.size() or float(caps[idx]) < 0.6:
 		World.notify(pid, "That one is too small yet.")
 		return
+	# a cap picked a little early is a little smaller: the rest of a mushroom's worth
+	# comes from the wood and minerals it was still drawing on
+	var short := 1.0 - float(caps[idx])
+	var sub := float(ent["d"].get("substrate", 0.0)) - short * ItemDB.unit_mass("mushroom")
+	var nu := float(ent["d"].get("nutr", 0.0)) - short * ItemDB.nutrients("mushroom")
+	if sub < 0.0 or nu < 0.0:
+		World.notify(pid, "That one is too small yet.")
+		return
 	caps[idx] = 0.0
-	World.update(eid, {"caps": caps})
+	World.update(eid, {"caps": caps, "substrate": sub, "nutr": nu})
 	give(pid, "mushroom", 1)
 	World.fx("harvest", ent["xf"].origin, {"amount": 3})
 
@@ -354,8 +362,9 @@ func _a_pick_berries(pid: int, args: Dictionary) -> void:
 	var b := float(ent["d"].get("berries", 0.0))
 	if b < 0.25:
 		return
-	var n := int(round(b * 6.0))
-	World.update(eid, {"berries": 0.0})
+	# whole berries only; the rest keep ripening on the bush
+	var n := int(floor(b * 6.0 + 1e-6))
+	World.update(eid, {"berries": maxf(0.0, b - n / 6.0)})
 	give(pid, "berries", n)
 	World.fx("berries", ent["xf"].origin + Vector3(0, 0.5, 0))
 

@@ -141,9 +141,11 @@ static func _mushrooms(e: Dictionary, hours: float) -> void:
 	var sub := float(d.get("substrate", 0.0))
 	if sub <= 0.0:
 		return
-	var moist := _avg_moist(_cells(e["xf"].origin, 0.6))
+	var cells := _cells(e["xf"].origin, 0.6)
+	var moist := _avg_moist(cells)
 	var f := clampf((moist - 0.15) / 0.3, 0.0, 1.0)
 	var changed := false
+	var nu := float(d.get("nutr", 0.0))
 	for i in caps.size():
 		var c := float(caps[i])
 		if c >= 1.0:
@@ -152,13 +154,23 @@ static func _mushrooms(e: Dictionary, hours: float) -> void:
 		var kg := dc * ItemDB.unit_mass("mushroom")
 		if kg > sub:
 			break
+		# a cap is built from the rotting wood and the minerals in it (or the soil beneath)
+		var dn := dc * ItemDB.nutrients("mushroom")
+		var from_wood := minf(dn, nu)
+		var from_soil := dn - from_wood
+		if from_soil > 0.0:
+			if _avail_nutr(cells) < from_soil * 4.0:
+				break
+			TreeSim.draw_from_cells(World.terrain, cells, 0.0, from_soil)
+		nu -= from_wood
 		sub -= kg
 		caps[i] = c + dc
 		if int(float(caps[i]) * 5.0) != int(c * 5.0):
 			changed = true
 	d["substrate"] = sub
+	d["nutr"] = nu
 	if changed:
-		World.update(e["id"], {"caps": caps.duplicate(), "substrate": sub})
+		World.update(e["id"], {"caps": caps.duplicate(), "substrate": sub, "nutr": nu})
 
 
 static func _grass(hours: float, light: float, temp_f: float) -> void:

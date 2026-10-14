@@ -28,7 +28,7 @@ static func initial_entities(t: TerrainData) -> Array:
 	for b in BOULDERS:
 		out.append({"t": "boulder", "xf": ground_xf(t, b[0], b[2], -0.12), "d": {"model": b[1]}})
 	out.append({"t": "mossy_log", "xf": ground_xf(t, Vector2(-0.9, -4.5), 0.35, -0.04), "d": {}})
-	out.append({"t": "mushrooms", "xf": ground_xf(t, Vector2(-0.35, -4.15), 0.9, 0.0), "d": {"caps": [1.0, 1.0, 1.0, 0.6], "substrate": 6.0}})
+	out.append({"t": "mushrooms", "xf": ground_xf(t, Vector2(-0.35, -4.15), 0.9, 0.0), "d": {"caps": [1.0, 1.0, 1.0, 0.6], "substrate": 6.0, "nutr": 0.04}})
 	out.append({"t": "bush", "xf": ground_xf(t, Vector2(-5.9, -2.7), 1.3, -0.03), "d": {"berries": 1.0, "biomass": 6.0}})
 	out.append({"t": "plant", "xf": ground_xf(t, Vector2(5.35, 0.15), 0.0, -0.02),
 		"d": {"sp": "grain", "g": 1.0, "wild": true, "perennial": true, "protected": true, "nutr": 0.012, "bio": 1.0}})

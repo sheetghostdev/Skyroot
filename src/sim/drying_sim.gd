@@ -130,6 +130,12 @@ static func _organic(e: Dictionary, x: Dictionary, id: String, hours: float, bas
 		var n := int(e["d"].get("n", 1))
 		World.update(e["id"], {"i": "straw", "x": {"moist": 0.1}})
 		World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + n * maxf(0.0, ItemDB.unit_mass("grass") - ItemDB.unit_mass("straw"))
+		# what crumbles away while it cures returns to the soil underneath, minerals and all
+		if World.terrain.is_inside(pos.x, pos.z):
+			var k := TerrainData.cell_index(TerrainData.cell_at(Vector2(pos.x, pos.z)).x, TerrainData.cell_at(Vector2(pos.x, pos.z)).y)
+			World.terrain.nutr[k] += n * maxf(0.0, ItemDB.nutrients("grass") - ItemDB.nutrients("straw"))
+		else:
+			World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + n * maxf(0.0, ItemDB.nutrients("grass") - ItemDB.nutrients("straw"))
 		return
 	if absf(nm - m) > 0.02:
 		var x2 := x.duplicate()

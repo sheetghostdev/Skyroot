@@ -19,7 +19,7 @@ func _ready() -> void:
 		return
 	await frames(10)
 	lp = Game.game_world.local_player()
-	var suites := ["craft", "survival", "farm", "fire", "build", "save"] if suite == "all" else [suite]
+	var suites := ["craft", "survival", "farm", "fire", "build", "save", "longrun"] if suite == "all" else [suite]
 	for s in suites:
 		if has_method("suite_" + s):
 			print("\n=== SUITE ", s, " ===")
@@ -1352,6 +1352,150 @@ func suite_save() -> void:
 		var g0 := float(World.get_entity(hid)["d"]["g"])
 		await sim_hours(2.0)
 		check(float(World.get_entity(hid)["d"]["g"]) < g0, "the heap keeps rotting after the reload")
+
+
+# ---------------------------------------------------------------------------
+# Ten days: stability, conservation, and can the island feed someone?
+# ---------------------------------------------------------------------------
+
+var _bot := {}
+
+
+func _go(p: Vector3, off: Vector3 = Vector3(0.0, 0.0, 0.9)) -> void:
+	var q := p + off
+	q.y = World.terrain.height(q.x, q.z) + 0.05
+	lp.global_position = q
+	lp.velocity = Vector3.ZERO
+
+
+func _eat_real() -> bool:
+	## Eat the best thing carried; returns false if there's nothing to eat.
+	for id in ["tuber_roasted", "mushroom_roasted", "tuber", "mushroom", "berries"]:
+		if id == "tuber" and inv().count("tuber") <= int(_bot.get("keep_seed", 0)):
+			continue
+		var sl := slot_of(id)
+		if sl != -1:
+			var h0 := float(me()["hunger"])
+			req("eat", {"slot": sl})
+			_bot["real"] = float(_bot.get("real", 0.0)) + (float(me()["hunger"]) - h0)
+			return true
+	return false
+
+
+func forage_step() -> void:
+	## A sensible islander: gather what's ripe, replant, water the plot, eat and drink.
+	var pid := Net.my_id()
+	var st := me()
+	if st.is_empty() or not st.get("alive", true):
+		req("respawn", {})
+		_bot["deaths"] = int(_bot.get("deaths", 0)) + 1
+		return
+	for e in World.entities_of("plant"):
+		if float(e["d"].get("g", 0.0)) >= 1.0:
+			_go(e["xf"].origin)
+			var sp := String(e["d"].get("sp", ""))
+			var tool_slot := slot_of("blade") if sp != "tuber" else -1
+			req("harvest", {"eid": int(e["id"]), "slot": tool_slot})
+			_bot["harvests"] = int(_bot.get("harvests", 0)) + 1
+	for e in World.entities_of("bush"):
+		if float(e["d"].get("berries", 0.0)) >= 0.5:
+			_go(e["xf"].origin, Vector3(0.0, 0.0, 1.0))
+			req("pick_berries", {"eid": int(e["id"])})
+	for e in World.entities_of("mushrooms"):
+		var caps: Array = e["d"].get("caps", [])
+		for i in caps.size():
+			if float(caps[i]) >= 0.6:
+				_go(e["xf"].origin, Vector3(0.0, 0.0, 0.9))
+				req("pick_mushroom", {"eid": int(e["id"]), "idx": i})
+	# replant: keep a plot of tubers going
+	var plot: Array = _bot.get("plot", [])
+	var crops := World.entities_of("plant").filter(func(e): return String(e["d"].get("sp", "")) == "tuber" and not bool(e["d"].get("wild", false)))
+	for spot in plot:
+		var taken := false
+		for c in crops:
+			if (c["xf"].origin as Vector3).distance_to(spot) < 0.3:
+				taken = true
+		if not taken and inv().count("tuber") > 1:
+			_go(spot)
+			var k: int = World.actions.cell_index_at(spot)
+			if World.terrain.tilled[k] != 1:
+				req("till", {"pos": spot, "slot": slot_of("digger")})
+			req("plant", {"pos": spot, "slot": slot_of("tuber")})
+	# water the plot from the pond (as a vessel would carry it)
+	for spot in plot:
+		for c in World.terrain.cells_in_radius(Vector2(spot.x, spot.z), 0.4):
+			if World.terrain.moist[c] < 0.38:
+				var add := (0.42 - World.terrain.moist[c]) * WaterSim.cell_l()
+				var take := minf(add, maxf(0.0, float(World.env["pond_l"]) - 50.0))
+				World.env["pond_l"] = float(World.env["pond_l"]) - take
+				World.terrain.moist[c] += take / WaterSim.cell_l()
+				_bot["watered"] = float(_bot.get("watered", 0.0)) + take
+	# drink
+	if float(st["thirst"]) < 0.6:
+		var want := (0.95 - float(st["thirst"])) * Survival.BODY_WATER_L
+		var take2 := minf(want, maxf(0.0, float(World.env["pond_l"]) - 20.0))
+		World.env["pond_l"] = float(World.env["pond_l"]) - take2
+		Survival.drink(pid, take2)
+	# eat
+	var guard := 0
+	while float(me()["hunger"]) < 0.55 and guard < 12:
+		guard += 1
+		if not _eat_real():
+			# nothing gathered to eat: note the shortfall and eat from outside (test only)
+			give("tuber_roasted", 1)
+			var h0 := float(me()["hunger"])
+			req("eat", {"slot": slot_of("tuber_roasted")})
+			_bot["short"] = float(_bot.get("short", 0.0)) + (float(me()["hunger"]) - h0)
+
+
+func suite_longrun() -> void:
+	print("-- ten days on the island")
+	var L0 := ledger()
+	give("blade", 1, {"seed": 3, "cuts": [], "q": 0.7, "stone_kg": 0.3, "dur": 1.0})
+	give("digger", 1, {"q": 0.8, "dur": 1.0, "bind": 0.8, "cords": 1, "head": {"stone_kg": 0.25}})
+	var plot: Array = []
+	var avoid: Array = []
+	var base := clear_soil_spot()
+	for i in 6:
+		var p := base + Vector3((i % 3) * 0.6, 0, (i / 3) * 0.6)
+		p.y = World.terrain.height(p.x, p.z)
+		plot.append(p)
+	_bot = {"plot": plot, "keep_seed": 2}
+	var e0 := World.entities.size()
+	var tick_us := 0
+	var ticks := 0
+	var sim = Game.game_world.sim
+	for day in 10:
+		for hour in 24:
+			for half in 2:
+				World.env["t"] = float(World.env["t"]) + 0.5
+				var t0 := Time.get_ticks_usec()
+				sim._tick(0.5, 0.5)
+				tick_us += Time.get_ticks_usec() - t0
+				ticks += 1
+			forage_step()
+			if hour % 4 == 0:
+				await get_tree().physics_frame
+		var items := World.entities_of("item").size()
+		var crops := World.entities_of("plant").size()
+		var tree: Dictionary = World.entities_of("tree")[0]["d"] if not World.entities_of("tree").is_empty() else {}
+		print("     day %2d: pond %6.0f L  air %5.0f L  rain %.1f  tree %5.0f kg  plants %d  items %d  food: gathered %.2f short %.2f  harvests %d  carried tubers %d" % [
+			day + 1, float(World.env["pond_l"]), float(World.pools["atmo_water_l"]), float(World.env.get("rain", 0.0)),
+			TreeSim.biomass(tree) if not tree.is_empty() else 0.0, crops, items, float(_bot.get("real", 0.0)), float(_bot.get("short", 0.0)),
+			int(_bot.get("harvests", 0)), inv().count("tuber")])
+	var avg_ms := tick_us / 1000.0 / maxf(1.0, ticks)
+	print("     average island tick: %.2f ms (every 0.5 s of play)" % avg_ms)
+	check(bool(me().get("alive", false)) and int(_bot.get("deaths", 0)) == 0, "the islander is alive after ten days")
+	var real := float(_bot.get("real", 0.0))
+	var short := float(_bot.get("short", 0.0))
+	var share := real / maxf(0.001, real + short)
+	print("     the island supplied %.0f%% of the food eaten (%.2f gathered, %.2f from outside)" % [share * 100.0, real, short])
+	check(share > 0.9, "the island alone can feed one person who forages and farms (%.0f%%)" % (share * 100.0))
+	check(float(World.env["pond_l"]) > 100.0, "the pond hasn't run dry")
+	check(float(World.pools["atmo_water_l"]) < WaterSim.ATMO_CAPACITY * 1.5, "the air doesn't hoard the water")
+	check(World.entities.size() < e0 + 250, "the world doesn't fill up with clutter (%d -> %d things)" % [e0, World.entities.size()])
+	check(avg_ms < 25.0, "the island's simulation stays cheap (%.2f ms per tick)" % avg_ms)
+	ledger_same(L0, ledger(), "ten days", {"water": 0.1})
 
 
 func suite_drift() -> void:
