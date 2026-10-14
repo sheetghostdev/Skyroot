@@ -266,6 +266,13 @@ static func split(a: Actions, pid: int, args: Dictionary) -> void:
 		var spot := xf * Vector3(0.0, cen.x, cen.y + float(pair[2]) * 0.08)
 		mass_out += _classify_piece(a, centred, area, length, r0, c0 - cen, mass, moist, spot, xf.basis)
 	World.pools["soil_organic_kg"] = float(World.pools.get("soil_organic_kg", 0.0)) + maxf(0.0, mass_in - mass_out)
+	# boards, firewood and split wood all carry the log's minerals per kilogram;
+	# the splinters' share goes into the ground with them
+	var nu_rest := ItemDB.nutrients("log") / ItemDB.unit_mass("log") * maxf(0.0, mass_in - mass_out)
+	if World.terrain.is_inside(pos.x, pos.z):
+		World.terrain.nutr[a.cell_index_at(pos)] += nu_rest
+	else:
+		World.pools["lost_nutr"] = float(World.pools.get("lost_nutr", 0.0)) + nu_rest
 	World.fx("wood_split", pos)
 	World.discover("first_split", pid)
 

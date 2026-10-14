@@ -89,7 +89,7 @@
         ]},
         {"text": "Set the pot down to dry - nothing dries in your pack. In fair weather it takes about a day."},
         {"h": "Rain", "text": "Rain soaks unfired clay. A pot that gets too wet loses its shape and slumps back into lumps of raw clay, and the whole island hears about it. Anything with a roof over it is safe from rain - a thatch roof, or any finished building above it."},
-        {"h": "Bone dry - and then some", "text": "When the description says bone dry, it is nearly ready. But a pot fired with the last trace of damp still in it can still burst, so give it a few more hours before it goes into the fire."},
+        {"h": "Bone dry", "text": "When the description says bone dry, it is ready: a bone-dry pot never bursts with steam. Anything damper - leather-hard or wet - may. Even a dry pot can still crack from heat that comes on too suddenly, so let the fire build around it."},
         {"h": "Other things that dry", "list": [
           "Cut grass cures into straw in about a day in the open.",
           "Wood seasons from green to dry in a day or two.",

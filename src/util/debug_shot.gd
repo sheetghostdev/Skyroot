@@ -6,6 +6,7 @@ extends Node
 ##   --fire=camp|mound|kiln|ash|drill  --fhours=H  (build, light and fast-forward a fire in view)
 ##   --compost=H  (three heaps in view - fresh, H hours old, all straw - fast-forwarded)
 ##   --build=hut|frames  (a finished hut on a deck, or half-built frames, in view)
+##   --smoke  (open every panel and guide entry, search, ghost every blueprint, both cameras; then quit)
 
 var path := ""
 var delay := 8.0
@@ -69,6 +70,8 @@ func _setup() -> void:
 		_compost_setup.call_deferred(float(Game.cli["compost"]))
 	if Game.cli.has("build"):
 		_build_setup.call_deferred(String(Game.cli["build"]))
+	if Game.cli.has("smoke"):
+		_smoke.call_deferred()
 
 
 func _frames(n: int) -> void:
@@ -190,6 +193,49 @@ func _compost_setup(hours: float) -> void:
 		CompostSim.tick(0.2)
 		if i % 10 == 0:
 			await _frames(1)
+
+
+func _smoke() -> void:
+	## Exercise the UI end to end so any engine error shows up in the log.
+	var lp: LocalPlayer = Game.game_world.local_player()
+	var hud = Game.game_world.hud
+	path = ""
+	await _frames(30)
+	for nm in ["inventory", "build", "pause", "guide"]:
+		hud.open_panel(nm)
+		await _frames(20)
+		if nm != "guide":
+			hud.close_panel()
+			await _frames(5)
+	var g: GuideUI = hud.panel
+	var n := 0
+	for cat in Guide.categories:
+		for id in cat["entries"]:
+			g.show_entry(String(id))
+			await _frames(4)
+			n += 1
+	for q in ["clay", "charcoal mound", "cold", "zzz"]:
+		g.search.text = q
+		g._on_search(q)
+		await _frames(4)
+	g.show_journal()
+	await _frames(6)
+	g._toggle_pin("fire")
+	await _frames(4)
+	hud.close_panel()
+	await _frames(10)
+	print("SMOKE guide entries shown: ", n)
+	for bp in ItemDB.blueprints.keys():
+		lp.placer.start_place(String(bp))
+		await _frames(8)
+	lp.placer.stop()
+	await _frames(5)
+	lp.set_third_person(true)
+	await _frames(30)
+	lp.set_third_person(false)
+	await _frames(30)
+	print("SMOKE_DONE")
+	get_tree().quit()
 
 
 func _structure(bp: String, xf: Transform3D, fraction: float = 1.0) -> int:

@@ -126,7 +126,104 @@ func suite_craft() -> void:
 	var L1 := ledger()
 	ledger_same(L0, L1, "crafting")
 	await test_outcrop()
-	ledger_same(L1, ledger(), "outcrop")
+	var L2 := ledger()
+	ledger_same(L1, L2, "outcrop")
+	await test_wood()
+	ledger_same(L2, ledger(), "wood")
+
+
+func _tree() -> Dictionary:
+	return World.entities_of("tree")[0]
+
+
+func _under(part: String) -> void:
+	## Stand beneath a branch so it is within reach.
+	var v: Node = Game.game_world.entities.view(int(_tree()["id"]))
+	var tip: Vector3 = v.interaction_point(part)
+	var foot := Vector3(tip.x, 0, tip.z) + (Vector3(tip.x, 0, tip.z) - Vector3(_tree()["xf"].origin.x, 0, _tree()["xf"].origin.z)).normalized() * 0.4
+	foot.y = World.terrain.height(foot.x, foot.z) + 0.05
+	lp.global_position = foot
+	lp.velocity = Vector3.ZERO
+	await frames(2)
+
+
+func test_wood() -> void:
+	print("-- wood: a branch, a limb, the trunk, and a log split into boards")
+	give("blade", 1, {"seed": 5, "cuts": [], "q": 0.8, "stone_kg": 0.3, "dur": 1.0})
+	give("axe", 1, {"q": 0.85, "dur": 1.0, "bind": 0.9, "cords": 1, "head": {"stone_kg": 0.3}})
+	var tid := int(_tree()["id"])
+	var d: Dictionary = _tree()["d"]
+	var si := -1
+	for i in TreeSim.SMALL:
+		if float(d["sb"][i]) >= 0.98:
+			si = i
+			break
+	check(si != -1, "the tree has a grown branch to cut")
+	if si == -1:
+		return
+	await _under("sb:%d" % si)
+	var branches0 := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "branch").size()
+	for k in 8:
+		req("tree_cut", {"eid": tid, "part": "sb:%d" % si, "slot": slot_of("blade")})
+		await frames(1)
+	var branches := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "branch")
+	check(branches.size() == branches0 + 1, "a few cuts with the blade bring a branch down")
+	if branches.size() > branches0:
+		var b: Dictionary = branches[branches.size() - 1]
+		await stand_near(b["xf"].origin, Vector3(0, 0, 0.8))
+		for k in 4:
+			if World.has_entity(int(b["id"])):
+				req("process", {"eid": int(b["id"]), "slot": slot_of("blade")})
+				await frames(1)
+		check(not World.has_entity(int(b["id"])) and not items_near(b["xf"].origin, "stick", 1.2).is_empty(), "cut up into sticks, twigs and leaves")
+	# a limb needs an axe
+	var lj := -1
+	for j in TreeSim.LARGE:
+		if float(_tree()["d"]["lb"][j]) >= 0.98:
+			lj = j
+			break
+	if lj != -1:
+		await _under("lb:%d" % lj)
+		var limbs0 := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "limb").size()
+		req("tree_chop_limb", {"eid": tid, "part": "lb:%d" % lj, "slot": slot_of("blade")})
+		await frames(1)
+		check(float(_tree()["d"]["lhp"][lj]) >= 0.999, "a blade can't chop a limb")
+		for k in 14:
+			req("tree_chop_limb", {"eid": tid, "part": "lb:%d" % lj, "slot": slot_of("axe")})
+			await frames(1)
+		var limbs := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "limb")
+		check(limbs.size() == limbs0 + 1, "the axe takes a limb down")
+	# the trunk
+	var base: Vector3 = _tree()["xf"].origin
+	await stand_near(base, Vector3(1.3, 0, 0.0))
+	var blows := 0
+	while not bool(_tree()["d"].get("felled", false)) and blows < 60:
+		req("tree_fell", {"eid": tid, "slot": slot_of("axe")})
+		await frames(1)
+		blows += 1
+	check(bool(_tree()["d"].get("felled", false)), "the great tree comes down after %d blows" % blows)
+	check(World.discoveries.has("tree_felled"), "and the island journal remembers it")
+	var logs := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "log")
+	check(logs.size() >= 1, "it lies as %d logs" % logs.size())
+	if not logs.is_empty():
+		var lg: Dictionary = logs[0]
+		await stand_near(lg["xf"].origin, Vector3(0, 0, 1.0))
+		var lx: Transform3D = lg["xf"]
+		var boards0 := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) in ["board", "wood_piece", "firewood"]).size()
+		# strike down the middle, then keep splitting what comes off it
+		req("split", {"eid": int(lg["id"]), "pos": lx * Vector3(0, 0.16, 0), "slot": slot_of("axe")})
+		await frames(2)
+		for round in 6:
+			for e in World.entities_of("item").filter(func(e): return String(e["d"]["i"]) == "wood_piece"):
+				await stand_near(e["xf"].origin, Vector3(0, 0, 1.0))
+				req("split", {"eid": int(e["id"]), "pos": e["xf"] * Vector3(0, 0.08, 0), "slot": slot_of("axe")})
+				await frames(1)
+		var out := World.entities_of("item").filter(func(e): return String(e["d"]["i"]) in ["board", "firewood"])
+		check(out.size() > 0, "splitting gives boards and firewood (%d pieces)" % out.size())
+	# the roots are alive
+	var bio0 := TreeSim.biomass(_tree()["d"])
+	await sim_hours(36.0)
+	check(TreeSim.biomass(_tree()["d"]) > bio0, "a sapling grows back from the roots (%.1f -> %.1f kg)" % [bio0, TreeSim.biomass(_tree()["d"])])
 
 
 func test_outcrop() -> void:
@@ -1116,8 +1213,67 @@ func suite_survival() -> void:
 		await frames(2)
 		check(inv().count("cordage") == 2 and inv().count("stone") == 1, "and you can get it all back")
 		check(World.entities_of("satchel").is_empty(), "the empty satchel is gone")
+	await test_vessel_and_drying()
 	var L1 := ledger()
 	ledger_same(L0, L1, "survival", {"water": 0.05})
+
+
+func _vessel_slot() -> int:
+	for i in inv().slots.size():
+		var sl: Dictionary = inv().slots[i]
+		if not sl.is_empty() and String(sl["i"]) == "pot" and String(sl["d"].get("tag", "")) == "vessel_test":
+			return i
+	return -1
+
+
+func test_vessel_and_drying() -> void:
+	print("-- a fired pot carries water; a wet pot dries in the sun and gets rained on")
+	var pot := make_pot(0.02)
+	pot["state"] = "fired"
+	pot["q"] = 0.7
+	pot["tag"] = "vessel_test"
+	give("pot", 1, pot)
+	var pc := TerrainData.POND_CENTER
+	lp.global_position = ground(Vector2(pc.x, pc.y) + Vector2(TerrainData.POND_RADII.x + 0.5, 0.0)) + Vector3(0, 0.1, 0)
+	lp.velocity = Vector3.ZERO
+	await frames(3)
+	var pond0 := float(World.env["pond_l"])
+	req("fill_vessel", {"slot": _vessel_slot()})
+	await frames(2)
+	var w := float(inv().get_slot(_vessel_slot())["d"].get("water", 0.0))
+	check(w > 0.05 and absf((pond0 - float(World.env["pond_l"])) - w) < 1e-4, "the pot holds %.2f L, taken from the pond" % w)
+	check(World.discoveries.has("first_water_vessel"), "the first water vessel is in the journal")
+	me()["thirst"] = 0.5
+	req("drink_vessel", {"slot": _vessel_slot()})
+	await frames(1)
+	var w2 := float(inv().get_slot(_vessel_slot())["d"].get("water", 0.0))
+	check(w2 < w and float(me()["thirst"]) > 0.5, "drinking from it")
+	req("fill_vessel", {"slot": _vessel_slot()})
+	await frames(1)
+	var spot := clear_soil_spot()
+	await stand_near(spot, Vector3(0, 0, 0.9))
+	var soil0 := World.terrain.total_soil_water_l()
+	req("pour", {"pos": spot, "slot": _vessel_slot()})
+	await frames(1)
+	check(World.terrain.total_soil_water_l() > soil0, "pouring waters the soil")
+	# drying: a wet pot set out in a sunny, dry day
+	World.env["t"] = float(World.day()) * 24.0 + 24.0 + 9.0
+	var wet := make_pot(0.22)
+	var pid := place("pot", 1, wet, spot + Vector3(0.8, 0, 0))
+	await frames(2)
+	var m0 := float(World.get_entity(pid)["d"]["x"]["moist"])
+	await sim_hours(8.0, 0.25)
+	var m1 := float(World.get_entity(pid)["d"]["x"]["moist"])
+	print("     moisture %.3f -> %.3f over 8 h of a dry day" % [m0, m1])
+	# a fresh pot takes about a day to dry; a third of a day takes a good bite out of it
+	check(m1 < m0 - 0.03, "a wet pot dries in the open on a dry day")
+	World.env["rain"] = 0.9
+	World.env["rain_target"] = 0.9
+	await sim_hours(2.0, 0.25)
+	var m2 := float(World.get_entity(pid)["d"]["x"]["moist"])
+	check(m2 > m1, "rain wets it again (%.3f -> %.3f)" % [m1, m2])
+	World.env["rain"] = 0.0
+	World.env["rain_target"] = 0.0
 
 
 func keep_fed() -> void:
@@ -1183,13 +1339,18 @@ func test_compost() -> void:
 	req("compost_start", {"pos": spot + Vector3(0.6, 0, 0), "slot": slot_of("leaves")})
 	await frames(2)
 	check(heaps().size() == 1, "a second heap right beside it is refused")
+	# whatever greens and browns we carry (earlier suites may have left a scrap or two)
+	var want_g := ItemDB.unit_mass("leaves")
+	var want_b := 0.0
+	for id in ["leaves", "grass", "food_scraps"]:
+		want_g += inv().count(id) * ItemDB.unit_mass(id)
+	for id in ["straw", "fiber"]:
+		want_b += inv().count(id) * ItemDB.unit_mass(id)
 	for id in ["leaves", "grass", "straw", "fiber", "food_scraps"]:
 		while slot_of(id) != -1:
 			req("compost_add", {"eid": hid, "slot": slot_of(id)})
 			await frames(1)
 	var d: Dictionary = World.get_entity(hid)["d"]
-	var want_g := 8 * 0.25 + 10 * 0.15 + 4 * 0.05
-	var want_b := 16 * 0.07 + 6 * 0.04
 	check(absf(float(d["g"]) - want_g) < 0.001 and absf(float(d["b"]) - want_b) < 0.001, "greens %.2f kg and browns %.2f kg went in" % [float(d["g"]), float(d["b"])])
 	req("compost_add", {"eid": hid, "slot": slot_of("stick")})
 	await frames(1)
@@ -1390,6 +1551,27 @@ func suite_save() -> void:
 		var g0 := float(World.get_entity(hid)["d"]["g"])
 		await sim_hours(2.0)
 		check(float(World.get_entity(hid)["d"]["g"]) < g0, "the heap keeps rotting after the reload")
+	# a fire saved mid-burn is still burning when the island loads again
+	print("-- a campfire across a save")
+	var fc := clear_soil_spot([spot])
+	await stand_near(fc, Vector3(0, 0, 1.2))
+	var tinder := lay_campfire(fc, 3)
+	await frames(2)
+	FireSim.ignite(tinder, 620.0)
+	await run_fire(0.25)
+	var s0 := site_near(fc)
+	check(not s0.is_empty() and float(s0["d"].get("flame", 0.0)) > 0.0, "the campfire is burning before the save")
+	var L2 := ledger()
+	var err3 := await reload_world()
+	check(err3 == "", "saved and reloaded with the fire lit")
+	var s1 := site_near(fc)
+	check(not s1.is_empty(), "the fire site came back")
+	ledger_same(L2, ledger(), "fire across a reload", {"water": 0.05})
+	await run_fire(0.1)
+	var s2 := site_near(fc)
+	check(not s2.is_empty() and float(s2["d"].get("flame", 0.0)) > 0.0, "and it is still burning afterwards (flame %.2f)" % (float(s2["d"].get("flame", 0.0)) if not s2.is_empty() else 0.0))
+	await run_fire(3.0)
+	ledger_same(L2, ledger(), "the reloaded fire burning down", {"water": 0.05})
 
 
 # ---------------------------------------------------------------------------
