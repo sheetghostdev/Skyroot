@@ -701,11 +701,10 @@ func test_fire_drill() -> void:
 	check(float(World.get_entity(eid)["d"].get("ember", 0.0)) > 0.0, "spinning made an ember (heat %.2f)" % float(World.get_entity(eid)["d"].get("heat", 0.0)))
 	req("work_finish", {"eid": eid})
 	await frames(4)
-	await run_fire(0.05)
+	await run_fire(0.005)
+	# (two bundles of straw alone flare and burn out within minutes - that's tinder)
 	var site := site_near(c)
-	if site.is_empty():
-		print("     weather: rain %.2f cloud %.2f wind %s hour %.1f" % [float(World.env.get("rain", 0.0)), float(World.env.get("cloud", 0.0)), str(World.env.get("wind", Vector2.ZERO)), World.hour_of_day()])
-	check(not site.is_empty(), "the ember lit the tinder")
+	check(not site.is_empty() and float(site["d"].get("flame", 0.0)) > 0.0, "the ember lit the tinder")
 	check(inv().count("hearth_board") == 1 and inv().count("stick") >= 1, "the drill set comes back to hand")
 
 

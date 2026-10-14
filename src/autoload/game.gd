@@ -48,6 +48,7 @@ func start_world(mode: String, world_name: String, is_new: bool, port: int = Net
 	var info := World.on_player_joined(Net.my_id(), Settings.player_name)
 	Guide.load_local(_guide_key())
 	Guide.import_state(World.guide_states.get(Net.my_id(), {}))
+	_first_steps(info)
 	_enter_game(info)
 	return ""
 
@@ -67,7 +68,15 @@ func on_client_snapshot() -> void:
 func on_client_welcome(info: Dictionary) -> void:
 	Guide.load_local(_guide_key())
 	World.guide_states[Net.my_id()] = info.get("guide", {})
+	Guide.import_state(info.get("guide", {}))
+	_first_steps(info)
 	_enter_game(info)
+
+
+func _first_steps(info: Dictionary) -> void:
+	## Someone new to this island starts with the first-hour checklist on screen.
+	if bool(info.get("new", false)) and Guide.pinned.is_empty() and Guide.read.is_empty() and Guide.has_entry("getting_started"):
+		Guide.toggle_pin("getting_started")
 
 
 func _guide_key() -> String:

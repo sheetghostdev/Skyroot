@@ -177,7 +177,8 @@ static func tick(pid: int, hours: float, real_dt: float, ctx: Dictionary) -> voi
 	World.pools["atmo_water_l"] = float(World.pools.get("atmo_water_l", 0.0)) + lost
 	# warmth
 	var temp: float = ctx.get("temp", 18.0)
-	var target := clampf(0.5 + (temp - 14.0) / 16.0, 0.0, 1.0)
+	# comfortable around 11 C and up; a cool morning is fine, a night in the open is not
+	var target := clampf(0.5 + (temp - 11.0) / 16.0, 0.0, 1.0)
 	var rate := 0.6 if target > float(st["warmth"]) else 0.35
 	if ctx.get("wet", false):
 		target -= 0.15

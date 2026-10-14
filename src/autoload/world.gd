@@ -261,6 +261,7 @@ func on_player_joined(pid: int, player_name: String) -> Dictionary:
 		info["yaw"] = rec.get("yaw", 0.0)
 		info["new"] = false
 		guide_states[pid] = rec.get("guide", {})
+		info["guide"] = guide_states[pid]   # so a returning client gets its guide progress back
 	inventories[pid] = inv
 	stats[pid] = st
 	mark_inventory(pid)
