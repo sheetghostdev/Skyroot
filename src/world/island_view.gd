@@ -37,6 +37,7 @@ var _noise := FastNoiseLite.new()
 
 
 func build(t: TerrainData) -> void:
+	add_to_group("island_view")
 	terrain = t
 	_noise.seed = 4242
 	_noise.frequency = 0.25

@@ -10,6 +10,7 @@ uniform vec3 deep_col : source_color = vec3(0.04, 0.15, 0.16);
 uniform float clarity = 4.5;
 uniform float rain = 0.0;
 uniform float wind = 0.3;
+uniform vec3 sky_glow : source_color = vec3(0.0);   // faint sky light the surface mirrors (set at night)
 
 varying vec3 wpos;
 
@@ -41,6 +42,8 @@ void fragment() {
 	vec3 col = mix(seen, tint, clamp(a * 0.95, 0.0, 1.0));
 	float edge = 1.0 - smoothstep(0.0, 0.05, thick);
 	ALBEDO = mix(col, vec3(0.85, 0.9, 0.88), edge * 0.35);
+	// at night the surface still mirrors a little of the starlit sky instead of going black
+	EMISSION = sky_glow * (0.35 + fres * 1.6) * (0.6 + 0.4 * nmap.y);
 	ROUGHNESS = 0.06 + rain * 0.12;
 	METALLIC = 0.0;
 	SPECULAR = 0.6;

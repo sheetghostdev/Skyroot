@@ -157,6 +157,9 @@ func _on_env_changed() -> void:
 	env.ssao_enabled = Settings.ssao
 
 
+var _island: Node = null
+
+
 func _process(delta: float) -> void:
 	if use_world and not World.env.is_empty():
 		# advance time smoothly between host updates (host advances it authoritatively)
@@ -238,6 +241,12 @@ func _apply(t: float) -> void:
 		m.set_shader_parameter("fade_col", Color(0.30, 0.42, 0.62).lerp(Color(0.62, 0.65, 0.7), oc * 0.6))
 		m.set_shader_parameter("lit_col", Color(0.95, 0.96, 1.0).lerp(Color(1.0, 0.75, 0.55), sunset_k * 0.6))
 	rain_fx.emitting = rn > 0.05
+	# the pond mirrors a little starlight and moonlight at night
+	if _island == null or not is_instance_valid(_island):
+		_island = get_tree().get_first_node_in_group("island_view")
+	if _island and _island.get("water_mat"):
+		var glow := Color(0.055, 0.08, 0.12) * (1.0 - day) * (1.0 - oc * 0.5) + Color(0.03, 0.045, 0.07) * moon.light_energy * 2.0
+		(_island.water_mat as ShaderMaterial).set_shader_parameter("sky_glow", glow)
 	rain_fx.amount_ratio = clampf(rn, 0.05, 1.0)
 	current_day = day
 	current_rain = rn
