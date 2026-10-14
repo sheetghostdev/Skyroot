@@ -10,8 +10,8 @@ mkdir -p "$OUT"
 status=0
 
 echo "== headless suites"
-$GODOT --headless --path . res://tests/test_main.tscn -- --suite=all > "$OUT/suites.log" 2>&1 || status=1
-grep -E "^RESULT|FAIL" "$OUT/suites.log"
+timeout 3600 $GODOT --headless --path . res://tests/test_main.tscn -- --suite=all > "$OUT/suites.log" 2>&1 || status=1
+grep -E "^RESULT|FAIL|TESTS DID NOT START" "$OUT/suites.log"
 
 echo "== host + client"
 OUT="$OUT/mp" tools/mp_test.sh > "$OUT/mp.log" 2>&1 || status=1
