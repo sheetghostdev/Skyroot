@@ -44,29 +44,45 @@ def L(pack, fname, gain_db=0.0, offset_ms=0.0, speed=1.0):
     return dict(pack=pack, file=fname, gain_db=gain_db, offset_ms=offset_ms, speed=speed)
 
 
-def R(*layers, lp=None, hp=None, max_len=None, fade_out=0.025, note=""):
-    return dict(layers=list(layers), lp=lp, hp=hp, max_len=max_len, fade_out=fade_out, note=note)
+def R(*layers, lp=None, hp=None, tilt_db=0.0, max_len=None, fade_out=0.025, note=""):
+    """A recipe: layers, optional low/high-pass, a high-shelf tilt (dB above
+    ~1.5 kHz), max length/fade for the trim, and a credits note."""
+    return dict(layers=list(layers), lp=lp, hp=hp, tilt_db=tilt_db, max_len=max_len,
+                fade_out=fade_out, note=note)
 
 
 STEP = dict(max_len=0.40, fade_out=0.06)
 RECIPES = {}
+# Kenney's grass/concrete footstep variants are near-identical takes (waveform
+# correlation 0.86-0.99), so each gets a deterministic varispeed (+-1 semitone)
+# and a gentle tilt to make the five audibly different.
+GRASS_VAR = [(1.00, 0.0), (0.95, 1.5), (1.05, -1.5), (0.92, -1.0), (1.07, 1.0)]
+STONE_VAR = [(1.00, 0.0), (0.94, 1.5), (1.06, -1.0), (0.97, -2.0), (1.04, 2.0)]
 for i in range(5):
-    RECIPES[f"step_grass_{i + 1}"] = R(L("impact", f"footstep_grass_00{i}.ogg"), **STEP)
-    RECIPES[f"step_stone_{i + 1}"] = R(L("impact", f"footstep_concrete_00{i}.ogg"), **STEP)
+    sp, tl = GRASS_VAR[i]
+    RECIPES[f"step_grass_{i + 1}"] = R(L("impact", f"footstep_grass_00{i}.ogg", speed=sp),
+                                       tilt_db=tl, **STEP)
+    sp, tl = STONE_VAR[i]
+    RECIPES[f"step_stone_{i + 1}"] = R(L("impact", f"footstep_concrete_00{i}.ogg", speed=sp),
+                                       tilt_db=tl, **STEP)
 # The impact pack's footstep_wood_* are near-pure ~100 Hz thumps over a hum
 # floor; the RPG pack's footsteps are clearly boards (heel-toe, ~265 Hz floor
-# resonance), so they are used for wood.
-for i, k in enumerate(["00", "01", "03", "07", "08"]):
+# resonance) and genuinely different takes, so they are used for wood.
+for i, k in enumerate(["00", "02", "03", "07", "08"]):
     RECIPES[f"step_wood_{i + 1}"] = R(L("rpg", f"footstep{k}.ogg"), **STEP)
 # Stone axe chop = solid wooden thunk (impactWood_medium) + the crunchy bite of
-# rpg chop.ogg, varispeeded/regained per variant so the four differ.
-for i, (k, sp, g) in enumerate([("000", 1.0, -2.0), ("001", 0.93, -4.0), ("003", 1.07, -3.0),
-                                 ("004", 0.96, -5.0)]):
-    RECIPES[f"chop_{i + 1}"] = R(L("impact", f"impactWood_medium_{k}.ogg"),
-                                 L("rpg", "chop.ogg", g, 1.5, sp),
+# rpg chop.ogg, varispeeded/regained/offset per variant so the four differ.
+# (impactWood_medium_004 is a near-duplicate of _000, so it is not used.)
+for i, (k, tsp, sp, g, off) in enumerate([("000", 1.0, 1.0, -2.0, 1.5),
+                                          ("002", 1.0, 1.1, -3.0, 3.0),
+                                          ("003", 0.95, 0.92, -4.0, 0.5),
+                                          ("001", 1.1, 0.86, -1.0, 6.0)]):
+    RECIPES[f"chop_{i + 1}"] = R(L("impact", f"impactWood_medium_{k}.ogg", speed=tsp),
+                                 L("rpg", "chop.ogg", g, off, sp),
                                  note="layered: thunk + crunch")
-for i, k in enumerate(["000", "001", "003"]):
+for i, k in enumerate(["000", "001", "004"]):
     RECIPES[f"wood_drop_{i + 1}"] = R(L("impact", f"impactPlank_medium_{k}.ogg"))
+for i, k in enumerate(["000", "003", "004"]):
     RECIPES[f"hammer_wood_{i + 1}"] = R(L("impact", f"impactWood_light_{k}.ogg"))
 RECIPES.update({
     "pickup": R(L("rpg", "handleSmallLeather.ogg")),
@@ -114,6 +130,8 @@ def build(kdir, rec):
     y = np.zeros(n)
     for o, x in parts:
         y[o:o + len(x)] += x
+    if rec["tilt_db"]:
+        y = al.filt(y, al.biquad("hs", 1500, 0.7, rec["tilt_db"]))
     if rec["hp"]:
         y = al.hp(y, rec["hp"])
     if rec["lp"]:
@@ -121,12 +139,14 @@ def build(kdir, rec):
     return np.concatenate([y, np.zeros(int(0.02 * al.SR))])
 
 
-def write_credits(out_root):
+def write_credits(out_root, raw=False):
+    how = ("copied unchanged by `tools/audio/curate.py --raw`" if raw else
+           "trimmed, mixed to mono, loudness-normalised and re-encoded (Ogg Vorbis q6) by "
+           "`tools/audio/curate.py`; extra processing is noted per file")
     lines = ["# Skyroot audio credits", "",
              "All audio in this folder is CC0 1.0 (public domain dedication).",
              "Curated files come from Kenney's CC0 packs (www.kenney.nl; see "
-             "LICENSE-Kenney.txt) and were trimmed, mixed to mono, loudness-normalised "
-             "and re-encoded by `tools/audio/curate.py` (layered sources are noted). "
+             f"LICENSE-Kenney.txt) and were {how}. "
              "Everything else was generated from scratch by `tools/audio/synth.py` "
              "(numpy procedural synthesis) and is likewise released under CC0.", "",
              "Regenerate with:", "",
@@ -136,7 +156,21 @@ def write_credits(out_root):
     for name in al.SFX_NAMES:
         if name in RECIPES:
             rec = RECIPES[name]
-            src = " + ".join(f"{PACKS[ly['pack']][1]}: `{ly['file']}`" for ly in rec["layers"])
+            layers = rec["layers"][:1] if raw else rec["layers"]
+            src = " + ".join(f"{PACKS[ly['pack']][1]}: `{ly['file']}`" for ly in layers)
+            extra = []
+            if raw:
+                pass
+            elif rec["note"]:
+                extra.append(rec["note"])
+            elif len(rec["layers"]) > 1:
+                extra.append("layered")
+            if not raw and any(ly["speed"] != 1.0 for ly in rec["layers"]):
+                extra.append("varispeed")
+            if not raw and (rec["tilt_db"] or rec["lp"] or rec["hp"]):
+                extra.append("EQ")
+            if extra:
+                src += f" ({', '.join(extra)})"
             lines.append(f"| sfx/{name}.ogg | {src} | CC0 1.0 |")
         else:
             lines.append(f"| sfx/{name}.wav | synthesized by tools/audio/synth.py | CC0 1.0 |")
@@ -151,11 +185,13 @@ def write_credits(out_root):
 
 def write_licence(kdir, out_root):
     parts = ["Licence texts of the Kenney packs used in assets/audio (all CC0 1.0).",
-             "Copied verbatim from each pack's License.txt.", ""]
+             "Copied verbatim from each pack's License.txt (line endings normalised).", ""]
     for key in ("impact", "rpg", "ui"):
         folder, title = PACKS[key]
-        with open(os.path.join(kdir, folder, "License.txt"), encoding="utf-8", errors="replace") as fh:
-            txt = fh.read().replace("\r\n", "\n").strip("\n")
+        with open(os.path.join(kdir, folder, "License.txt"), "rb") as fh:
+            txt = fh.read().decode("utf-8", errors="replace")
+        # the originals mix CRLF with stray CR (CR CR LF): normalise as displayed
+        txt = txt.replace("\r\r\n", "\n").replace("\r\n", "\n").replace("\r", "\n").strip("\n")
         parts += ["=" * 72, f"{title}  ({folder}/License.txt)", "=" * 72, txt, ""]
     with open(os.path.join(out_root, "LICENSE-Kenney.txt"), "w") as fh:
         fh.write("\n".join(parts) + "\n")
@@ -209,7 +245,7 @@ def main(argv=None):
             rows.append(row)
     if rows:
         al.print_table(rows, "curated Kenney SFX (decoded Ogg; peak/rms dBFS, loud = K-weighted max 200 ms)")
-    write_credits(a.out)
+    write_credits(a.out, raw)
     write_licence(kdir, a.out)
     print(f"\n{len(RECIPES)} Kenney-derived files -> {os.path.relpath(a.out, al.REPO)}/sfx "
           f"({'raw copies' if raw else 'mono Ogg Vorbis q6'}); wrote CREDITS.md, LICENSE-Kenney.txt")

@@ -7,12 +7,14 @@ Conventions
 -----------
 * Sample rate 44100 Hz, float64 signals in [-1, 1].  Mono = shape (n,),
   stereo = shape (n, 2).
-* One-shot SFX are trimmed, faded, DC-blocked and loudness-normalised per
-  category (K-weighted, 200 ms max window), with a hard peak ceiling of
-  -3 dBFS.  Within a category the loudness is matched; peaks land at or
-  below -3 dBFS.
-* Ambience loops are normalised to a per-loop integrated loudness, also
-  with a -3 dBFS peak ceiling, and carry a RIFF 'smpl' loop chunk so Godot's
+* One-shot SFX are DC-blocked, trimmed, faded and loudness-normalised per
+  category (K-weighted, max over a 200 ms window) with a -3 dBFS sample-peak
+  ceiling.  All variants of a stem (knap_1..5) are normalised jointly to the
+  same loudness; a gentle look-ahead limiter (<= 3 dB) is used only when a
+  transient would otherwise stop a sound reaching its category target.  So
+  peaks sit at or below -3 dBFS and loudness matches within a category.
+* Ambience loops are normalised to a per-loop integrated loudness (same
+  ceiling, seam-safe limiter) and carry a RIFF 'smpl' loop chunk so Godot's
   WAV importer (loop mode "Detect From WAV", the default) loops them.
 """
 import os
@@ -219,16 +221,8 @@ def bp(x, f, q=1.0):
     return filt(x, biquad("bp", f, q))
 
 
-def peq(x, f, q, g):
-    return filt(x, biquad("peak", f, q, g))
-
-
 def lp4(x, f):
     return filt(x, [biquad("lp", f, 0.5412), biquad("lp", f, 1.3066)])
-
-
-def hp4(x, f):
-    return filt(x, [biquad("hp", f, 0.5412), biquad("hp", f, 1.3066)])
 
 
 def dc_block(x, f=18.0):
@@ -331,17 +325,6 @@ def trim(x, lead_rel=-42.0, tail_rel=-52.0, preroll=0.002, fade_in=0.0015,
     return fade(y, fade_in if start > 0 else min(fade_in, 0.0005), fo)
 
 
-def normalise(x, target_db, measure=lk_max, ceil_db=PEAK_CEIL_DB):
-    """Gain to reach target loudness, limited by the sample-peak ceiling."""
-    loud = measure(x)
-    pk = peak_db(x)
-    gain = target_db - loud
-    capped = pk + gain > ceil_db
-    if capped:
-        gain = ceil_db - pk
-    return x * 10 ** (gain / 20), gain, capped
-
-
 def limit(x, ceil_db=PEAK_CEIL_DB, attack=0.003, release=0.08, sr=SR):
     """Look-ahead peak limiter.  The required gain reduction (dB) is spread
     with linear ramps: 12 dB per `attack` s before a peak (look-ahead) and
@@ -438,7 +421,7 @@ def write_wav(path, x, sr=SR, loop=False, seed=0):
         smpl += struct.pack("<6I", 0, 0, 0, n - 1, 0, 0)
         chunks.append(b"smpl" + struct.pack("<I", len(smpl)) + smpl)
     body = b"WAVE" + b"".join(chunks)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "wb") as fh:
         fh.write(b"RIFF" + struct.pack("<I", len(body)) + body)
 
@@ -488,13 +471,27 @@ def ffmpeg():
     return shutil.which("ffmpeg")
 
 
-def _channels(path):
+def _probe(path):
+    """(channels, sample_rate, duration_ts) of the first audio stream via
+    ffprobe, or None if ffprobe is unavailable."""
     probe = shutil.which("ffprobe")
-    if probe:
-        out = subprocess.run([probe, "-v", "error", "-select_streams", "a:0", "-show_entries",
-                              "stream=channels", "-of", "csv=p=0", path],
-                             capture_output=True, text=True, check=True).stdout
-        return int(out.strip().split(",")[0])
+    if not probe:
+        return None
+    out = subprocess.run([probe, "-v", "error", "-select_streams", "a:0", "-show_entries",
+                          "stream=channels,sample_rate,duration_ts", "-of",
+                          "default=noprint_wrappers=1", path],
+                         capture_output=True, text=True, check=True).stdout
+    kv = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    if "channels" not in kv or "sample_rate" not in kv:
+        raise RuntimeError(f"{path}: no audio stream")
+    dur = kv.get("duration_ts", "")
+    return int(kv["channels"]), int(kv["sample_rate"]), int(dur) if dur.isdigit() else None
+
+
+def _channels(path):
+    info = _probe(path)
+    if info:
+        return info[0]
     info = subprocess.run([ffmpeg(), "-hide_banner", "-i", path],
                           capture_output=True, text=True).stderr
     m = re.search(r"Audio: [^\n]*?, \d+ Hz, (mono|stereo|(\d+) channels)", info)
@@ -513,6 +510,12 @@ def decode(path, sr=SR, mono=True):
     raw = subprocess.run([exe, "-v", "error", "-i", path, "-f", "f32le", "-ar", str(sr), "-"],
                          capture_output=True, check=True).stdout
     a = np.frombuffer(raw, "<f4").astype(float).reshape(-1, ch)
+    info = _probe(path)
+    if info and info[2]:
+        # ffmpeg's Vorbis decode can drop/append a few hundred samples at the
+        # end; the stream's end granule (duration_ts) is the true length.
+        n = int(round(info[2] * sr / info[1]))
+        a = a[:n] if len(a) >= n else np.concatenate([a, np.zeros((n - len(a), ch))])
     if mono:
         return a.mean(axis=1)
     return a if ch > 1 else a[:, 0]
@@ -524,7 +527,7 @@ def encode_ogg(x, path, sr=SR, quality=6):
         raise RuntimeError("ffmpeg not found")
     x = np.asarray(x, float)
     ch = 1 if x.ndim == 1 else x.shape[1]
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     cmd = [exe, "-v", "error", "-y", "-f", "f32le", "-ar", str(sr), "-ac", str(ch), "-i", "-",
            "-map_metadata", "-1", "-fflags", "+bitexact", "-flags:a", "+bitexact",
            "-c:a", "libvorbis", "-q:a", str(quality), path]

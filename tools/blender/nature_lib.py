@@ -1089,3 +1089,169 @@ def surface_exit(bvh, origin, d, maxd=2.5):
         if depth <= 0:
             return p
     return hits[0][0] if hits else Vector(origin)
+
+
+# ----------------------------------------------------------------------------
+# plant kit: a bmesh with per-face part id / tint and per-vertex length parameter
+# ----------------------------------------------------------------------------
+
+class PlantBM:
+    """Accumulates plant geometry.  Face layers: 'part' (int id), 'tint' (float 0..1 random per
+    element); vertex layer 'tw' (0 at an element's base -> 1 at its tip)."""
+
+    def __init__(self, seed=0):
+        self.bm = bmesh.new()
+        self.part = self.bm.faces.layers.int.new("part")
+        self.tint = self.bm.faces.layers.float.new("tint")
+        self.tw = self.bm.verts.layers.float.new("tw")
+        self.rng = random.Random(seed)
+
+    def _tag(self, faces, part, mat, tint):
+        tint = self.rng.random() if tint is None else tint
+        for f in faces:
+            f[self.part] = part
+            f[self.tint] = tint
+            f.material_index = mat
+
+    def tube(self, pts, radii, segs=4, part=0, mat=0, tint=None, tw=(0.0, 1.0), cap_start=True, cap_end=True,
+             noise_amp=0.0, noise_scale=8.0, seed=0, rmod=None, tip_len=0.6, zflat=1.0):
+        rings, faces = tube_ex(self.bm, pts, radii, segs=segs, cap_start=cap_start, cap_end=cap_end, mat=mat,
+                               noise_amp=noise_amp, noise_scale=noise_scale, seed=seed, rmod=rmod,
+                               tip_len=tip_len, zflat=zflat)
+        n = len(rings)
+        inring = set()
+        for i, r in enumerate(rings):
+            for v in r:
+                v[self.tw] = lerp(tw[0], tw[1], i / max(1, n - 1))
+                inring.add(v)
+        p0, p1 = Vector(pts[0]), Vector(pts[-1])
+        for f in faces:
+            for v in f.verts:
+                if v not in inring:
+                    v[self.tw] = tw[0] if (v.co - p0).length < (v.co - p1).length else tw[1]
+        self._tag(faces, part, mat, tint)
+        return faces
+
+    def strip(self, pts, widths, sides, normals, fold=0.25, part=0, mat=0, tint=None, tw=(0.0, 1.0)):
+        cols = []
+        n = len(pts)
+        bm = self.bm
+        for i in range(n):
+            c, w, s, nn = Vector(pts[i]), widths[i], Vector(sides[i]), Vector(normals[i])
+            t = lerp(tw[0], tw[1], i / max(1, n - 1))
+            if i == n - 1 and w < 1e-4:
+                v = bm.verts.new(c)
+                v[self.tw] = t
+                cols.append((v, v, v))
+            else:
+                trip = (bm.verts.new(c - s * w), bm.verts.new(c + nn * fold * w), bm.verts.new(c + s * w))
+                for v in trip:
+                    v[self.tw] = t
+                cols.append(trip)
+        faces = []
+        for i in range(n - 1):
+            a, b = cols[i], cols[i + 1]
+            if b[0] is b[1]:
+                faces.append(bm.faces.new((a[0], a[1], b[1])))
+                faces.append(bm.faces.new((a[1], a[2], b[1])))
+            else:
+                faces.append(bm.faces.new((a[0], a[1], b[1], b[0])))
+                faces.append(bm.faces.new((a[1], a[2], b[2], b[1])))
+        self._tag(faces, part, mat, tint)
+        return faces
+
+    def blade(self, base, direction, length, width, bend=0.4, bend_dir=None, segs=4, fold=0.3, twist=0.0,
+              part=0, mat=0, tint=None, profile=None, side_hint=None):
+        """Blade from base along direction, curving toward bend_dir (default: down/gravity).
+        profile(t)->width factor.  Returns (faces, centreline points)."""
+        base = Vector(base)
+        d = Vector(direction).normalized()
+        bd = Vector(bend_dir).normalized() if bend_dir is not None else Vector((0, 0, -1))
+        side0 = Vector(side_hint) if side_hint is not None else d.cross(UP)
+        if side0.length < 1e-4:
+            side0 = Vector((1, 0, 0))
+        side0.normalize()
+        pts, ws, sides, nors = [], [], [], []
+        p = base.copy()
+        step = length / segs
+        for i in range(segs + 1):
+            t = i / segs
+            pts.append(p.copy())
+            side = rot_about(side0, d, twist * t)
+            side = (side - d * side.dot(d))
+            if side.length < 1e-5:
+                side = side0.copy()
+            side.normalize()
+            nrm = side.cross(d).normalized()
+            if profile is not None:
+                w = width * profile(t)
+            else:
+                w = width * (1.0 - t ** 2.2) * (0.6 + 0.4 * min(1.0, t * 4.0))
+            ws.append(w if i < segs else 0.0)
+            sides.append(side)
+            nors.append(nrm)
+            d = (d + bd * bend * (1.0 / segs) * (0.4 + 1.2 * t)).normalized()
+            p = p + d * step
+        faces = self.strip(pts, ws, sides, nors, fold=fold, part=part, mat=mat, tint=tint)
+        return faces, pts
+
+    def blob(self, center, radius, squash=(1, 1, 1), freq=2, amp=0.15, nscale=2.0, seed=0, part=0, mat=0,
+             tint=None, rot=None):
+        tmp = geo_sphere(freq) if freq > 1 else None
+        if tmp is None:
+            tmp = bmesh.new()
+            bmesh.ops.create_icosphere(tmp, subdivisions=1, radius=1.0)
+        off = Vector((seed * 5.3, seed * 2.1, seed * 8.7))
+        vm = {}
+        for v in tmp.verts:
+            d = v.co.normalized()
+            r = radius * (1.0 + amp * nz(d * nscale + off, 1.0, 2))
+            q = Vector((d.x * r * squash[0], d.y * r * squash[1], d.z * r * squash[2]))
+            if rot is not None:
+                q = rot @ q
+            nv = self.bm.verts.new(Vector(center) + q)
+            nv[self.tw] = 0.5 + 0.5 * d.z
+            vm[v] = nv
+        faces = [self.bm.faces.new([vm[v] for v in f.verts]) for f in tmp.faces]
+        tmp.free()
+        self._tag(faces, part, mat, tint)
+        return faces
+
+    def flower(self, center, normal, radius, petals=5, cup=0.25, part=0, mat=0, tint=None, center_part=None,
+               notch=0.35, rot0=0.0, petal_w=0.55):
+        """Flat-ish star flower: centre vertex + petal tips.  Petals cup up by `cup`."""
+        n = Vector(normal).normalized()
+        a0 = n.orthogonal().normalized()
+        b0 = n.cross(a0)
+        c = self.bm.verts.new(Vector(center) + n * radius * 0.08)
+        c[self.tw] = 0.0
+        ring = []
+        k2 = petals * 2
+        for k in range(k2):
+            ang = rot0 + k / k2 * math.tau
+            rr = radius if k % 2 == 0 else radius * notch
+            lift = cup * rr
+            p = Vector(center) + (a0 * math.cos(ang) + b0 * math.sin(ang)) * rr + n * lift
+            v = self.bm.verts.new(p)
+            v[self.tw] = 1.0 if k % 2 == 0 else 0.5
+            ring.append(v)
+        faces = []
+        for k in range(k2):
+            faces.append(self.bm.faces.new((c, ring[k], ring[(k + 1) % k2])))
+        self._tag(faces, part, mat, tint)
+        return faces
+
+    def to_object(self, name, mats, smooth=True):
+        ob = new_object(name, self.bm, mats=mats, smooth=smooth)
+        return ob
+
+
+def face_attr(obj, name, default=0):
+    a = obj.data.attributes.get(name)
+    if a is None:
+        return [default] * len(obj.data.polygons)
+    return [d.value for d in a.data]
+
+
+def strip_plant_attrs(obj):
+    strip_attrs(obj, ("part", "tint", "tw", "mossw", "clump", "tipw"))

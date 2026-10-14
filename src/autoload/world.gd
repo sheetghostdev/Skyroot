@@ -503,6 +503,38 @@ func _play_fx(kind: String, pos: Vector3, params: Dictionary) -> void:
 		fxn.play(kind, pos, params)
 
 
+func open_craft(pid: int, eid: int) -> void:
+	if Net.is_online():
+		_rpc_open_craft.rpc_id(pid, eid)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_open_craft(eid: int) -> void:
+	var cc := get_tree().get_first_node_in_group("crafting")
+	if cc:
+		cc.open(eid)
+
+
+func craft_result(pid: int, eid: int, text: String, kind: String) -> void:
+	if pid == multiplayer.get_unique_id():
+		_apply_craft_result(eid, text, kind)
+	elif Net.is_online():
+		_rpc_craft_result.rpc_id(pid, eid, text, kind)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_craft_result(eid: int, text: String, kind: String) -> void:
+	_apply_craft_result(eid, text, kind)
+
+
+func _apply_craft_result(eid: int, text: String, kind: String) -> void:
+	var cc := get_tree().get_first_node_in_group("crafting")
+	if cc:
+		cc.on_result(eid, text, kind)
+	else:
+		Events.toast.emit(text, kind)
+
+
 func discover(discovery_id: String, by_pid: int) -> void:
 	## Host: first time the group achieves something notable.
 	if discoveries.has(discovery_id):

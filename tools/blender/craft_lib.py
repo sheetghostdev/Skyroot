@@ -709,6 +709,7 @@ def export(path, objs, quiet=False):
 def preview(name, objs, **kw):
     """render_preview showing only `objs` (other meshes hidden from render)."""
     scene = bpy.context.scene
+    bpy.context.view_layer.update()
     show = set(o.name for o in objs)
     hidden = []
     for o in scene.objects:
@@ -739,7 +740,7 @@ def label(text, loc, size=0.08, rot_z=0.0):
 
 
 def contact_sheet(name, objs, cols=4, cell=1.0, fill=0.85, size=(1200, 900), elev=42, azim=20,
-                  samples=20, labels=True, dist_mul=3.0):
+                  samples=20, labels=True, dist_mul=2.3):
     """Lay copies of `objs` out on a grid (each scaled to fit a cell) and render."""
     made = []
     rows = (len(objs) + cols - 1) // cols
@@ -762,6 +763,7 @@ def contact_sheet(name, objs, cols=4, cell=1.0, fill=0.85, size=(1200, 900), ele
         made.append(cpy)
         if labels:
             made.append(label(o.name, (cx, cy - cell * 0.47, 0.0), size=cell * 0.075))
+    bpy.context.view_layer.update()
     # hide originals
     for o in objs:
         o.hide_render = True
@@ -1116,7 +1118,7 @@ def run_items(registry, args, sheet, cols=4, limit=800):
 
 
 def leaf_mesh(bm, base, direction, up, length, width, thick=0.0015, rings=2, curl=0.0, droop=0.0,
-              fold=0.25, mat=0, tip_round=0.0, twist=0.0, petiole=0.0):
+              fold=0.25, mat=0, tip_round=0.0, twist=0.0, petiole=0.0, asym=(1.0, 1.0), smooth6=False):
     """A small closed leaf: `rings` interior diamond cross-sections between a pointed base and
     tip (8 tris per ring).  `up` is the upper-surface normal; curl bends it, droop sags it."""
     base, d, u = V(base), V(direction).normalized(), V(up).normalized()
@@ -1131,9 +1133,16 @@ def leaf_mesh(bm, base, direction, up, length, width, thick=0.0015, rings=2, cur
         t = i / (rings + 1)
         t = 0.42 if rings == 1 else t
         pts.append(centre(t))
-        w = width * (math.sin(math.pi * t) ** 0.6)
+        w = width * (math.sin(math.pi * t ** 0.75) ** 0.9)
         h = thick * (1.0 - 0.4 * t)
-        profs.append([(h, 0.0), (fold * w * 0.5, w), (-h, 0.0), (fold * w * 0.5, -w)])
+        lo, hi = -w * asym[0], w * asym[1]
+        if smooth6:
+            # cupped: midrib low, blade rising toward the edges (upper surface concave)
+            profs.append([(h - fold * w * 0.15, 0.0), (h + fold * w * 0.35, hi * 0.55), (fold * w * 0.5, hi),
+                          (-h * 0.6, 0.0), (fold * w * 0.5, lo), (h + fold * w * 0.35, lo * 0.55)][::1])
+            profs[-1] = [profs[-1][0], profs[-1][1], profs[-1][2], profs[-1][3], profs[-1][4], profs[-1][5]]
+        else:
+            profs.append([(h, (lo + hi) * 0.5 * 0.0), (fold * w * 0.5, hi), (-h, 0.0), (fold * w * 0.5, lo)])
     if len(pts) == 1:
         tan = (centre(0.6) - centre(0.25)).normalized()
         frames = [(tan, (u - tan * u.dot(tan)).normalized(), tan.cross((u - tan * u.dot(tan)).normalized()))]

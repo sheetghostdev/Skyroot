@@ -155,35 +155,35 @@ class Tree:
         rng = random.Random(SEED + 100)
         bm = bmesh.new()
         tl = bm.verts.layers.float.new("tipw")
-        defs = [(20, 2.05, -0.22, 0.15, 1), (97, 1.55, -0.18, 0.12, 0), (163, 2.2, -0.25, 0.155, 1),
-                (232, 1.45, -0.2, 0.115, 0), (300, 1.85, -0.22, 0.14, 0), (130, 1.4, -0.24, 0.10, 0)]
+        defs = [(20, 2.05, -0.25, 0.13, 1), (97, 1.6, -0.22, 0.11, 0), (163, 2.2, -0.25, 0.135, 1),
+                (232, 1.5, -0.22, 0.10, 0), (300, 1.85, -0.25, 0.12, 0), (131, 1.4, -0.22, 0.085, 0)]
         for k, (az, L, zend, r0, fork) in enumerate(defs):
             a = math.radians(az + rng.uniform(-4, 4))
             d = V((math.cos(a), math.sin(a), 0))
             side = V((-d.y, d.x, 0))
-            n = 9
+            n = 10
             pts, radii = [], []
             for i in range(n):
                 t = i / (n - 1)
-                rr = lerp(0.14, L, t)
-                zc = lerp(0.17, 0.045, smoothstep(0.0, 0.3, t))
-                zc += 0.025 * math.sin(t * math.pi * 2.0 + k)              # gentle arching
-                zc += (zend - 0.06) * smoothstep(0.55, 0.92, t)             # dive into the soil
+                rr = lerp(0.16, L, t ** 0.92)
+                zc = lerp(0.3, 0.035, smoothstep(0.0, 0.32, t) ** 0.8)
+                zc += 0.02 * math.sin(t * math.pi * 2.0 + k) * smoothstep(0.1, 0.4, t)   # gentle arching
+                zc += (zend - 0.05) * smoothstep(0.48, 1.0, t)                           # sink into the soil
                 wig = 0.2 * n1(V((t * 2.2, k * 3.1, 0.5)), 1.0, SEED + 30, 2) * smoothstep(0.0, 0.4, t)
                 pts.append(d * rr + side * wig + V((0, 0, zc)))
-                radii.append(r0 * (1.0 - 0.7 * t ** 0.9) * (1.0 + 0.5 * (1.0 - smoothstep(0.0, 0.25, t))))
-            rr_, _ = N.tube_ex(bm, pts, radii, segs=6, noise_amp=0.10, noise_scale=5.0, seed=SEED + 40 + k,
-                               zflat=0.62, cap_start=True, cap_end=True)
+                radii.append(r0 * lerp(1.25, 0.45, t ** 0.7))
+            rr_, _ = N.tube_ex(bm, pts, radii, segs=7, noise_amp=0.12, noise_scale=4.0, seed=SEED + 40 + k,
+                               zflat=0.72, cap_start=True, cap_end=True)
             set_tip(rr_, tl)
             if fork:
                 p, tan = N.point_at(pts, 0.45)
                 fa = a + math.radians(rng.choice([-1, 1]) * rng.uniform(35, 50))
                 fd = V((math.cos(fa), math.sin(fa), 0))
                 fl = L * 0.4
-                fpts = N.bezier_points(p - tan * 0.05, p + fd * fl * 0.35, p + fd * fl * 0.7 + V((0, 0, -0.03)),
-                                       p + fd * fl + V((0, 0, -0.16)), 5)
-                fr = [r0 * 0.5 * (1.0 - 0.6 * (i / 4) ** 0.8) for i in range(5)]
-                rf, _ = N.tube_ex(bm, fpts, fr, segs=5, noise_amp=0.1, noise_scale=5.0, seed=SEED + 60 + k, zflat=0.62,
+                fpts = N.bezier_points(p - tan * 0.05, p + fd * fl * 0.35, p + fd * fl * 0.65 + V((0, 0, -0.06)),
+                                       p + fd * fl + V((0, 0, -0.2)), 5)
+                fr = [r0 * 0.5 * (1.0 - 0.45 * (i / 4) ** 0.8) for i in range(5)]
+                rf, _ = N.tube_ex(bm, fpts, fr, segs=6, noise_amp=0.1, noise_scale=5.0, seed=SEED + 60 + k, zflat=0.72,
                                   cap_start=True, cap_end=True)
                 set_tip(rf, tl, 0.45, 1.0)
         return bm
@@ -253,8 +253,8 @@ class Tree:
         clumps = []
         tip = main[-1]
         ttan = (main[-1] - main[-2]).normalized()
-        R = rng.uniform(0.26, 0.31)
-        clumps.append(Clump(tip + ttan * R * 0.25 + V((0, 0, R * 0.25)), R, squash=(1.0, 1.0, 0.82), amp=0.2,
+        R = rng.uniform(0.3, 0.34)
+        clumps.append(Clump(tip + ttan * R * 0.2 + V((0, 0, R * 0.2)), R, squash=(1.12, 1.12, 0.72), amp=0.2,
                             nscale=1.25, octaves=2, seed=SEED * 7 + i * 5, freq=3, flat_bottom=0.35))
         side = rng.choice([-1, 1])
         for k in range(ntw):
@@ -271,9 +271,9 @@ class Tree:
             rtw, _ = N.tube_ex(bm, tp, [rt, rt * 0.7, rt * 0.4, 0.004], segs=5, noise_amp=0.05, seed=SEED + i * 11 + k,
                                cap_start=True, cap_end=True, tip_len=1.0)
             set_tip(rtw, tl, 0.7, 1.0)
-            Rt = rng.uniform(0.2, 0.25)
+            Rt = rng.uniform(0.23, 0.27)
             ttip = tp[-1]
-            clumps.append(Clump(ttip + td * Rt * 0.2 + V((0, 0, Rt * 0.2)), Rt, squash=(1.0, 1.0, 0.84), amp=0.2,
+            clumps.append(Clump(ttip + td * Rt * 0.2 + V((0, 0, Rt * 0.2)), Rt, squash=(1.1, 1.1, 0.75), amp=0.2,
                                 nscale=1.3, octaves=2, seed=SEED * 7 + i * 5 + k + 1, freq=3, flat_bottom=0.35))
         length = N.polyline_length(main[1:])
         return bm, X, clumps, length
@@ -291,10 +291,10 @@ class Tree:
         bend = math.radians(rng.uniform(-15, 15))
         dh = V((math.cos(a + bend), math.sin(a + bend), 0))
         P1 = X + d0 * L * 0.36
-        P2 = X + dh * L * 0.6 + V((0, 0, L * 0.42))
-        P3 = X + dh * L * 0.74 + V((0, 0, L * 0.6))
+        P2 = X + dh * L * 0.6 + V((0, 0, L * 0.45))
+        P3 = X + dh * L * 0.72 + V((0, 0, L * 0.66))
         main = [S] + N.bezier_points(X, P1, P2, P3, 10)
-        main = N.wobble(main, 0.07, 1.6, SEED + 200 + i, fix_start=2)
+        main = N.wobble(main, 0.13, 1.2, SEED + 200 + i, fix_start=2)
         n = len(main)
         radii = [r0 * 1.04] + [r0 * (1.0 - 0.82 * (k / (n - 2)) ** 0.85) for k in range(n - 1)]
         segs = [8 if k < 5 else 6 for k in range(n)]
@@ -349,12 +349,12 @@ class Tree:
         add(A[-1] + V((0.1, -0.05, 0.3)), 1.05)
         add(B[-1] + V((-0.1, 0.05, 0.28)), 1.0)
         add(Cc[-1] + V((0.0, -0.1, 0.3)), 0.98)
-        add(ctr + V((0.05, 0.0, 1.0)), 1.0)                         # top filler
-        add(ctr + V((0.3, -0.1, 1.55)), 0.6, amp=0.26, freq=3)      # top poke-out
-        add(ctr + V((-0.35, 0.15, 0.3)), 0.9)                        # inner filler
-        for P, out in ((A, V((0.7, -0.15, 0))), (B, V((-0.45, 0.55, 0))), (Cc, V((0.1, -0.7, 0)))):
+        add(ctr + V((0.05, 0.0, 0.8)), 1.05)                        # top filler
+        add(ctr + V((0.3, -0.1, 1.38)), 0.62, amp=0.26, freq=3)     # top poke-out
+        add(ctr + V((-0.35, 0.15, 0.25)), 0.9)                       # inner filler
+        for P, out in ((A, V((1.1, -0.25, 0))), (B, V((-0.7, 0.85, 0))), (Cc, V((0.15, -1.1, 0)))):
             pm, _ = N.point_at(P, 0.68)
-            add(pm + out + V((0, 0, 0.15)), 0.82, freq=3)          # mid-crown, fills the dome
+            add(pm + out + V((0, 0, 0.3)), 0.85, freq=3)           # mid-crown, rounds out the dome
         add(B[-1] + V((-0.85, -0.2, -0.15)), 0.55, amp=0.26, freq=3)  # silhouette poke-outs
         add(A[-1] + V((0.9, 0.35, -0.2)), 0.56, amp=0.26, freq=3)
         add(Cc[-1] + V((-0.6, -0.6, 0.1)), 0.52, amp=0.26, freq=3)
@@ -378,6 +378,10 @@ def bark_fn(ao, cav, tipw, kind="trunk", seed=SEED):
         t = tipw[vi]
         st = n1(V((p.x * 7.0, p.y * 7.0, p.z * 1.1)), 1.0, seed + 5, 2)
         col = mix(bd, bark, 0.55 + 0.4 * st)
+        if kind in ("trunk", "stump"):
+            ang = math.atan2(p.y, p.x)
+            fur = math.sin(ang * 7.0 + p.z * 1.3 + 2.0 * n1(V((p.x * 2, p.y * 2, p.z * 0.6)), 1.0, seed + 12))
+            col = scale_col(col, 1.0 + 0.1 * fur)
         col = mix(col, bl, clamp(c * 2.2) * 0.45)
         col = scale_col(col, 1.0 + 0.3 * min(0.0, c * 2.2))
         col = shift(col, dh=0.01 * n1(p, 0.6, seed + 8), ds=0.08 * n1(p, 0.9, seed + 6))
@@ -413,12 +417,12 @@ def leaf_fn(ao, clump_idx, tints, zlo=1.2, zhi=7.4, seed=SEED):
         a = ao[vi]
         tint = tints[int(round(clump_idx[vi])) % len(tints)]
         h = smoothstep(zlo, zhi, p.z)
-        col = mix(ld, tint, 0.55 + 0.45 * h)
+        col = mix(ld, tint, 0.68 + 0.32 * h)
         col = mix(col, lw, 0.22 * smoothstep(0.25, 1.0, n.z) * (0.35 + 0.65 * h))
         col = mix(col, deep, 0.35 * smoothstep(0.1, 0.9, -n.z))
         col = scale_col(col, 1.0 + 0.09 * n1(p, 2.2, seed + 3, 2))
         col = shift(col, dh=0.008 * n1(p, 0.7, seed + 4))
-        return scale_col(col, 0.32 + 0.68 * a)
+        return scale_col(col, 0.36 + 0.64 * a)
     return fn
 
 
@@ -466,14 +470,14 @@ def main():
         (1.62, 196, 1.22, 0.031, 0.2, 2),
         (2.08, 243, 1.06, 0.029, 0.18, 1),
         (1.92, 290, 1.38, 0.035, 0.26, 2),
-        (2.36, 333, 0.92, 0.026, 0.12, 1),
+        (2.36, 333, 0.98, 0.026, 0.12, 1),
     ]
     LARGE = [  # (leader, height, azimuth, elevation, length, base radius, sub-branches)
-        ("T", 2.42, 205, 38, 3.0, 0.095, 3),
-        ("A", 2.72, 62, 42, 2.8, 0.085, 2),
-        ("C", 2.95, 290, 40, 3.2, 0.09, 3),
-        ("B", 3.18, 128, 44, 2.6, 0.075, 2),
-        ("A", 3.38, 352, 42, 2.5, 0.072, 2),
+        ("T", 2.36, 205, 38, 3.0, 0.095, 3),
+        ("A", 2.62, 62, 42, 2.85, 0.085, 2),
+        ("C", 2.85, 290, 42, 3.05, 0.09, 3),
+        ("B", 3.02, 128, 44, 2.75, 0.078, 2),
+        ("A", 3.22, 352, 42, 2.65, 0.074, 2),
     ]
     branches, leaves = [], []
     info = []
@@ -528,6 +532,12 @@ def main():
     scene_objs = [trunk, roots] + branches + leaves
     ao_bark = N.bake_ao([trunk, roots] + branches, occluders=leaves, samples=24, dist=1.4, ground=0.0)
     ao_leaf = N.bake_ao(leaves, occluders=[trunk] + branches, samples=20, dist=1.6, ground=0.0)
+    # under-canopy clumps: long-range occlusion picks up the shade of the crown above
+    small_leaves = [lf for lf in leaves if lf.name.startswith("BranchS_")]
+    ao_far = N.bake_ao(small_leaves, occluders=[o for o in leaves if o not in small_leaves] + [trunk] + branches,
+                       samples=20, dist=4.0, ground=None, bias=0.01)
+    for lf in small_leaves:
+        ao_leaf[lf.name] = [a * (0.55 + 0.45 * b) for a, b in zip(ao_leaf[lf.name], ao_far[lf.name])]
     ao_stump = N.bake_ao([stump], occluders=[roots], samples=24, dist=0.8, ground=0.0)
     for o, kind in [(trunk, "trunk"), (roots, "roots")] + [(b, "branch") for b in branches]:
         N.paint_ex(o, bark_fn(ao_bark[o.name], N.cavity(o), N.attr_values(o, "tipw"), kind))
@@ -557,7 +567,9 @@ def main():
     N.preview("tree_branch_closeup", tree_objs, views=((8, 100 + 25),), hide=[stump],
               target=[branches[k], leaves[k]], dist_mul=2.6)
     hide = [trunk] + branches + leaves
-    N.preview("tree_stump", [stump, roots], views=((30, 35),), hide=hide, dist_mul=2.8)
+    N.preview("tree_stump", [stump, roots], views=((30, 35),), hide=hide, dist_mul=1.9)
+    N.preview("tree_base", tree_objs, views=((18, 300),), hide=[stump], target=[roots], dist_mul=1.6)
 
 
-main()
+if __name__ == "__main__":
+    main()

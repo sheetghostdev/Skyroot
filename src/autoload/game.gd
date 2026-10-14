@@ -154,6 +154,20 @@ func _notification(what: int) -> void:
 		quit()
 
 
+func _exit_tree() -> void:
+	# static caches hold resources; release them so the engine shuts down cleanly
+	Tex._cache.clear()
+	Models._scenes.clear()
+	Models._mats.clear()
+	ProcMesh._cache.clear()
+	Geo._ico_cache.clear()
+	InteractionRules._lift_cache.clear()
+	UITheme._theme = null
+	UITheme._font = null
+	UITheme._font_bold = null
+	UITheme._font_title = null
+
+
 func quit() -> void:
 	_quitting = true
 	if state == "playing" and Net.is_host():

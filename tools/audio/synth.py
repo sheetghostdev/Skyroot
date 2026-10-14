@@ -303,8 +303,9 @@ def bubbles(rng, n, times, fmin, fmax, amp=1.0, xi=(0.05, 0.22), amp_fn=None):
 
 
 def stick_slip(rng, n, rate, amp, jitter=0.07, skip=0.0, lpf=6000.0):
-    """Stick-slip friction pulse train: `rate` and `amp` are per-sample arrays.
-    Returns sharp pulses (one-sided, ~0.15 ms) ready for resonators."""
+    """Stick-slip friction pulse train: `rate` (Hz) and `amp` are per-sample
+    arrays; each period is jittered and some slips are skipped.  Returns the
+    impulse train low-passed at `lpf` (pulse sharpness), ready for resonators."""
     times, amps = [], []
     t = 0.0
     T = n / SR
@@ -511,8 +512,8 @@ def knap(rng, v):
     # fast initial decay on top of the ring: crisp, stone-like rather than metallic
     ring *= 0.55 + 0.45 * np.exp(-t / 0.008)
     fb = P["fb"] * rng.uniform(0.97, 1.03)
-    body = nz(modes(n, [fb, fb * 1.53, fb * 2.21], [0.011, 0.007, 0.0045], [1.0, 0.55, 0.3]))
-    thock = nz(modes(n, [P["ft"]], [0.0055], [1.0]))
+    body = nz(modes(n, [fb, fb * 1.53, fb * 2.21], [0.016, 0.011, 0.007], [1.0, 0.55, 0.3]))
+    thock = nz(modes(n, [P["ft"]], [0.008], [1.0]))
     cl = click(rng, n, 0.00045, 2500)
     sz = nz(bp(white(rng, n), 6800, 1.2)) * expdec(n, 0.010)
     x = 0.85 * ring + 1.0 * body + 0.5 * thock + 0.6 * cl + 0.18 * sz
@@ -969,6 +970,8 @@ def pottery_tap(rng, v):
 # =============================================================================
 @sfx("water_splash")
 def water_splash(rng, v):
+    """Something dropped/stepped into water: impact, decaying slosh, spray,
+    a bubble cloud, the cavity's low 'plunk' and a few drips falling back."""
     n = N(1.0)
     impact = lp(white(rng, n) * ar(n, 0.002, 0.02), 5000)
     slosh = formant_noise(rng, n, lambda tt: np.clip(tt / 0.01, 0, 1)

@@ -67,19 +67,15 @@ def main(argv=None):
         path = os.path.join(root, sub, files[0])
         ext = files[0].rsplit(".", 1)[1]
         counts[ext] += 1
-        loop = None
-        if ext == "wav":
-            try:
-                x, sr, loop = al.read_wav(path)
-            except ValueError as e:
-                fails.append(str(e))
-                continue
-            if sr != al.SR:
-                fails.append(f"{sub}/{name}: sample rate {sr}")
-        else:
-            if not have_ffmpeg:
-                continue
-            x, sr = al.decode(path, mono=False), al.SR
+        if ext == "ogg" and not have_ffmpeg:
+            continue
+        try:
+            x, sr, loop = al.load_any(path)
+        except (ValueError, RuntimeError) as e:
+            fails.append(f"{sub}/{name}: {e}")
+            continue
+        if sr != al.SR:
+            fails.append(f"{sub}/{name}: sample rate {sr}")
         is_loop = sub == "amb"
         if not np.all(np.isfinite(x)):
             fails.append(f"{sub}/{name}: non-finite samples")

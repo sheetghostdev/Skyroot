@@ -34,6 +34,8 @@ const TARGETS := {
 	},
 }
 
+const STONE_L := 0.346          # litres of stone in one cobble (0.9 kg)
+const DENSITY := 2.6            # kg per litre
 const CORTEX := Color(0.6, 0.57, 0.51)
 const FRESH := Color(0.33, 0.34, 0.37)
 
@@ -41,13 +43,11 @@ const FRESH := Color(0.33, 0.34, 0.37)
 static func params(seed_value: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	return {
-		"a": rng.randf_range(0.062, 0.078),
-		"b": rng.randf_range(0.044, 0.054),
-		"c": rng.randf_range(0.021, 0.028),
-		"tint": rng.randf_range(-1.0, 1.0),
-		"seed": seed_value,
-	}
+	var a := rng.randf_range(0.062, 0.078)
+	var b := rng.randf_range(0.044, 0.054)
+	# thickness chosen so every cobble holds exactly STONE_L of stone
+	var c := (STONE_L / 1000.0) / (4.0 / 3.0 * PI * a * b)
+	return {"a": a, "b": b, "c": c, "tint": rng.randf_range(-1.0, 1.0), "seed": seed_value}
 
 
 static func _noise(seed_value: int) -> FastNoiseLite:
@@ -76,9 +76,8 @@ static func cut_vertices(seed_value: int, cuts: Array) -> Dictionary:
 		for it in 3:
 			for c in cuts:
 				var nn := Vector3(c[0], c[1], c[2])
-				var dd: float = c[3]
 				for i in verts.size():
-					var s := verts[i].dot(nn) - dd
+					var s := verts[i].dot(nn) - cut_offset(c, verts[i].x, verts[i].z)
 					if s > 0.0:
 						verts[i] -= nn * s
 						moved[i] = 1.0
@@ -105,6 +104,17 @@ static func build_mesh(seed_value: int, cuts: Array) -> ArrayMesh:
 # Analysis
 # ---------------------------------------------------------------------------
 
+static func cut_offset(c: Array, x: float, z: float) -> float:
+	## A flake scar is local: the cutting surface curves outward away from the
+	## point of impact (a scallop), so each blow shapes only a short stretch of edge.
+	## c = [nx, ny, nz, d] (unbounded: a snap) or [nx, ny, nz, d, tx, tz, cx, cz, half_width, depth].
+	if c.size() < 10:
+		return c[3]
+	var l: float = (x - float(c[6])) * float(c[4]) + (z - float(c[7])) * float(c[5])
+	var w: float = c[8]
+	return float(c[3]) + (l * l) / (w * w) * float(c[9]) * 1.4
+
+
 static func extent(p: Dictionary, cuts: Array, x: float, z: float) -> Vector2:
 	## Vertical extent (bottom, top) of the stone above point (x, z); top < bottom means empty.
 	var a: float = p["a"]
@@ -120,7 +130,7 @@ static func extent(p: Dictionary, cuts: Array, x: float, z: float) -> Vector2:
 		var nx: float = cut[0]
 		var ny: float = cut[1]
 		var nz: float = cut[2]
-		var d: float = cut[3]
+		var d: float = cut_offset(cut, x, z)
 		var rest := d - nx * x - nz * z
 		if absf(ny) < 1e-5:
 			if rest < 0.0:
@@ -174,13 +184,12 @@ static func target_poly(p: Dictionary, shape: String) -> PackedVector2Array:
 	return out
 
 
-static func evaluate(seed_value: int, cuts: Array, shape: String) -> Dictionary:
+static func evaluate(seed_value: int, cuts: Array, shape: String, res: int = 40) -> Dictionary:
 	var p := params(seed_value)
 	var tgt := target_poly(p, shape)
 	var spec: Dictionary = TARGETS[shape]
 	var a: float = p["a"]
 	var b: float = p["b"]
-	var res := 40
 	var in_t := 0
 	var hit := 0
 	var excess := 0
@@ -205,7 +214,7 @@ static func evaluate(seed_value: int, cuts: Array, shape: String) -> Dictionary:
 		var p0 := Vector2(seg[0][0] * a * 0.95, seg[0][1] * b * 0.95)
 		var p1 := Vector2(seg[1][0] * a * 0.95, seg[1][1] * b * 0.95)
 		var good := 0.0
-		var n := 7
+		var n := 7 if res >= 30 else 4
 		for k in n:
 			var q := p0.lerp(p1, (k + 0.5) / n)
 			var inward := -q.normalized()
@@ -276,12 +285,15 @@ static func strike(seed_value: int, cuts: Array, flipped: bool, click: Vector2, 
 	var m := Vector2(tangent.y, -tangent.x)
 	if m.dot(dir) < 0.0:
 		m = -m
+	# light pressure flakes are shallow (thin the edge); heavy blows take a steep
+	# flake that carries through the edge and trims the outline
 	var bite := lerpf(0.0016, 0.0085, power)
-	var alpha := deg_to_rad(lerpf(62.0, 34.0, power))
+	var alpha := deg_to_rad(lerpf(64.0, 14.0, power))
 	var up := -1.0 if flipped else 1.0
 	var n3 := Vector3(m.x * cos(alpha), up * sin(alpha), m.y * cos(alpha)).normalized()
 	var p0 := Vector3(edge.x - m.x * bite, 0.0, edge.y - m.y * bite)
 	var d := p0.dot(n3)
+	var half_w := lerpf(0.009, 0.02, power)
 	var vol_before := volume_l(seed_value, cuts)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = rng_seed
@@ -295,8 +307,9 @@ static func strike(seed_value: int, cuts: Array, flipped: bool, click: Vector2, 
 		new_cuts.append([m.x, 0.0, m.y, snap_d])
 	else:
 		# a little natural variation in the flake
-		n3 = (n3 + Vector3(rng.randf_range(-0.06, 0.06), 0.0, rng.randf_range(-0.06, 0.06))).normalized()
-		new_cuts.append([n3.x, n3.y, n3.z, d])
+		n3 = (n3 + Vector3(rng.randf_range(-0.05, 0.05), 0.0, rng.randf_range(-0.05, 0.05))).normalized()
+		d = p0.dot(n3)
+		new_cuts.append([n3.x, n3.y, n3.z, d, tangent.x, tangent.y, edge.x, edge.y, half_w * rng.randf_range(0.85, 1.15), bite])
 	var removed := maxf(0.0, vol_before - volume_l(seed_value, new_cuts))
 	var cut: Array = new_cuts[new_cuts.size() - 1]
 	return {"cut": cut, "broke": broke, "contact": edge, "removed_l": removed, "miss": false}
