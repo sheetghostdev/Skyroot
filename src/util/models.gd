@@ -12,7 +12,7 @@ const ROLE_PARAMS := {
 	"Bark": [4.0, 0.32, 1.1, 0.93, 0.3],
 	"Wood": [5.0, 0.16, 0.5, 0.8, 0.35],
 	"WoodEnd": [7.0, 0.14, 0.4, 0.8, 0.35],
-	"Stone": [2.2, 0.26, 0.95, 0.86, 0.4],
+	"Stone": [2.2, 0.2, 0.45, 0.93, 0.18],
 	"Moss": [6.0, 0.3, 0.6, 0.96, 0.25],
 	"Skin": [9.0, 0.05, 0.12, 0.62, 0.32],
 	"Cloth": [16.0, 0.14, 0.5, 0.96, 0.25],
@@ -110,6 +110,9 @@ static func material_for(role: String) -> Material:
 		m.set_shader_parameter("normal_strength", p[2])
 		m.set_shader_parameter("roughness", p[3])
 		m.set_shader_parameter("specular", p[4])
+		if base_role == "Stone":
+			# real stone is darker than the palette's light greys look under sun and sky
+			m.set_shader_parameter("tint", Color(0.78, 0.76, 0.72))
 	_mats[base_role] = m
 	return m
 
