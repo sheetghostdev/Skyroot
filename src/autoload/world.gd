@@ -167,8 +167,10 @@ func spawn(t: String, xf: Transform3D, d: Dictionary = {}) -> int:
 
 
 func spawn_be(t: String, c: Vector3i, d: Dictionary = {}) -> int:
-	## A block entity occupying cell c.
+	## A block entity occupying cell c (a puddle there soaks away).
 	d["cell"] = c
+	if Blocks.shape[block(c)] == Blocks.Shape.LIQUID:
+		set_block(c, 0)
 	return spawn(t, Transform3D(Basis(), Vector3(c)), d)
 
 
@@ -533,6 +535,12 @@ func fx_except(pid: int, kind: String, pos: Vector3, params: Dictionary = {}) ->
 		for p in Net.players:
 			if p != pid and p != multiplayer.get_unique_id():
 				_rpc_fx.rpc_id(p, kind, pos, params)
+
+
+@rpc("authority", "call_remote", "reliable")
+func rpc_flag(f: String) -> void:
+	## Host -> a player: you did something your goals track.
+	Guide.flag(f)
 
 
 @rpc("authority", "call_remote", "unreliable")

@@ -256,6 +256,18 @@ func _press(action: String, frames: int) -> void:
 	await get_tree().process_frame
 
 
+func _hold_for(action: String, secs: float) -> void:
+	## Hold a button for this much game time (frames can be slow here).
+	Input.action_press(action)
+	var t := 0.0
+	while t < secs:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	Input.action_release(action)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
 func _frames_n(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
@@ -337,6 +349,12 @@ func run_play(kind: String, lp: LocalPlayer, gw) -> void:
 				await _press("secondary", 2)
 				await _frames_n(8)
 			_say(int(World.be(up)["d"]["sticks"]) == 4, "three more sticks laid across (%d)" % int(World.be(up)["d"]["sticks"]))
+			# keep the button down: stick after stick
+			await _frames_n(3)
+			await _hold_for("secondary", 1.0)
+			await _frames_n(8)
+			var ns := int(World.be(up)["d"]["sticks"])
+			_say(ns >= 6, "holding right click keeps laying sticks (%d)" % ns)
 			lp.select_hotbar(1)
 			await _frames_n(3)
 			await _press("secondary", 2)
@@ -348,6 +366,17 @@ func run_play(kind: String, lp: LocalPlayer, gw) -> void:
 			await _press("secondary", int(UseRules.DRILL_S * 60.0) + 20)
 			await _frames_n(6)
 			_say(bool(World.be(up)["d"]["lit"]), "holding right click with the bow drill lit it")
+			# hold right click with food: one after another
+			World.stats[Net.my_id()]["hunger"] = 0.3
+			inv.set_slot(3, Inventory.make("berries", 5))
+			World.mark_inventory(Net.my_id())
+			lp.select_hotbar(3)
+			lp.pitch = deg_to_rad(30)
+			await _frames_n(4)
+			await _hold_for("secondary", UseRules.EAT_S * 3.0 + 0.6)
+			await _frames_n(6)
+			var left := inv.count("berries")
+			_say(left <= 3, "holding right click eats one after another (%d left of 5)" % left)
 		"build":
 			inv.set_slot(0, Inventory.make("dirt", 5))
 			World.mark_inventory(Net.my_id())

@@ -114,6 +114,13 @@ func label(id: String, d: Dictionary = {}) -> String:
 		base += " of water"
 	elif c == "stew":
 		base += " of stew"
+	var inside: Array = d.get("inv", [])
+	if not inside.is_empty():
+		var n := 0
+		for s in inside:
+			if s is Dictionary and not s.is_empty():
+				n += int(s["n"])
+		base += " (holding %d thing%s)" % [n, "" if n == 1 else "s"]
 	return base
 
 

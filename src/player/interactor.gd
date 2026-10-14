@@ -31,6 +31,7 @@ var _last_sub := -1
 var _cooldown := 0.0
 var _last_key := ""
 var _again := false
+var _repeat_ok := false
 
 var _outline: MeshInstance3D
 var _outline_mesh: ImmediateMesh
@@ -475,9 +476,12 @@ func _handle_rmb(delta: float) -> void:
 			return
 	if pressed:
 		_repeat_t = float(rmb_rule.get("repeat", 0.0))
+		# holding repeats only what you pressed for: starting a fire pit doesn't
+		# run straight on into adding sticks to it
+		_repeat_ok = rmb_rule.has("repeat")
 		_start(rmb_rule)
 	elif held:
-		if kind2 == "use" and rmb_rule.has("repeat"):
+		if kind2 == "use" and rmb_rule.has("repeat") and _repeat_ok:
 			_repeat_t -= delta
 			if _repeat_t <= 0.0:
 				_repeat_t = float(rmb_rule["repeat"])

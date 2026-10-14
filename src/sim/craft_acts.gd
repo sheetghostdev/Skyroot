@@ -32,9 +32,10 @@ func set_down(pid: int, c: Vector3i, slot: int, s: Dictionary, sneak: bool) -> b
 	var inv := World.inventory_of(pid)
 	var d := ItemDB.def(id)
 	if id == "jar":
+		var inside: Array = (s.get("d", {}) as Dictionary).get("inv", []).duplicate(true)
 		inv.take_from(slot, 1)
 		World.mark_inventory(pid)
-		World.spawn_be("jar", c, {"inv": []})
+		World.spawn_be("jar", c, {"inv": inside})
 		World.fx("place", Vector3(c) + Vector3(0.5, 0.3, 0.5), {"b": 0})
 		return true
 	if not sneak:

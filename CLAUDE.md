@@ -20,7 +20,7 @@ before changing anything.
 
 ```
 godot --headless --path . --import                       # refresh class cache / imports after adding class_name files or textures
-godot --headless --path . res://tests/test_main.tscn -- --suite=all     # 160+ checks
+godot --headless --path . res://tests/test_main.tscn -- --suite=all     # 180+ checks (suites: core blocks water craft fire kiln survival farm save longrun)
 godot --path . -- --autostart=solo --world=Dev --new     # straight into a new island
 godot --path . -- --autostart=solo --world=Dev --new --pos=30.5,45.1,34.5 --yaw=180 --pitch=-40 --setup=firepit_lit --hour=21 --shot=out.png
 godot --path . -- --autostart=solo --world=Dev --new --pos=30.5,45.1,34.5 --yaw=180 --play=knap   # scripted real input (knap|fire|build)
@@ -29,7 +29,8 @@ python3 tools/art/gen_blocks.py preview.png ; python3 tools/art/gen_items.py pre
 ```
 
 `--setup=` scenes are in `src/util/debug_shot.gd` (firepit, firepit_lit, firepit_cook,
-firepit_x, knap, clay, kiln, kiln_lit, ground, items, inventory, handbook, chooser).
+firepit_x, knap, clay, kiln, kiln_lit, ground, items, fell (+ `--after=secs`), water,
+torches, inventory, handbook, chooser).  `--sit` sits the player down, `--tp` third person.
 
 ## Where things are
 
@@ -38,7 +39,13 @@ firepit_x, knap, clay, kiln, kiln_lit, ground, items, inventory, handbook, choos
   pages + goal sequence), `hints.json`.
 - Host rules: `src/sim/actions.gd` (dispatch, reach, inventory clicks, pickup) +
   `block_acts.gd`, `fire_acts.gd`, `craft_acts.gd`, `farm_acts.gd`; survival,
-  climate, weather, sim_driver.
+  climate, weather, sim_driver.  `water_sim.gd`: finite water (8 units per block,
+  meta = units short of full, so meta 0 is a full block); it reacts to
+  `Events.block_changed`, so anything that changes blocks next to water wakes it.
+- Effects: `src/world/fx.gd` (one-shots), `tree_fall.gd` (the toppling tree; the
+  host delays the drops with `drop_item(..., wait_ms)`), `src/entities/torch_model.gd`
+  (placed torches are "fixtures": the mesher skips them and `VoxelView` adds a model
+  + light per torch; wall torches use meta 1-4, see `Blocks.WALL_DIRS`).
 - Blocks: `src/voxel/` (registry, storage, threaded mesher with skylight, view).
 - Client: `src/player/interactor.gd` + `use_rules.gd` (what the buttons do and the
   prompt text), `src/ui/hud.gd` and panels, `src/entities/*_view.gd`.
@@ -62,4 +69,5 @@ firepit_x, knap, clay, kiln, kiln_lit, ground, items, inventory, handbook, choos
 ## Known gaps / ideas not built yet
 
 Ladders, doors, planks (need a saw), metals, animals, the islet has nothing
-special yet, more recipes for cooking pots, sounds for some new actions.
+special yet, more recipes for cooking pots, sounds for some new actions, pouring a
+bowl of water back out, water putting out fires it flows into.

@@ -178,8 +178,39 @@ func _update_tip() -> void:
 		line += "  - a little rough"
 	var f := ItemDB.food(id)
 	if not f.is_empty():
-		line += "  ·  food"
-	tip.text = line + "\n" + ItemDB.desc(id)
+		line += "  ·  food +%d%%" % roundi(float(f.get("hunger", 0.0)) * 100.0)
+		if String(f.get("cook", "")) != "":
+			line += " (better cooked)"
+	var fu := ItemDB.fuel(id)
+	if fu != "":
+		line += "  ·  %s" % ("tinder" if fu == "tinder" else "fuel")
+	tip.text = line + "\n" + ItemDB.desc(id) + "\n[H: its handbook page   1-9: swap onto that hotbar slot]"
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	## Over a slot: H opens that item's handbook page, a number key swaps the
+	## slot with that hotbar slot.
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var sv: SlotView = slots.get(_hover)
+	if sv == null or not sv.highlight:
+		return
+	if event.is_action_pressed("guide"):
+		if sv.stack.is_empty():
+			return
+		Guide.last_page = "item:" + String(sv.stack["i"])
+		var hud = get_meta("hud") if has_meta("hud") else null
+		if hud:
+			hud.open_panel("handbook")
+		get_viewport().set_input_as_handled()
+		return
+	for i in Inventory.HOTBAR:
+		if event.is_action_pressed("hotbar_%d" % (i + 1)):
+			if _hover < Inventory.CURSOR:
+				World.request("inv_swap", {"slot": _hover, "i": i})
+				Sfx.ui("ui_click", -16.0)
+			get_viewport().set_input_as_handled()
+			return
 
 
 func _process(_delta: float) -> void:

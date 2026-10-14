@@ -389,6 +389,34 @@ func suite_blocks() -> void:
 	World.set_block(w + Vector3i(0, 1, 0), Blocks.id_of("dirt"))
 	req("place", {"c": w + Vector3i(1, 1, 0), "slot": 0, "face": Vector3i(1, 0, 0)})
 	check(World.block(w + Vector3i(1, 1, 0)) == Blocks.id_of("log_oak") and World.block_meta(w + Vector3i(1, 1, 0)) & 3 == 1, "a log placed on a side lies along that axis")
+	# a block broken at the very edge gives its drops to you, not the sky
+	# (a lone block stuck out over the abyss, broken from the edge)
+	var ed := _find_edge()
+	var lone := Vector3i(ed.x + 1, ed.y, ed.z)
+	World.set_block(lone, Blocks.id_of("dirt"))
+	place_player(Vector3(ed) + Vector3(0.5, 1.0, 0.5))
+	clear_inv()
+	req("break", {"c": lone, "slot": 0})
+	check(World.block(lone) == 0 and count("dirt") == 1, "a block broken over the abyss drops into your hands")
+	# a torch against the side of a block hangs on it, and goes when the block does
+	var tw := flat_spot(34, 36)
+	var wall := tw + Vector3i.UP
+	World.set_block(wall, Blocks.id_of("dirt"))
+	World.set_block(wall + Vector3i(1, 0, 0), 0)
+	place_player(Vector3(wall) + Vector3(2.5, 0.0, 0.5))
+	clear_inv()
+	give("torch_lit", 2)
+	req("place", {"c": wall + Vector3i(1, 0, 0), "slot": 0, "face": Vector3i(1, 0, 0)})
+	var tm := World.block_meta(wall + Vector3i(1, 0, 0))
+	check(World.block(wall + Vector3i(1, 0, 0)) == Blocks.id_of("torch") and Blocks.on_wall(Blocks.id_of("torch"), tm) and Blocks.wall_dir(tm) == Vector3i(-1, 0, 0), "a torch hangs on the side of a block")
+	req("break", {"c": wall, "slot": 0})
+	check(World.block(wall + Vector3i(1, 0, 0)) == 0, "and drops when that block is dug out")
+	# a number key over a slot swaps it onto the hotbar
+	clear_inv()
+	give("stick", 5, {}, 20)
+	give("flint", 1, {}, 2)
+	req("inv_swap", {"slot": 20, "i": 2})
+	check(String(inv().get_slot(2).get("i", "")) == "stick" and String(inv().get_slot(20).get("i", "")) == "flint", "swapping a pack slot with a hotbar slot")
 	# out of reach
 	var far := flat_spot(20, 22)
 	place_player(Vector3(40, 46, 40))
@@ -563,12 +591,25 @@ func suite_craft() -> void:
 	be = World.be(up)
 	check(String(be["d"]["r"]) == "knife_blade", "chose the knife blade")
 	var mask: PackedByteArray = ItemDB.knapping["knife_blade"]["mask"]
+	# only the stone touching the outline needs chipping; the rest falls away
 	var chips := 0
+	var waste := 0
+	var ring: Array[int] = []
 	for i in 256:
 		if ItemDB.stone_mask[i] == 1 and mask[i] == 0:
-			req("knap", {"c": up, "i": i})
-			chips += 1
-	check(World.be(up).is_empty(), "after %d chips the blade is done" % chips)
+			waste += 1
+			for o in [1, -1, 16, -16]:
+				var j: int = i + o
+				if j >= 0 and j < 256 and absi(j % 16 - i % 16) <= 1 and mask[j] == 1:
+					ring.append(i)
+					break
+	check(CraftActs.edge_cells(ItemDB.stone_mask, mask) == ring.size(), "the cells to chip are the ones touching the shape (%d)" % ring.size())
+	for i in ring:
+		if World.be(up).is_empty():
+			break
+		req("knap", {"c": up, "i": i})
+		chips += 1
+	check(World.be(up).is_empty() and chips < waste, "after %d chips (of %d waste cells) the blade is done" % [chips, waste])
 	var bi := inv().find("knife_blade")
 	check(bi >= 0 and String(inv().get_slot(bi)["d"].get("mat", "")) == "flint", "a flint knife blade")
 	# flakes: 3x3 at a time far from the shape, then a flake into the shape counts each cell
@@ -682,7 +723,11 @@ func suite_craft() -> void:
 	req("inv_close")
 	check(count("berries") == 10, "and closing puts them in your pack")
 	req("break", {"c": up, "slot": 0})
-	check(World.be(up).is_empty() and count("jar") == 1 and count("berries") == 20, "picking the jar up gives back the jar and what was in it")
+	var js := inv().get_slot(inv().find("jar"))
+	check(World.be(up).is_empty() and count("jar") == 1 and count("berries") == 10 and int((js.get("d", {}).get("inv", [{}]) as Array)[0].get("n", 0)) == 10, "a jar picked up keeps what is in it")
+	use_on(c, inv().find("jar"))
+	check(not World.be(up).is_empty() and int((World.be(up)["d"]["inv"] as Array)[0].get("n", 0)) == 10, "and still has it when set down again")
+	req("break", {"c": up, "slot": 0})
 	# clay forming: a bowl
 	clear_inv()
 	give("clay", 6)
@@ -1063,10 +1108,17 @@ func suite_survival() -> void:
 		place_player(bp + Vector3(1, 0, 0))
 		req("satchel", {"eid": int(bags[0]["id"])})
 		check(count("stick") == 7 and count("knife") == 1 and World.entities_of("satchel").is_empty(), "everything back from the bag")
-	# the abyss keeps what it takes
+	# over the edge: the bag is left where you last stood on firm ground
+	var edge := _find_edge()
+	place_player(Vector3(edge) + Vector3(0.5, 1.0, 0.5))
+	Net.poses[pid]["g"] = true
+	a._pickup_t = 0.0
+	a._physics_process(0.2)
 	give("flint", 3, {}, 2)
+	place_player(Vector3(edge) + Vector3(4.5, -30.0, 0.5))
 	Survival.die(pid, "abyss")
-	check(World.entities_of("satchel").is_empty(), "no bag after falling into the abyss")
+	var ab := World.entities_of("satchel")
+	check(ab.size() == 1 and (ab[0]["xf"] as Transform3D).origin.distance_to(Vector3(edge) + Vector3(0.5, 1.0, 0.5)) < 1.5, "falling into the abyss leaves your bag at the edge")
 	req("respawn")
 
 

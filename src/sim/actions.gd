@@ -67,6 +67,7 @@ func handle(pid: int, action: String, args: Dictionary) -> void:
 		"eat": eat(pid, args)
 		"drink": drink(pid, args)
 		"inv_click": inv_click(pid, args)
+		"inv_swap": inv_swap(pid, args)
 		"inv_close": close_inventory(pid)
 		"container_click": craft.container_click(pid, args)
 		"drop": drop(pid, args)
@@ -163,6 +164,8 @@ func give(pid: int, id: String, n: int = 1, d: Dictionary = {}, at := Vector3.IN
 	World.mark_inventory(pid)
 	if left > 0:
 		var p := player_pos(pid) + Vector3(0, 0.6, 0) if at == Vector3.INF else at
+		if World.vox.rest_height(p) == -INF:
+			p = player_pos(pid) + Vector3(0, 0.6, 0)
 		drop_item(id, left, d, p, Vector3.ZERO, pid)
 
 
@@ -231,6 +234,10 @@ func _physics_process(delta: float) -> void:
 		if st.is_empty() or not bool(st.get("alive", true)):
 			continue
 		var p := player_pos(pid) + Vector3(0, 0.4, 0)
+		# where you last stood on firm ground (a fall into the abyss leaves your bag there)
+		var pose: Dictionary = Net.poses.get(pid, {})
+		if bool(pose.get("g", false)) and not bool(pose.get("w", false)) and World.vox.rest_height(p) != -INF:
+			st["safe"] = player_pos(pid)
 		for e in World.entities_near(p, PICKUP_R + 0.5, "item"):
 			var d: Dictionary = e["d"]
 			# what you just threw can't jump straight back into your hands
@@ -413,6 +420,19 @@ func drink(pid: int, args: Dictionary) -> void:
 const OUTPUT := 46
 
 
+func inv_swap(pid: int, args: Dictionary) -> void:
+	## A number key over a slot: swap that slot with the hotbar slot.
+	var slot := int(args.get("slot", -1))
+	var hb := int(args.get("i", -1))
+	if slot < 0 or slot >= Inventory.CURSOR or hb < 0 or hb >= Inventory.HOTBAR or slot == hb:
+		return
+	var inv := World.inventory_of(pid)
+	var s := inv.get_slot(slot)
+	inv.set_slot(slot, inv.get_slot(hb))
+	inv.set_slot(hb, s)
+	World.mark_inventory(pid)
+
+
 func inv_click(pid: int, args: Dictionary) -> void:
 	## Minecraft-style slot clicks.  button 0: pick up / put down / swap the whole
 	## stack; button 1: pick up half / put down one.  shift: move straight across
@@ -565,12 +585,8 @@ func flag_player(pid: int, f: String) -> void:
 	if pid == multiplayer.get_unique_id():
 		Guide.flag(f)
 	elif Net.is_online():
-		_rpc_flag.rpc_id(pid, f)
-
-
-@rpc("authority", "call_remote", "reliable")
-func _rpc_flag(f: String) -> void:
-	Guide.flag(f)
+		# through the World autoload: clients have no Actions node to receive it
+		World.rpc_flag.rpc_id(pid, f)
 
 
 func close_inventory(pid: int) -> void:

@@ -32,12 +32,13 @@ says so); that version is still in the git history at commit `5133eb4`.
 | W A S D, mouse | move, look |
 | Space, Ctrl, Shift | jump, sprint, sneak (sneaking, you can't walk off an edge) |
 | Left mouse (hold) | break what you look at; chip a knapping stone; remove clay |
-| Right mouse | use or place what you hold; hold it to eat, drink or work a bow drill |
+| Right mouse | use or place what you hold; hold it to eat, drink or work a bow drill (keep holding to eat one after another, or lay stick after stick) |
 | Shift + right mouse | set things down on the ground: a stone to knap, clay to shape, a stick or dry grass to start a fire pit, anything else to leave there |
 | E (or Tab) | inventory and the 3 × 3 crafting grid |
-| H | the handbook: how-tos, your goals, a page for every item |
-| 1–9, mouse wheel | hotbar |
-| F | clay brush (1 × 1, 2 × 2, 3 × 3, copy the layer below) |
+| H | the handbook: how-tos, your goals, a page for every item (over an item in the inventory: its page) |
+| 1–9, mouse wheel | hotbar (over an inventory slot: swap that slot onto the hotbar) |
+| C | sit down for a close look at knapping or clay work (a step or Space to get up) |
+| F | clay brush (1 × 1, 2 × 2, 3 × 3, copy the layer below) / knapping flakes |
 | Q / Ctrl+Q | drop one / the stack |
 | V | first / third person (no extra reach in third person) |
 | T | chat |
@@ -51,9 +52,11 @@ steps.
 ## How things work
 
 * **Knapping** — sneak-right-click a stone or flint onto flat ground and pick a shape
-  (knife blade, axe head, shovel head, hoe head).  The cells that must go are dark;
-  the shape stays bright.  Left-click chips one cell; hold and sweep to chip a row.
+  (knife blade, axe head, shovel head, hoe head).  The shape stays bright; the cells
+  touching it are red - chip those, and waste no longer joined to the shape falls away
+  by itself.  Left-click chips one cell; hold and sweep to chip a row (F: flakes).
   Chip into the shape three times and the stone splits.  Flint tools last longer.
+  C sits you down for a closer look.
 * **Tools** — put a head above a stick in the crafting grid.  Knives cut grass (dry
   grass) and cattails/flax/ferns (fiber); axes fell whole trees; shovels dig fast;
   hoes till.
@@ -67,13 +70,21 @@ steps.
 * **Clay** — dig blue clay from the pond's banks.  Sneak-right-click it onto the
   ground and choose a bowl, cooking pot, storage jar or bricks; build it up one layer
   at a time (right-click adds, left-click removes, F changes the brush).
+* **Trees** — an axe fells the whole tree; it topples away from you and the logs land
+  along the trunk (never off the edge of the island).
+* **Water** — finite, eight parts to a block.  It falls, spreads and evens out; dig
+  beside the pond and the pond goes down, open it to the edge and it pours away.
+  Bowls and pots take from it; rain tops it up and fills hollows; puddles dry.
+* **Torches** — glowing heads and live flames; stand them on the ground or hang them
+  on a wall.  They don't burn out.
 * **Pit kiln** — dig a hole one block deep, set raw pottery in it, cover it with four
   dry grass and six sticks, light it.  Three hours later it's fired.  In a pit nothing
   cracks; on open ground some pieces do.
 * **Survival** — food, water, warmth and health.  Nights are cold: a fire, a roof and
-  walls keep you warm.  Dying leaves your things in a bag where you fell; falling into
-  the abyss loses them.  A straw bed (three thatch) lets you sleep through the night
-  (when everyone sleeps) and is where you wake.
+  walls keep you warm.  Dying leaves your things in a bag where you fell (fall into
+  the abyss and the bag waits at the edge you went over).  A straw bed (three
+  thatch) lets you sleep through the night (when everyone sleeps) and is where you
+  wake.
 * **Farming** — till soil with a hoe, sow turnip or flax seeds from the wild plants.
   Farmland near water grows faster.
 * **Co-op** — up to four players; the host's game holds the island and checks every

@@ -69,8 +69,13 @@ func break_at(pid: int, args: Dictionary) -> void:
 	var drops := drops_of(id, m, kind)
 	remove_block(c)
 	var at := Vector3(c) + Vector3(0.5, 0.3, 0.5)
+	var over_edge := World.vox.rest_height(at) == -INF
 	for s in drops:
-		a.drop_item(String(s["i"]), int(s["n"]), {}, at + Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)))
+		if over_edge:
+			# nothing under it but sky: straight into your hands rather than lost
+			a.give(pid, String(s["i"]), int(s["n"]))
+		else:
+			a.drop_item(String(s["i"]), int(s["n"]), {}, at + Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)))
 	var tool_kind := String(d.get("tool", d.get("needs", "")))
 	if kind != "" and kind == tool_kind:
 		a.wear_tool(pid, slot)
@@ -326,8 +331,12 @@ func _break_be(pid: int, be: Dictionary, quiet := false) -> void:
 			if lumps > 0:
 				stacks = [Inventory.make("clay", lumps)]
 		"jar":
-			stacks = d.get("inv", []).duplicate(true)
-			stacks.append(Inventory.make("jar", 1))
+			# picked up with everything still inside
+			var inside: Array = []
+			for s in d.get("inv", []):
+				if s is Dictionary and not s.is_empty():
+					inside.append(s.duplicate(true))
+			stacks = [Inventory.make("jar", 1, {"inv": inside} if not inside.is_empty() else {})]
 	World.despawn(be["id"])
 	if pid > 0:
 		for s in stacks:

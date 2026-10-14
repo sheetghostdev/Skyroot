@@ -68,7 +68,10 @@ static func die(pid: int, cause: String) -> void:
 	inv.clear()
 	World.mark_inventory(pid)
 	var pos: Vector3 = a.player_pos(pid) if a else Vector3.ZERO
-	if cause != "abyss" and not items.is_empty() and a:
+	if cause == "abyss":
+		# your things are left at the edge you went over, not lost with you
+		pos = st.get("safe", World.spawn_point(pid))
+	if not items.is_empty() and a:
 		var y := World.vox.rest_height(pos + Vector3(0, 0.6, 0))
 		if y == -INF:
 			# died over the edge: the bag goes back to where you last stood safely
@@ -81,7 +84,7 @@ static func die(pid: int, cause: String) -> void:
 
 static func _death_text(cause: String) -> String:
 	match cause:
-		"abyss": return "You fell into the abyss. Everything you carried is gone."
+		"abyss": return "You fell into the abyss. Your things are in a bag at the edge you went over."
 		"fall": return "You fell badly. Your things are in a bag where you fell."
 		"burn": return "The fire was too much. Your things are in a bag where you fell."
 		"hunger": return "You starved. Your things are in a bag where you fell."
