@@ -1,0 +1,14 @@
+# Godot
+.godot/
+*.translation
+export.cfg
+export_credentials.cfg
+/build/
+/exports/
+
+# Tooling scratch
+tools/blender/previews/
+tools/**/__pycache__/
+*.blend1
+*.tmp
+/tests/output/

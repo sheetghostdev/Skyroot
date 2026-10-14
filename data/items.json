@@ -1,0 +1,826 @@
+{
+  "stone": {
+    "name": "Stone",
+    "desc": "A fist-sized stone. Fine-grained stones fracture predictably; strike one with another to shape an edge.",
+    "stack": 8,
+    "mass": 0.35,
+    "vol": 0.13,
+    "mat": "stone",
+    "model": "proc:stone",
+    "hold": "hand",
+    "tags": [
+      "knappable",
+      "hammer",
+      "throwable",
+      "enclosure"
+    ],
+    "guide": "mat_stone"
+  },
+  "twig": {
+    "name": "Twig",
+    "desc": "Thin, dry wood. Catches fire easily: the bridge between tinder and real fuel.",
+    "stack": 24,
+    "mass": 0.08,
+    "vol": 0.15,
+    "mat": "wood",
+    "model": "res://assets/models/items/twig.glb",
+    "hold": "hand",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 290,
+      "rate": 2.6,
+      "smoke": 0.7
+    },
+    "moist": 0.12,
+    "tags": [
+      "kindling",
+      "organic"
+    ],
+    "organic": {
+      "nutr": 0.0004
+    },
+    "guide": "mat_wood"
+  },
+  "stick": {
+    "name": "Stick",
+    "desc": "A straight length of branch wood. Handles, spindles, wattle rods and kindling.",
+    "stack": 12,
+    "mass": 0.35,
+    "vol": 0.6,
+    "mat": "wood",
+    "model": "res://assets/models/items/stick.glb",
+    "hold": "grip",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 330,
+      "rate": 1.6,
+      "smoke": 0.8
+    },
+    "moist": 0.35,
+    "tags": [
+      "kindling",
+      "handle",
+      "spindle",
+      "organic"
+    ],
+    "organic": {
+      "nutr": 0.0015
+    },
+    "guide": "mat_wood"
+  },
+  "pole": {
+    "name": "Pole",
+    "desc": "A long, straight pole cut from a limb. The backbone of most construction.",
+    "stack": 4,
+    "mass": 2.4,
+    "vol": 4.0,
+    "mat": "wood",
+    "model": "res://assets/models/items/pole.glb",
+    "hold": "two",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 400,
+      "rate": 0.7,
+      "smoke": 1.0
+    },
+    "moist": 0.4,
+    "tags": [
+      "organic"
+    ],
+    "organic": {
+      "nutr": 0.01
+    },
+    "guide": "mat_wood"
+  },
+  "branch": {
+    "name": "Leafy branch",
+    "desc": "A small branch with its leaves. Cut it into sticks, twigs and leaves with a blade.",
+    "stack": 3,
+    "mass": 1.4,
+    "vol": 6.0,
+    "mat": "wood",
+    "model": "res://assets/models/items/branch.glb",
+    "hold": "grip",
+    "fuel": {
+      "mj": 12.0,
+      "ign": 380,
+      "rate": 0.8,
+      "smoke": 2.2
+    },
+    "moist": 0.45,
+    "tags": [
+      "organic",
+      "processable"
+    ],
+    "organic": {
+      "nutr": 0.012
+    },
+    "process": {
+      "tool": "cut",
+      "yields": {
+        "stick": 2,
+        "twig": 3,
+        "leaves": 1
+      }
+    },
+    "guide": "woodworking"
+  },
+  "limb": {
+    "name": "Large limb",
+    "desc": "A heavy limb chopped from the tree. Chop it into poles, sticks, firewood and leaves.",
+    "stack": 1,
+    "mass": 9.5,
+    "vol": 28.0,
+    "mat": "wood",
+    "model": "res://assets/models/items/limb.glb",
+    "hold": "two",
+    "fuel": {
+      "mj": 13.0,
+      "ign": 420,
+      "rate": 0.35,
+      "smoke": 1.8
+    },
+    "moist": 0.45,
+    "tags": [
+      "organic",
+      "processable",
+      "heavy"
+    ],
+    "organic": {
+      "nutr": 0.06
+    },
+    "process": {
+      "tool": "chop",
+      "yields": {
+        "pole": 2,
+        "stick": 3,
+        "firewood": 2,
+        "leaves": 2,
+        "twig": 2
+      }
+    },
+    "guide": "woodworking"
+  },
+  "log": {
+    "name": "Log",
+    "desc": "A two-metre section of trunk. Split it with an axe: careful strikes give boards, quick ones give firewood.",
+    "stack": 1,
+    "mass": 70.0,
+    "vol": 140.0,
+    "mat": "wood",
+    "model": "proc:log",
+    "hold": "two",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 450,
+      "rate": 0.15,
+      "smoke": 1.0
+    },
+    "moist": 0.42,
+    "tags": [
+      "organic",
+      "heavy",
+      "splittable"
+    ],
+    "organic": {
+      "nutr": 0.3
+    },
+    "guide": "woodworking"
+  },
+  "wood_piece": {
+    "name": "Split wood",
+    "desc": "A split section of log. Keep splitting it into boards or firewood.",
+    "stack": 1,
+    "mass": 10.0,
+    "vol": 20.0,
+    "mat": "wood",
+    "model": "proc:wood_piece",
+    "hold": "two",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 420,
+      "rate": 0.3,
+      "smoke": 1.0
+    },
+    "moist": 0.42,
+    "tags": [
+      "organic",
+      "heavy",
+      "splittable"
+    ],
+    "organic": {
+      "nutr": 0.04
+    },
+    "guide": "woodworking"
+  },
+  "board": {
+    "name": "Rough board",
+    "desc": "A split, roughly flat board two metres long. Used for platforms and shelves.",
+    "stack": 6,
+    "mass": 7.0,
+    "vol": 16.0,
+    "mat": "wood",
+    "model": "proc:board",
+    "hold": "two",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 420,
+      "rate": 0.4,
+      "smoke": 1.0
+    },
+    "moist": 0.35,
+    "tags": [
+      "organic"
+    ],
+    "organic": {
+      "nutr": 0.04
+    },
+    "guide": "woodworking"
+  },
+  "firewood": {
+    "name": "Firewood",
+    "desc": "Split wood sized for burning. Dry firewood burns hot and clean; green wood hisses and smokes.",
+    "stack": 10,
+    "mass": 1.3,
+    "vol": 2.6,
+    "mat": "wood",
+    "model": "proc:firewood",
+    "hold": "hand",
+    "fuel": {
+      "mj": 15.0,
+      "ign": 380,
+      "rate": 1.0,
+      "smoke": 1.0
+    },
+    "moist": 0.38,
+    "tags": [
+      "organic",
+      "fuel"
+    ],
+    "organic": {
+      "nutr": 0.005
+    },
+    "guide": "fire"
+  },
+  "leaves": {
+    "name": "Leaves",
+    "desc": "A handful of leaves. Excellent compost. Smoky, poor fuel.",
+    "stack": 12,
+    "mass": 0.25,
+    "vol": 3.0,
+    "mat": "plant",
+    "model": "res://assets/models/items/leaves.glb",
+    "hold": "hand",
+    "fuel": {
+      "mj": 10.0,
+      "ign": 320,
+      "rate": 2.0,
+      "smoke": 3.0
+    },
+    "moist": 0.6,
+    "tags": [
+      "organic",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.004
+    },
+    "guide": "composting"
+  },
+  "grass": {
+    "name": "Cut grass",
+    "desc": "Freshly cut grass. Leave it in the sun to dry into straw, or compost it.",
+    "stack": 16,
+    "mass": 0.15,
+    "vol": 2.0,
+    "mat": "plant",
+    "model": "res://assets/models/items/grass.glb",
+    "hold": "hand",
+    "moist": 0.65,
+    "dries_to": "straw",
+    "tags": [
+      "organic",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.002
+    },
+    "guide": "mat_fiber"
+  },
+  "straw": {
+    "name": "Straw",
+    "desc": "Dry grass. Perfect tinder, thatch and bedding.",
+    "stack": 16,
+    "mass": 0.07,
+    "vol": 2.0,
+    "mat": "plant",
+    "model": "res://assets/models/items/straw.glb",
+    "hold": "hand",
+    "fuel": {
+      "mj": 14.0,
+      "ign": 230,
+      "rate": 4.0,
+      "smoke": 0.6
+    },
+    "moist": 0.1,
+    "tags": [
+      "organic",
+      "tinder",
+      "compostable",
+      "brown"
+    ],
+    "organic": {
+      "nutr": 0.001
+    },
+    "guide": "fire"
+  },
+  "fiber": {
+    "name": "Plant fiber",
+    "desc": "Long, strong fibres stripped from fiber grass. Twist two bundles into cordage.",
+    "stack": 24,
+    "mass": 0.04,
+    "vol": 0.3,
+    "mat": "plant",
+    "model": "res://assets/models/items/fiber.glb",
+    "hold": "hand",
+    "moist": 0.2,
+    "tags": [
+      "organic",
+      "compostable",
+      "brown"
+    ],
+    "organic": {
+      "nutr": 0.0005
+    },
+    "guide": "cordage"
+  },
+  "cordage": {
+    "name": "Cordage",
+    "desc": "About a metre of two-ply cord. Binds tool heads, lashes poles, ties thatch.",
+    "stack": 12,
+    "mass": 0.07,
+    "vol": 0.2,
+    "mat": "plant",
+    "model": "res://assets/models/items/cordage.glb",
+    "hold": "hand",
+    "tags": [
+      "organic",
+      "binding",
+      "brown"
+    ],
+    "organic": {
+      "nutr": 0.0008
+    },
+    "guide": "cordage"
+  },
+  "earth": {
+    "name": "Earth",
+    "desc": "Four litres of dug soil. Packs into mounds, daubs walls and refills holes.",
+    "stack": 6,
+    "mass": 5.2,
+    "vol": 4.0,
+    "mat": "soil",
+    "model": "res://assets/models/items/earth.glb",
+    "hold": "hand",
+    "tags": [
+      "cover",
+      "daub",
+      "fill"
+    ],
+    "guide": "mat_soil"
+  },
+  "clay": {
+    "name": "Raw clay",
+    "desc": "A lump of raw clay dug from the bank. Gritty and uneven; work it with water before shaping.",
+    "stack": 16,
+    "mass": 0.45,
+    "vol": 0.25,
+    "mat": "clay",
+    "model": "res://assets/models/items/clay_raw.glb",
+    "hold": "hand",
+    "moist": 0.17,
+    "tags": [
+      "cover",
+      "daub"
+    ],
+    "guide": "mat_clay"
+  },
+  "clay_prepared": {
+    "name": "Prepared clay",
+    "desc": "Kneaded, evenly moist clay, ready to shape. A quarter-litre lump.",
+    "stack": 16,
+    "mass": 0.47,
+    "vol": 0.25,
+    "mat": "clay",
+    "model": "proc:clay_lump",
+    "hold": "hand",
+    "moist": 0.24,
+    "tags": [
+      "cover",
+      "daub"
+    ],
+    "guide": "clay_prep"
+  },
+  "compost": {
+    "name": "Compost",
+    "desc": "Dark, crumbly, rich. Work it into soil to restore nutrients.",
+    "stack": 8,
+    "mass": 1.6,
+    "vol": 2.0,
+    "mat": "soil",
+    "model": "res://assets/models/items/compost.glb",
+    "hold": "hand",
+    "tags": [
+      "fertilizer"
+    ],
+    "nutr": 0.12,
+    "guide": "composting"
+  },
+  "ash": {
+    "name": "Ash",
+    "desc": "What fire leaves behind. Rich in minerals: a useful fertilizer.",
+    "stack": 30,
+    "mass": 0.05,
+    "vol": 0.12,
+    "mat": "ash",
+    "model": "res://assets/models/items/ash.glb",
+    "hold": "hand",
+    "tags": [
+      "fertilizer"
+    ],
+    "nutr": 0.02,
+    "guide": "fire"
+  },
+  "charcoal": {
+    "name": "Charcoal",
+    "desc": "Wood heated without air. Light, nearly smokeless and burns far hotter than wood.",
+    "stack": 30,
+    "mass": 0.25,
+    "vol": 0.8,
+    "mat": "charcoal",
+    "model": "res://assets/models/items/charcoal.glb",
+    "hold": "hand",
+    "fuel": {
+      "mj": 29.0,
+      "ign": 380,
+      "rate": 0.7,
+      "smoke": 0.05
+    },
+    "tags": [
+      "fuel"
+    ],
+    "guide": "charcoal"
+  },
+  "potsherds": {
+    "name": "Potsherds",
+    "desc": "Broken fired pottery. Good insulation when covering a firing pit.",
+    "stack": 12,
+    "mass": 0.2,
+    "vol": 0.15,
+    "mat": "ceramic",
+    "model": "res://assets/models/items/potsherds.glb",
+    "hold": "hand",
+    "tags": [
+      "cover"
+    ],
+    "guide": "pit_firing"
+  },
+  "seed_grain": {
+    "name": "Grain seeds",
+    "desc": "Seeds of the island grain. Plant them in tilled soil.",
+    "stack": 40,
+    "mass": 0.012,
+    "vol": 0.01,
+    "mat": "plant",
+    "model": "res://assets/models/items/seeds_grain.glb",
+    "hold": "hand",
+    "plant": "grain",
+    "food": {
+      "hunger": 0.025,
+      "raw": true
+    },
+    "tags": [
+      "organic",
+      "seed"
+    ],
+    "organic": {
+      "nutr": 0.00025
+    },
+    "guide": "planting"
+  },
+  "seed_fiber": {
+    "name": "Fiber grass seeds",
+    "desc": "Tiny dark seeds of fiber grass.",
+    "stack": 40,
+    "mass": 0.003,
+    "vol": 0.01,
+    "mat": "plant",
+    "model": "res://assets/models/items/seeds_fiber.glb",
+    "hold": "hand",
+    "plant": "fiber",
+    "tags": [
+      "organic",
+      "seed"
+    ],
+    "organic": {
+      "nutr": 0.0002
+    },
+    "guide": "planting"
+  },
+  "seed_tree": {
+    "name": "Tree seed",
+    "desc": "A winged seed from the great tree. Plant it and, given years of patience - or days here - a new tree grows.",
+    "stack": 10,
+    "mass": 0.01,
+    "vol": 0.02,
+    "mat": "plant",
+    "model": "res://assets/models/items/seed_tree.glb",
+    "hold": "hand",
+    "plant": "tree",
+    "tags": [
+      "organic",
+      "seed"
+    ],
+    "organic": {
+      "nutr": 0.0005
+    },
+    "guide": "trees"
+  },
+  "tuber": {
+    "name": "Skyroot tuber",
+    "desc": "A starchy purple root. Edible raw, much better roasted. Plant a whole tuber to grow more.",
+    "stack": 10,
+    "mass": 0.25,
+    "vol": 0.25,
+    "mat": "food",
+    "model": "res://assets/models/items/tuber.glb",
+    "hold": "hand",
+    "plant": "tuber",
+    "food": {
+      "hunger": 0.13,
+      "thirst": 0.0,
+      "raw": true,
+      "cooks_to": "tuber_roasted"
+    },
+    "tags": [
+      "organic",
+      "food",
+      "seed",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.0024
+    },
+    "guide": "food"
+  },
+  "tuber_roasted": {
+    "name": "Roasted tuber",
+    "desc": "Soft, sweet and filling.",
+    "stack": 10,
+    "mass": 0.22,
+    "vol": 0.22,
+    "mat": "food",
+    "model": "res://assets/models/items/tuber_roasted.glb",
+    "hold": "hand",
+    "food": {
+      "hunger": 0.26,
+      "thirst": 0.0
+    },
+    "tags": [
+      "organic",
+      "food",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.0024
+    },
+    "guide": "food"
+  },
+  "grain": {
+    "name": "Grain sheaf",
+    "desc": "Ripe grain on the stalk. Thresh it by hand to separate seeds from straw.",
+    "stack": 10,
+    "mass": 0.3,
+    "vol": 1.5,
+    "mat": "plant",
+    "model": "res://assets/models/items/grain.glb",
+    "hold": "hand",
+    "process": {
+      "tool": "hand",
+      "yields": {
+        "seed_grain": 10,
+        "straw": 1
+      }
+    },
+    "tags": [
+      "organic",
+      "processable",
+      "compostable",
+      "brown"
+    ],
+    "organic": {
+      "nutr": 0.0035
+    },
+    "guide": "food"
+  },
+  "berries": {
+    "name": "Berries",
+    "desc": "Tart red berries from the island bush. A little food and a little water.",
+    "stack": 20,
+    "mass": 0.08,
+    "vol": 0.1,
+    "mat": "food",
+    "model": "res://assets/models/items/berries.glb",
+    "hold": "hand",
+    "food": {
+      "hunger": 0.035,
+      "thirst": 0.03,
+      "raw": true
+    },
+    "tags": [
+      "organic",
+      "food",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.0006
+    },
+    "guide": "food"
+  },
+  "mushroom": {
+    "name": "Mushroom",
+    "desc": "Grows on rotting wood in the shade. Edible raw; better cooked.",
+    "stack": 16,
+    "mass": 0.06,
+    "vol": 0.1,
+    "mat": "food",
+    "model": "res://assets/models/items/mushroom.glb",
+    "hold": "hand",
+    "food": {
+      "hunger": 0.05,
+      "thirst": 0.0,
+      "raw": true,
+      "cooks_to": "mushroom_roasted"
+    },
+    "tags": [
+      "organic",
+      "food",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.0006
+    },
+    "guide": "food"
+  },
+  "mushroom_roasted": {
+    "name": "Roasted mushroom",
+    "desc": "Smoky and savoury.",
+    "stack": 16,
+    "mass": 0.05,
+    "vol": 0.08,
+    "mat": "food",
+    "model": "res://assets/models/items/mushroom_roasted.glb",
+    "hold": "hand",
+    "food": {
+      "hunger": 0.09
+    },
+    "tags": [
+      "organic",
+      "food",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.0006
+    },
+    "guide": "food"
+  },
+  "food_scraps": {
+    "name": "Food scraps",
+    "desc": "Peels, husks and leftovers. Everything you eat returns to the island as scraps: compost them.",
+    "stack": 20,
+    "mass": 0.05,
+    "vol": 0.1,
+    "mat": "plant",
+    "model": "res://assets/models/items/food_scraps.glb",
+    "hold": "hand",
+    "tags": [
+      "organic",
+      "compostable",
+      "green"
+    ],
+    "organic": {
+      "nutr": 0.003
+    },
+    "guide": "composting"
+  },
+  "torch": {
+    "name": "Burning stick",
+    "desc": "A stick lit from a fire. Use it to light another fire before it burns out.",
+    "stack": 1,
+    "mass": 0.3,
+    "vol": 0.6,
+    "mat": "wood",
+    "model": "res://assets/models/items/torch.glb",
+    "hold": "grip",
+    "tags": [
+      "fire_source",
+      "organic"
+    ],
+    "organic": {
+      "nutr": 0.0015
+    },
+    "guide": "fire"
+  },
+  "stone_head": {
+    "name": "Shaped stone",
+    "desc": "A stone shaped by knapping.",
+    "stack": 1,
+    "mass": 0.25,
+    "vol": 0.1,
+    "mat": "stone",
+    "model": "proc:knapped",
+    "hold": "hand",
+    "tags": [
+      "head"
+    ],
+    "guide": "knapping"
+  },
+  "blade": {
+    "name": "Stone blade",
+    "desc": "A sharp knapped edge. Cuts grass, fibre, small branches and crops.",
+    "stack": 1,
+    "mass": 0.2,
+    "vol": 0.08,
+    "mat": "stone",
+    "model": "proc:knapped",
+    "hold": "hand",
+    "tool": {
+      "kind": "cut",
+      "base_power": 1.0,
+      "base_dur": 160
+    },
+    "tags": [
+      "tool"
+    ],
+    "guide": "knapping"
+  },
+  "axe": {
+    "name": "Stone axe",
+    "desc": "A knapped stone head bound to a handle. Chops limbs, trunks and splits logs.",
+    "stack": 1,
+    "mass": 0.9,
+    "vol": 0.5,
+    "mat": "wood",
+    "model": "proc:tool",
+    "hold": "grip",
+    "tool": {
+      "kind": "chop",
+      "base_power": 1.0,
+      "base_dur": 260
+    },
+    "tags": [
+      "tool"
+    ],
+    "guide": "tool_assembly"
+  },
+  "digger": {
+    "name": "Digging tool",
+    "desc": "A broad stone blade bound to a handle. Digs and tills far faster than bare hands.",
+    "stack": 1,
+    "mass": 0.9,
+    "vol": 0.5,
+    "mat": "wood",
+    "model": "proc:tool",
+    "hold": "grip",
+    "tool": {
+      "kind": "dig",
+      "base_power": 1.0,
+      "base_dur": 300
+    },
+    "tags": [
+      "tool"
+    ],
+    "guide": "tool_assembly"
+  },
+  "pot": {
+    "name": "Clay vessel",
+    "desc": "A hand-shaped clay vessel.",
+    "stack": 1,
+    "mass": 0.5,
+    "vol": 0.3,
+    "mat": "ceramic",
+    "model": "proc:pot",
+    "hold": "hand",
+    "tags": [
+      "vessel"
+    ],
+    "guide": "pottery"
+  }
+}

@@ -1,0 +1,81 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Skyroot"
+config/description="A cooperative survival and crafting game on a tiny floating island above an endless abyss."
+config/version="0.1.0"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+boot_splash/bg_color=Color(0.067, 0.078, 0.102, 1)
+config/icon="res://icon.svg"
+
+[autoload]
+
+Events="*res://src/autoload/events.gd"
+Settings="*res://src/autoload/settings.gd"
+ItemDB="*res://src/autoload/item_db.gd"
+Net="*res://src/autoload/net.gd"
+World="*res://src/autoload/world.gd"
+Sfx="*res://src/autoload/sfx.gd"
+Guide="*res://src/autoload/guide.gd"
+Game="*res://src/autoload/game.gd"
+
+[debug]
+
+gdscript/warnings/unused_parameter=0
+gdscript/warnings/unused_variable=1
+gdscript/warnings/shadowed_variable=0
+gdscript/warnings/integer_division=0
+gdscript/warnings/narrowing_conversion=0
+gdscript/warnings/unused_signal=0
+gdscript/warnings/return_value_discarded=0
+gdscript/warnings/inference_on_variant=1
+gdscript/warnings/untyped_declaration=0
+gdscript/warnings/unsafe_property_access=0
+gdscript/warnings/unsafe_method_access=0
+gdscript/warnings/unsafe_cast=0
+gdscript/warnings/unsafe_call_argument=0
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/vsync/vsync_mode=1
+
+[filesystem]
+
+import/blender/enabled=false
+
+[layer_names]
+
+3d_physics/layer_1="terrain"
+3d_physics/layer_2="structures"
+3d_physics/layer_3="items"
+3d_physics/layer_4="players"
+3d_physics/layer_5="interact"
+3d_physics/layer_6="water"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+common/physics_ticks_per_second=60
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=1
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=2
+textures/default_filters/anisotropic_filtering_level=3
+environment/defaults/default_clear_color=Color(0.43, 0.56, 0.72, 1)
