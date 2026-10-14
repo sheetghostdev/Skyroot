@@ -497,6 +497,11 @@ static func describe(d: Dictionary) -> String:
 			lines.append("Bone dry. Ready for the fire.")
 		"fired":
 			lines.append("Craftsmanship %d%%" % int(float(d.get("q", 0.5)) * 100.0))
+			var fq := float(d.get("fq", 1.0))
+			if fq < 0.75:
+				lines.append("Underfired: it never got hot enough to harden right through, and water slowly seeps out of it. A hotter, longer firing makes a sound pot.")
+			elif fq >= 0.95:
+				lines.append("Well fired: it rings when you tap it.")
 		"cracked":
 			lines.append("Cracked in drying or firing. Break it into potsherds.")
 	return "\n".join(lines)

@@ -460,6 +460,14 @@ static func _finish_pot(a: Actions, pid: int, e: Dictionary) -> void:
 
 
 static func _finish_cordage(a: Actions, pid: int, e: Dictionary) -> void:
+	var n0 := int(e["d"].get("fibers", 2))
+	# a lumpy, uneven twist doesn't hold together: the fiber comes back to try again
+	var even := float(e["d"].get("even", 1.0))
+	if randf() < clampf((0.55 - even) / 0.35, 0.0, 0.85):
+		World.despawn(e["id"])
+		a.give(pid, "fiber", n0)
+		_result(pid, e, "The twist was too uneven and the cord came apart. Long, steady strokes make a cord that holds.", "warn")
+		return
 	World.despawn(e["id"])
 	a.give(pid, "cordage", 1)
 	# a few short fibres are lost in twisting; they go back to the soil

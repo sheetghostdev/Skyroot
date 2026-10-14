@@ -404,7 +404,25 @@ func test_cordage() -> void:
 		req("work_op", {"eid": int(w["id"]), "op": ["twist", 0.1, 0.9]})
 		await frames(1)
 	await frames(2)
-	check(inv().count("cordage") == before + 1, "two fibres became one cordage")
+	check(inv().count("cordage") == before + 1, "two fibers became one cordage")
+	# jerky, uneven strokes: the cord tends to come apart, and the fiber comes back
+	var fails := 0
+	for attempt in 5:
+		give("fiber", 2)
+		var fiber0 := inv().count("fiber")
+		var cord0 := inv().count("cordage")
+		req("work_start", {"kind": "cordage", "surface": int(newest("flat_stone")["id"]), "pos": top + Vector3(0.0, 0, 0.12), "slot": slot_of("fiber")})
+		await frames(3)
+		var w2 := _work()
+		if w2.is_empty():
+			continue
+		for i in 12:
+			req("work_op", {"eid": int(w2["id"]), "op": ["twist", 0.1, 0.05]})
+			await frames(1)
+		await frames(2)
+		if inv().count("cordage") == cord0 and inv().count("fiber") == fiber0:
+			fails += 1
+	check(fails >= 1, "an uneven twist comes apart and gives the fiber back (%d of 5)" % fails)
 
 
 func test_clay_and_pottery() -> void:
@@ -1276,6 +1294,17 @@ func test_vessel_and_drying() -> void:
 	check(m2 > m1, "rain wets it again (%.3f -> %.3f)" % [m1, m2])
 	World.env["rain"] = 0.0
 	World.env["rain_target"] = 0.0
+	# an underfired pot holds water, but it seeps away into the ground
+	var weak := make_pot(0.0)
+	weak["state"] = "fired"
+	weak["fq"] = 0.45
+	weak["water"] = 0.2
+	var wid := place("pot", 1, weak, spot + Vector3(-0.8, 0, 0))
+	await frames(2)
+	await sim_hours(4.0, 0.25)
+	var left := float(World.get_entity(wid)["d"]["x"].get("water", 0.0))
+	check(left < 0.17, "an underfired pot seeps (%.3f L left of 0.200)" % left)
+	check(Pottery.describe(World.get_entity(wid)["d"]["x"]).contains("Underfired"), "and says so")
 
 
 func keep_fed() -> void:

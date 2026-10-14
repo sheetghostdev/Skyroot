@@ -44,6 +44,18 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 
 static func _pot(e: Dictionary, x: Dictionary, hours: float, base: float, sun: float, rain: float, pos: Vector3) -> void:
 	var st := String(x.get("state", "wet"))
+	if st == "fired" and float(x.get("water", 0.0)) > 0.0 and float(x.get("fq", 1.0)) < 0.75:
+		# an underfired pot is still a little porous: water seeps out through the clay
+		var seep := minf(float(x.get("water", 0.0)), (0.75 - float(x.get("fq", 1.0))) * 0.05 * hours)
+		if seep > 0.0005:
+			var x3 := x.duplicate(true)
+			x3["water"] = float(x["water"]) - seep
+			World.update(e["id"], {"x": x3})
+			if World.terrain.is_inside(pos.x, pos.z):
+				WaterActions.soak(pos, seep, 0.25)
+			else:
+				World.pools["lost_water_l"] = float(World.pools.get("lost_water_l", 0.0)) + seep
+		return
 	if st == "fired" or st == "cracked":
 		return
 	var m := float(x.get("moist", 0.24))

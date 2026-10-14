@@ -20,7 +20,9 @@ static func wear(pid: int, args: Dictionary, amount: float) -> void:
 	var d: Dictionary = s["d"].duplicate(true)
 	var q := float(d.get("q", 0.5))
 	var bind := float(d.get("bind", 0.7))
-	var dur := float(d.get("dur", 1.0)) - amount * (1.6 - q * 0.8) * (1.4 - bind * 0.6)
+	# sturdier kinds of tool last longer (a blade's thin edge wears quickest)
+	var base_dur := float(ItemDB.tool_info(String(s["i"])).get("base_dur", 200.0))
+	var dur := float(d.get("dur", 1.0)) - amount * (200.0 / maxf(base_dur, 1.0)) * (1.6 - q * 0.8) * (1.4 - bind * 0.6)
 	if dur <= 0.0:
 		_break(pid, slot, s)
 		return
