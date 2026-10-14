@@ -23,6 +23,7 @@ func _ready() -> void:
 	ActionsCraft.register(self)
 	ActionsFire.register(self)
 	ActionsBuild.register(self)
+	ActionsCompost.register(self)
 
 
 func register(nm: String, cb: Callable) -> void:

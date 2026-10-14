@@ -37,7 +37,7 @@ static func options(p: LocalPlayer, t: Dictionary) -> Dictionary:
 			if held != "" and ItemDB.exists(held):
 				pass
 	# generic placement of the held item on any surface pointing up
-	if not out.has("secondary") and held != "" and t.has("pos") and t["normal"].y > 0.45 and _placeable(held):
+	if not out.has("secondary") and held != "" and t.has("pos") and t["normal"].y > 0.45 and _placeable(held) and t.get("etype", "") != "compost":
 		var xf := place_xf(p, t["pos"], t["normal"], held, hd)
 		out["secondary"] = opt("Place %s" % ItemDB.display_name(held, hd), "place", {"xf": xf}, "place")
 	return out
@@ -321,6 +321,8 @@ static func _ground_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held
 			pass
 		if held in ["clay", "clay_prepared", "fiber", "stone_head", "stone"] and not out.has("interact"):
 			_work_surface(out, p, t, held, hd, -1)
+		if CompostSim.is_compostable(held) and not out.has("interact") and layer in ["soil", "clay"] and not hd.has("fm"):
+			out["interact"] = opt("Start a compost heap here", "compost_start", {"pos": pos}, "place")
 
 
 static func _water_options(out: Dictionary, p: LocalPlayer, t: Dictionary, held: String, hd: Dictionary) -> void:

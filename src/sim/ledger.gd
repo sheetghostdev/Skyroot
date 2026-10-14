@@ -175,9 +175,9 @@ static func entity_contrib(e: Dictionary) -> Dictionary:
 				if s is Dictionary and not s.is_empty():
 					_add(out, item_contrib(String(s["i"]), int(s["n"]), s["d"]))
 		"compost":
-			out["carbon"] = float(d.get("organic", 0.0))
-			out["nutr"] = float(d.get("nutr", 0.0))
-			out["water"] = float(d.get("water", 0.0))
+			out["carbon"] = CompostSim.mass(d)
+			out["nutr"] = float(d.get("nu", 0.0))
+			out["water"] = float(d.get("w", 0.0))
 	return out
 
 

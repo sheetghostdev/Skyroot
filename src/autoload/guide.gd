@@ -16,6 +16,8 @@ const MAX_PINS := 3
 var categories: Array = []          # [{id, title, order, entries: [ids]}]
 var entries: Dictionary = {}        # id -> entry dict (with "category")
 var hints: Dictionary = {}          # hint id -> {text, entry, keys}
+var discovery_defs: Dictionary = {} # discovery id -> {title, text ("{who}..."), entry}
+var last_entry := ""                # where the guide reopens
 
 var read: Dictionary = {}           # entry id -> true
 var fresh: Dictionary = {}          # entry id -> true (highlighted as new)
@@ -29,6 +31,7 @@ var _sync_timer := -1.0
 func _ready() -> void:
 	_load_data()
 	Events.hint.connect(_on_hint_requested)
+	Events.discovery.connect(_on_discovery)
 
 
 func _load_data() -> void:
@@ -49,6 +52,9 @@ func _load_data() -> void:
 			continue
 		if f == "hints.json":
 			hints = data
+			continue
+		if f == "discoveries.json":
+			discovery_defs = data
 			continue
 		var cat := {"id": f.get_basename(), "title": data.get("title", f), "order": int(data.get("order", 99)),
 			"icon": data.get("icon", ""), "entries": []}
@@ -174,6 +180,20 @@ func dismiss_hint(hint_id: String) -> void:
 
 func _on_hint_requested(hint_id: String) -> void:
 	pass  # the HUD listens to Events.hint and asks should_show()
+
+
+func _on_discovery(discovery_id: String, who: String) -> void:
+	## Someone on the island worked something out: tell everyone, and point at the entry.
+	var def: Dictionary = discovery_defs.get(discovery_id, {})
+	if def.is_empty():
+		return
+	var me := who == Settings.player_name
+	var text := String(def.get("text", "")).replace("{who}", "You" if me else who)
+	Events.toast.emit("%s - %s" % [String(def.get("title", "Discovery")), text], "discovery")
+	Sfx.ui("discovery", -4.0)
+	var ent := String(def.get("entry", ""))
+	if ent != "" and not me:
+		mark_fresh([ent])
 
 
 func should_show(hint_id: String) -> bool:

@@ -864,6 +864,238 @@ func suite_build() -> void:
 	ledger_same(L0, L1, "construction")
 
 
+# ---------------------------------------------------------------------------
+# Farming & compost
+# ---------------------------------------------------------------------------
+
+func clear_soil_spot(avoid: Array = []) -> Vector3:
+	## Flat open soil away from the tree, pond, rocks, plants and anything in `avoid`.
+	var t := World.terrain
+	var best := Vector3.INF
+	var best_score := INF
+	for ix in range(-10, 11):
+		for iz in range(-10, 11):
+			var x := ix * 0.5
+			var z := iz * 0.5
+			if not t.is_inside(x, z) or t.layer_at(x, z) != "soil":
+				continue
+			var p := ground(Vector2(x, z))
+			var ok := true
+			for e in World.entities_near(p, 1.6):
+				if String(e["t"]) != "item":
+					ok = false
+			for q in avoid:
+				if (q as Vector3).distance_to(p) < 2.0:
+					ok = false
+			# keep away from the rim
+			for i in 8:
+				var a := i * TAU / 8.0
+				if not t.is_inside(x + cos(a) * 1.6, z + sin(a) * 1.6):
+					ok = false
+			if not ok:
+				continue
+			var slope := absf(t.height(x + 0.3, z) - t.height(x - 0.3, z)) + absf(t.height(x, z + 0.3) - t.height(x, z - 0.3))
+			var score := slope + p.distance_to(lp.global_position) * 0.02
+			if score < best_score:
+				best_score = score
+				best = p
+	return best
+
+
+func heaps() -> Array:
+	return World.entities_of("compost")
+
+
+func keep_fed() -> void:
+	## Long fast-forwards: the test player drinks pond water and eats tubers so
+	## they don't starve (real transfers, so the ledger still balances).
+	var pid := Net.my_id()
+	var st: Dictionary = World.stats.get(pid, {})
+	if st.is_empty() or not st.get("alive", true):
+		return
+	if float(st["thirst"]) < 0.6:
+		var want := (0.9 - float(st["thirst"])) * Survival.BODY_WATER_L
+		var take := minf(want, float(World.env["pond_l"]))
+		World.env["pond_l"] = float(World.env["pond_l"]) - take
+		Survival.drink(pid, take)
+	if float(st["hunger"]) < 0.6:
+		give("tuber_roasted", 2)
+		for i in 2:
+			req("eat", {"slot": slot_of("tuber_roasted")})
+
+
+func sim_hours(hours: float, step: float = 0.25) -> void:
+	## Fast-forward the whole island (water, plants, compost, survival...).
+	var sim = Game.game_world.sim
+	var n := int(ceil(hours / step))
+	for i in n:
+		World.env["t"] = float(World.env["t"]) + step
+		sim._tick(step, 0.5)
+		keep_fed()
+		if i % 6 == 0:
+			await get_tree().physics_frame
+
+
+func suite_farm() -> void:
+	var L0 := ledger()
+	await test_compost()
+	var L1 := ledger()
+	ledger_same(L0, L1, "compost", {"water": 0.05})
+	await test_crops()
+	var L2 := ledger()
+	ledger_same(L1, L2, "crops", {"water": 0.05})
+
+
+func test_compost() -> void:
+	print("-- compost heap")
+	var spot := clear_soil_spot()
+	check(spot != Vector3.INF, "found open soil for a heap")
+	if spot == Vector3.INF:
+		return
+	await stand_near(spot, Vector3(0, 0, 1.1))
+	give("leaves", 8)
+	give("grass", 10)
+	give("straw", 16)
+	give("fiber", 6)
+	give("food_scraps", 4)
+	give("stick", 1)
+	req("compost_start", {"pos": spot, "slot": slot_of("leaves")})
+	await frames(2)
+	check(heaps().size() == 1, "holding leaves, E on bare soil starts a heap")
+	if heaps().is_empty():
+		return
+	var hid := int(heaps()[0]["id"])
+	req("compost_start", {"pos": spot + Vector3(0.6, 0, 0), "slot": slot_of("leaves")})
+	await frames(2)
+	check(heaps().size() == 1, "a second heap right beside it is refused")
+	for id in ["leaves", "grass", "straw", "fiber", "food_scraps"]:
+		while slot_of(id) != -1:
+			req("compost_add", {"eid": hid, "slot": slot_of(id)})
+			await frames(1)
+	var d: Dictionary = World.get_entity(hid)["d"]
+	var want_g := 8 * 0.25 + 10 * 0.15 + 4 * 0.05
+	var want_b := 16 * 0.07 + 6 * 0.04
+	check(absf(float(d["g"]) - want_g) < 0.001 and absf(float(d["b"]) - want_b) < 0.001, "greens %.2f kg and browns %.2f kg went in" % [float(d["g"]), float(d["b"])])
+	req("compost_add", {"eid": hid, "slot": slot_of("stick")})
+	await frames(1)
+	check(slot_of("stick") != -1, "wood isn't accepted - it would take years")
+	var f := CompostSim.factors(World.get_entity(hid)["d"])
+	print("     mix: %.0f%% browns, wetness %.2f, activity %.2f" % [float(f["browns"]) * 100.0, float(f["wet"]), float(f["act"])])
+	check(float(f["wet"]) > 0.35 and float(f["wet"]) < 0.7, "fresh greens make it damp, not dry or soggy (%.2f)" % float(f["wet"]))
+	await sim_hours(14.0)
+	d = World.get_entity(hid)["d"]
+	print("     after 14 h: %.1f C, air %.2f, rotting %.2f kg, compost %.2f kg" % [float(d["T"]), float(d["air"]), CompostSim.raw(d), float(d["hu"])])
+	check(float(d["T"]) > Climate.base_temp() + 15.0, "a working heap heats itself (%.0f C)" % float(d["T"]))
+	check(float(d["air"]) < 0.6, "and uses up its air (%.2f)" % float(d["air"]))
+	var air0 := float(d["air"])
+	for i in 3:
+		req("compost_turn", {"eid": hid, "slot": -1})
+		await frames(1)
+	check(float(World.get_entity(hid)["d"]["air"]) > air0 + 0.5, "turning it lets air back in")
+	await sim_hours(30.0)
+	d = World.get_entity(hid)["d"]
+	var rotted := 1.0 - CompostSim.raw(d) / (want_g + want_b)
+	print("     after 44 h: %.0f%% rotted, %.2f kg compost, %d ready, %.2f L free water" % [rotted * 100.0, float(d["hu"]), CompostSim.ready_count(d), float(d["w"])])
+	check(rotted > 0.6, "most of a well-kept heap rots within two days (%.0f%%)" % (rotted * 100.0))
+	check(CompostSim.ready_count(d) >= 2, "finished compost is ready (%d)" % CompostSim.ready_count(d))
+	var n_ready := CompostSim.ready_count(d)
+	for i in n_ready:
+		req("compost_take", {"eid": hid, "slot": -1})
+		await frames(1)
+	check(inv().count("compost") == n_ready, "took %d compost" % n_ready)
+	check(World.discoveries.has("first_compost"), "the island journal records the first compost")
+	# a heap of browns alone hardly rots
+	var spot2 := clear_soil_spot([spot])
+	await stand_near(spot2, Vector3(0, 0, 1.1))
+	give("straw", 20)
+	req("compost_start", {"pos": spot2, "slot": slot_of("straw")})
+	await frames(2)
+	var h2 := -1
+	for e in heaps():
+		if int(e["id"]) != hid:
+			h2 = int(e["id"])
+	check(h2 != -1, "a second heap, all straw")
+	if h2 != -1:
+		while slot_of("straw") != -1:
+			req("compost_add", {"eid": h2, "slot": slot_of("straw")})
+			await frames(1)
+		var m0 := CompostSim.raw(World.get_entity(h2)["d"])
+		await sim_hours(20.0)
+		var dry: Dictionary = World.get_entity(h2)["d"]
+		var r2 := 1.0 - CompostSim.raw(dry) / m0
+		check(r2 < 0.12, "dry browns alone barely rot (%.0f%% in 20 h)" % (r2 * 100.0))
+		check(CompostSim.describe(dry).contains("dry") or CompostSim.describe(dry).contains("browns"), "and the heap says why")
+		req("compost_spread", {"eid": h2, "slot": -1})
+		await frames(2)
+		check(not World.has_entity(h2), "spreading a heap returns it to the soil")
+	# spread what's left of the first one too
+	await stand_near(spot, Vector3(0, 0, 1.1))
+	if World.has_entity(hid):
+		req("compost_spread", {"eid": hid, "slot": -1})
+		await frames(2)
+	# work the compost into the soil
+	var nutr0 := World.terrain.total_nutrients()
+	req("fertilize", {"pos": spot + Vector3(0.6, 0, 0), "slot": slot_of("compost")})
+	await frames(1)
+	check(World.terrain.total_nutrients() > nutr0 + CompostSim.unit_nutr() * 0.99, "compost worked into the soil feeds it")
+
+
+func test_crops() -> void:
+	print("-- growing tubers")
+	var spot := clear_soil_spot()
+	if spot == Vector3.INF:
+		check(false, "found soil for a crop")
+		return
+	await stand_near(spot, Vector3(0, 0, 1.0))
+	give("digger", 1, {"q": 0.8, "dur": 1.0, "bind": 0.8, "cords": 1, "head": {"stone_kg": 0.25}})
+	give("tuber", 1)
+	req("plant", {"pos": spot, "slot": slot_of("tuber")})
+	await frames(1)
+	check(World.entities_of("plant").filter(func(e): return e["xf"].origin.distance_to(spot) < 0.3).is_empty(), "nothing grows in untilled ground")
+	req("till", {"pos": spot, "slot": slot_of("digger")})
+	await frames(2)
+	var k: int = World.actions.cell_index_at(spot)
+	check(World.terrain.tilled[k] == 1, "the digging tool tills the soil")
+	req("plant", {"pos": spot, "slot": slot_of("tuber")})
+	await frames(2)
+	var plants := World.entities_of("plant").filter(func(e): return e["xf"].origin.distance_to(spot) < 0.3)
+	check(plants.size() == 1, "a tuber planted in tilled soil")
+	if plants.is_empty():
+		return
+	var pid := int(plants[0]["id"])
+	# keep it watered: the soil under it stays moist
+	for day in 5:
+		for c in World.terrain.cells_in_radius(Vector2(spot.x, spot.z), 0.4):
+			if World.terrain.moist[c] < 0.4:
+				var add := (0.4 - World.terrain.moist[c]) * WaterSim.cell_l()
+				var take := minf(add, float(World.env["pond_l"]))
+				World.env["pond_l"] = float(World.env["pond_l"]) - take
+				World.terrain.moist[c] += take / WaterSim.cell_l()
+		await sim_hours(24.0, 0.5)
+		var pd: Dictionary = World.get_entity(pid)["d"]
+		print("     day %d: growth %.2f, thirst %.2f, hunger %.2f, vigour %.2f" % [day + 1, float(pd.get("g", 0.0)), float(pd.get("thirst", 0.0)), float(pd.get("hunger", 0.0)), float(pd.get("vig", 1.0))])
+		if float(pd.get("g", 0.0)) >= 1.0:
+			break
+	var g := float(World.get_entity(pid)["d"].get("g", 0.0))
+	check(g >= 1.0, "watered, it ripens in a few days (growth %.2f)" % g)
+	var before := inv().count("tuber")
+	req("harvest", {"eid": pid, "slot": -1})
+	await frames(2)
+	var got := inv().count("tuber") - before
+	check(got >= 3, "dug up %d tubers" % got)
+
+
+func suite_drift() -> void:
+	## Debug: does anything create or destroy matter while the island just runs?
+	for round in 3:
+		var L0 := ledger()
+		var P0 := ledger_parts()
+		await sim_hours(12.0)
+		var L1 := ledger()
+		ledger_same(L0, L1, "12 idle hours (round %d)" % round, {"water": 0.05})
+		print_parts_diff(P0, ledger_parts())
+
+
 func suite_pond() -> void:
 	var t := World.terrain
 	print("pond capacity %.1f L, pond_l %.1f L, level %.3f, bed at centre %.3f" % [t.pond_capacity(), float(World.env.get("pond_l", -1)), Game.game_world.island.water_level(), t.height(TerrainData.POND_CENTER.x, TerrainData.POND_CENTER.y)])

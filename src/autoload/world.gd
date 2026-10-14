@@ -95,6 +95,8 @@ func reset() -> void:
 	terrain = TerrainData.new()
 	FireSim.reset()
 	StructureSim.reset()
+	CompostSim.reset()
+	Survival.reset_hints()
 
 
 func _physics_process(delta: float) -> void:

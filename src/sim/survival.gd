@@ -12,6 +12,20 @@ const HUNGER_HOURS := 34.0
 const THIRST_HOURS := 24.0
 const SCRAP_NUTR := 0.003
 
+static var _hinted: Dictionary = {}    # "pid:hint" -> true: each survival tip once per session
+
+
+static func reset_hints() -> void:
+	_hinted.clear()
+
+
+static func hint_once(pid: int, hint_id: String) -> void:
+	var k := "%d:%s" % [pid, hint_id]
+	if _hinted.has(k):
+		return
+	_hinted[k] = true
+	World.hint_to(pid, hint_id)
+
 
 static func eat(pid: int, id: String, food: Dictionary, count: int = 1) -> void:
 	var st: Dictionary = World.stats.get(pid, {})
@@ -200,3 +214,14 @@ static func tick(pid: int, hours: float, real_dt: float, ctx: Dictionary) -> voi
 	World.mark_stats(pid)
 	if float(st["health"]) <= 0.0:
 		die(pid, String(st.get("last_hurt", "")))
+		return
+	if float(st["hunger"]) < 0.3:
+		hint_once(pid, "hungry")
+	if float(st["thirst"]) < 0.3:
+		hint_once(pid, "thirsty")
+	if float(st["stamina"]) < 0.05:
+		hint_once(pid, "tired")
+	if float(st["warmth"]) < 0.3:
+		hint_once(pid, "cold")
+	if float(st["health"]) < 0.6:
+		hint_once(pid, "hurt")

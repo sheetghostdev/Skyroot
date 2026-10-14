@@ -4,6 +4,7 @@ extends Node
 ##   --tp  (third person)  --give=item:n,item:n  --hotbar=N  --panel=inventory|guide|pause|build
 ##   --menu (capture the title screen)  --hidehud
 ##   --fire=camp|mound|kiln|ash|drill  --fhours=H  (build, light and fast-forward a fire in view)
+##   --compost=H  (three heaps in view - fresh, H hours old, all straw - fast-forwarded)
 
 var path := ""
 var delay := 8.0
@@ -63,6 +64,8 @@ func _setup() -> void:
 		_craft_setup.call_deferred(String(Game.cli["craft"]))
 	if Game.cli.has("fire"):
 		_fire_setup.call_deferred(String(Game.cli["fire"]))
+	if Game.cli.has("compost"):
+		_compost_setup.call_deferred(float(Game.cli["compost"]))
 
 
 func _frames(n: int) -> void:
@@ -141,6 +144,49 @@ func _craft_setup(kind: String) -> void:
 			await _frames(2)
 			for i in n:
 				World.request("work_op", {"eid": eid, "op": ["wrap", 0.5]})
+
+
+func _compost_setup(hours: float) -> void:
+	var lp: LocalPlayer = Game.game_world.local_player()
+	var pid := Net.my_id()
+	var inv := World.inventory_of(pid)
+	var c := Vector3(0.0, 0.0, 3.0)
+	c.y = World.terrain.height(c.x, c.z)
+	lp.global_position = Vector3(c.x, World.terrain.height(c.x, c.z + 1.8) + 0.05, c.z + 1.8)
+	lp.yaw = 0.0
+	lp.pitch = deg_to_rad(-30.0)
+	await _frames(4)
+	var mixes := [{"leaves": 6, "grass": 8, "food_scraps": 4}, {"leaves": 8, "grass": 10, "straw": 16, "fiber": 6, "food_scraps": 4}, {"straw": 18}]
+	var ids: Array = []
+	for i in 3:
+		var p := c + Vector3((i - 1) * 1.55, 0, 0)
+		p.y = World.terrain.height(p.x, p.z)
+		var mix: Dictionary = mixes[i]
+		for id in mix:
+			inv.add(id, int(mix[id]))
+		World.mark_inventory(pid)
+		await _frames(1)
+		var first := String(mix.keys()[0])
+		World.request("compost_start", {"pos": p, "slot": inv.find(first), "eye": lp.eye_position()})
+		await _frames(2)
+		var hid := -1
+		for e in World.entities_of("compost"):
+			if not ids.has(int(e["id"])):
+				hid = int(e["id"])
+		ids.append(hid)
+		if hid == -1:
+			push_warning("compost shot: heap %d not started" % i)
+			continue
+		for id in mix:
+			while inv.find(id) != -1:
+				World.request("compost_add", {"eid": hid, "slot": inv.find(id), "eye": lp.eye_position()})
+				await _frames(1)
+	# age the middle heap
+	for i in int(hours / 0.2):
+		CompostSim._acc = 0.0
+		CompostSim.tick(0.2)
+		if i % 10 == 0:
+			await _frames(1)
 
 
 func _spawn(id: String, n: int, x: Dictionary, p: Vector3) -> int:

@@ -216,19 +216,27 @@ static func tick(d: Dictionary, hours: float, light: float, pos: Vector3, terrai
 		d["shed"] = float(d.get("shed", 0.0)) - hours
 		if float(d["shed"]) <= 0.0 and float(d["store"]) > 0.5:
 			d["shed"] = randf_range(5.0, 9.0)
-			d["store"] = float(d["store"]) - ItemDB.unit_mass("twig")
-			out["drops"].append(["twig", 1])
+			_shed(d, pools, out, "twig")
 		d["leaft"] = float(d.get("leaft", 0.0)) - hours
 		if float(d["leaft"]) <= 0.0 and float(d["store"]) > 1.0:
 			d["leaft"] = randf_range(18.0, 30.0)
-			d["store"] = float(d["store"]) - ItemDB.unit_mass("leaves")
-			out["drops"].append(["leaves", 1])
+			_shed(d, pools, out, "leaves")
 		d["seedt"] = float(d.get("seedt", 0.0)) - hours
 		if float(d["seedt"]) <= 0.0 and float(d["store"]) > 1.0:
 			d["seedt"] = randf_range(26.0, 40.0)
-			d["store"] = float(d["store"]) - ItemDB.unit_mass("seed_tree")
-			out["drops"].append(["seed_tree", 1])
+			_shed(d, pools, out, "seed_tree")
 	return out
+
+
+static func _shed(d: Dictionary, pools: Dictionary, out: Dictionary, id: String) -> void:
+	## The tree lets something fall: its wood comes from the reserve, its
+	## nutrients from what the tree has taken up (no nutrients, no drop).
+	var nu := ItemDB.nutrients(id)
+	if float(pools.get("tree_nutr", 0.0)) < nu:
+		return
+	pools["tree_nutr"] = float(pools["tree_nutr"]) - nu
+	d["store"] = float(d["store"]) - ItemDB.unit_mass(id)
+	out["drops"].append([id, 1])
 
 
 static func draw_from_cells(terrain: TerrainData, cells: PackedInt32Array, water_l: float, nutr: float) -> void:

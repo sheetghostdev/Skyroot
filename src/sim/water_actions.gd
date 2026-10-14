@@ -155,6 +155,9 @@ static func pour(a: Actions, pid: int, args: Dictionary) -> void:
 	var eid := int(args.get("eid", -1))
 	if eid >= 0 and World.has_entity(eid) and World.get_entity(eid)["t"] == "site":
 		ActionsFire.douse(eid, amount)
+	elif eid >= 0 and World.has_entity(eid) and World.get_entity(eid)["t"] == "compost":
+		var hd: Dictionary = World.get_entity(eid)["d"]
+		World.update(eid, {"w": float(hd.get("w", 0.0)) + amount})
 	elif not World.terrain.is_inside(pos.x, pos.z):
 		World.pools["lost_water_l"] = float(World.pools.get("lost_water_l", 0.0)) + amount
 		World.notify(pid, "The water drips away into the abyss.")

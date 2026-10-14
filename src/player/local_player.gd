@@ -223,6 +223,30 @@ func select_hotbar(i: int) -> void:
 # Movement
 # ---------------------------------------------------------------------------
 
+var _edge_t := 0.0
+var _edge_hinted := false
+
+
+func _edge_check(delta: float) -> void:
+	## The first time you walk up to the cliff edge, a word of warning.
+	if _edge_hinted:
+		return
+	_edge_t -= delta
+	if _edge_t > 0.0:
+		return
+	_edge_t = 0.5
+	var t := World.terrain
+	var p := global_position
+	if t == null or not t.is_inside(p.x, p.z) or not is_on_floor():
+		return
+	for i in 8:
+		var a := i * TAU / 8.0
+		if not t.is_inside(p.x + cos(a) * 1.1, p.z + sin(a) * 1.1):
+			_edge_hinted = true
+			Events.hint.emit("edge")
+			return
+
+
 func _physics_process(delta: float) -> void:
 	if climbing != -1:
 		_climb(delta)
@@ -236,6 +260,7 @@ func _physics_process(delta: float) -> void:
 			_pose_t = 0.2
 			_send_pose(Vector3.ZERO)
 		return
+	_edge_check(delta)
 	var input := Vector2.ZERO
 	if mode == "play" or mode == "build":
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")

@@ -8,6 +8,7 @@ const GRASS_KG := 0.04        # biomass of a fully grassed cell
 const GRASS_NUTR := 0.0005
 const CROP_WATER_L_PER_KG := 8.0
 const ROOT_R := 0.32
+const DAY_LIGHT := 0.42       # average daylight over a whole clear day (Weather.light_factor)
 
 static var _grass_cursor := 0
 
@@ -16,10 +17,12 @@ static func tick(hours: float, ctx: Dictionary) -> void:
 	var light: float = ctx.get("light", 0.5)
 	var temp: float = ctx.get("temp", 16.0)
 	var temp_f := clampf((temp - 4.0) / 12.0, 0.15, 1.15)
+	# crops are tuned so a plant's "days" holds for a watered, fed crop in ordinary island weather
+	var crop_tf := clampf((temp - 2.0) / 12.0, 0.15, 1.2)
 	for e in World.entities.values():
 		match String(e["t"]):
 			"plant":
-				_crop(e, hours, light, temp_f)
+				_crop(e, hours, light, crop_tf)
 			"tree":
 				var res := TreeSim.tick(e["d"], hours, light * temp_f, e["xf"].origin, World.terrain, World.pools)
 				for drop in res["drops"]:
@@ -68,7 +71,7 @@ static func _crop(e: Dictionary, hours: float, light: float, temp_f: float) -> v
 	if absf(thirst - float(d.get("thirst", 0.0))) > 0.08:
 		changes["thirst"] = snappedf(thirst, 0.01)
 	if g < 1.0:
-		var rate := 1.0 / (float(info.get("days", 3.0)) * 24.0) * (light / 0.5)
+		var rate := 1.0 / (float(info.get("days", 3.0)) * 24.0) * (light / DAY_LIGHT)
 		var nutr_total := float(info.get("nutr_total", 0.01))
 		var nutr_avail := _avail_nutr(cells)
 		var dg := rate * water_f * temp_f * hours

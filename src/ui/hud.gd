@@ -263,15 +263,12 @@ func _build_chat() -> void:
 
 
 func _build_tracker() -> void:
-	tracker = VBoxContainer.new()
+	tracker = GuideTracker.new()
 	tracker.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	tracker.offset_left = -360
+	tracker.offset_left = -380
 	tracker.offset_right = -24
 	tracker.offset_top = 92
-	tracker.add_theme_constant_override("separation", 10)
-	tracker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(tracker)
-	GuideTracker.attach(self, tracker)
 
 
 # ---------------------------------------------------------------------------
@@ -285,19 +282,24 @@ func _on_target(info: Dictionary) -> void:
 	var opts: Dictionary = info.get("options", {})
 	var any := false
 	if opts.has("info"):
+		# what you're looking at, on a dark card so it reads against bright ground and sky
 		var inf: Dictionary = opts["info"]
-		var tl := UITheme.label(String(inf.get("title", "")), 16, UITheme.ACCENT)
-		tl.add_theme_constant_override("outline_size", 5)
-		tl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
-		prompts.add_child(tl)
+		var card := PanelContainer.new()
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_theme_stylebox_override("panel", UITheme.panel(Color(0.06, 0.055, 0.05, 0.62), 8, Color(1, 1, 1, 0.06), 10))
+		card.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 2)
+		card.add_child(cv)
+		var tl := UITheme.label(String(inf.get("title", "")), 16, UITheme.ACCENT, true)
+		cv.add_child(tl)
 		var txt := String(inf.get("text", ""))
 		if txt != "":
-			var bl := UITheme.label(txt, 13, Color(UITheme.PAPER, 0.85))
-			bl.add_theme_constant_override("outline_size", 4)
-			bl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+			var bl := UITheme.label(txt, 14, Color(UITheme.PAPER, 0.92))
 			bl.custom_minimum_size.x = 340
 			bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			prompts.add_child(bl)
+			cv.add_child(bl)
+		prompts.add_child(card)
 	for key in ["interact", "primary", "secondary"]:
 		if not opts.has(key):
 			continue

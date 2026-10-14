@@ -12,6 +12,8 @@ var time_scale := 1.0
 var _acc := 0.0
 var _hours := 0.0
 var ctx: Dictionary = {}
+var _was_night := false
+var _was_rain := false
 
 
 func _process(delta: float) -> void:
@@ -44,7 +46,7 @@ func _tick(hours: float, real_dt: float) -> void:
 	ctx = {
 		"light": light, "sun": light, "temp": Climate.base_temp(),
 		"wind": (World.env.get("wind", Vector2.ONE) as Vector2).length(),
-		"rain_catch": Callable(DryingSim, "rain_catch"),
+		"rain_catch": func(mm: float) -> float: return DryingSim.rain_catch(mm) + CompostSim.rain_catch(mm),
 	}
 	WaterSim.tick(hours, ctx)
 	PlantSim.tick(hours, ctx)
@@ -53,7 +55,21 @@ func _tick(hours: float, real_dt: float) -> void:
 	StructureSim.tick(real_dt)
 	CompostSim.tick(hours)
 	_survival(hours, real_dt)
+	_weather_hints()
 	Events.env_changed.emit()
+
+
+func _weather_hints() -> void:
+	var h := World.hour_of_day()
+	var night := h > 19.5 or h < 5.0
+	var rain := float(World.env.get("rain", 0.0)) > 0.25
+	for pid in Net.players:
+		if night and not _was_night:
+			Survival.hint_once(pid, "night")
+		if rain and not _was_rain:
+			Survival.hint_once(pid, "rain")
+	_was_night = night
+	_was_rain = rain
 
 
 func _survival(hours: float, real_dt: float) -> void:
