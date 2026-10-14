@@ -2,6 +2,7 @@ extends Node
 ## Automated screenshots for visual testing (used with xvfb + a software renderer):
 ##   --shot=/abs/path.png  --delay=8  --pos=x,y,z  --look=yaw_deg,pitch_deg  --hour=17.5
 ##   --tp  (third person)  --give=item:n,item:n  --hotbar=N  --panel=inventory|guide|pause|build
+##   --entry=<guide id> --scroll=<px>  (with --panel=guide)
 ##   --menu (capture the title screen)  --hidehud
 ##   --fire=camp|mound|kiln|ash|drill  --fhours=H  (build, light and fast-forward a fire in view)
 ##   --compost=H  (three heaps in view - fresh, H hours old, all straw - fast-forwarded)
@@ -61,6 +62,10 @@ func _setup() -> void:
 		lp.select_hotbar.call_deferred(int(Game.cli["hotbar"]))
 	if Game.cli.has("panel"):
 		Game.game_world.hud.open_panel.call_deferred(String(Game.cli["panel"]))
+		if Game.cli.has("entry"):
+			(func(): Events.guide_open_entry.emit(String(Game.cli["entry"]))).call_deferred()
+		if Game.cli.has("scroll"):
+			(func(): await get_tree().create_timer(1.0).timeout; Game.game_world.hud.panel.page_scroll.scroll_vertical = int(Game.cli["scroll"])).call_deferred()
 	if Game.cli.has("hidehud"):
 		Game.game_world.hud.root.visible = false
 	if Game.cli.has("craft"):
