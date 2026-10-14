@@ -98,7 +98,7 @@ func camera_xf() -> Transform3D:
 	var h := float(pot.get("h", 0.08))
 	var look_y := BAT_Y + h * 0.45
 	var e := clampf(_elev, -0.15, 0.9)
-	var dist := 0.34 + h * 1.4 + float(Pottery.stats(pot).get("max_r", 0.05)) * 1.6
+	var dist := 0.17 + h * 1.7 + float(Pottery.stats(pot).get("max_r", 0.05)) * 2.2
 	return xf_from(Vector3(0.0, look_y + 0.06 + e * 0.3 * dist, dist * (1.0 - e * 0.35)), Vector3(0.0, look_y, 0.0))
 
 
@@ -360,25 +360,31 @@ func _update_hands(delta: float) -> void:
 			continue
 		var press := 0.004 if active else 0.02
 		var p: Vector3
-		var basis: Basis
 		match zone:
 			"hollow":
 				_set_pose(i, "pinch")
 				p = Vector3(0, BAT_Y + hh + 0.03 - (_hollow_depth * hh * 0.6 if active else 0.0), 0)
-				basis = Basis.looking_at(Vector3(0, -1, 0) + fwd * 0.4, fwd)
 			"rim":
 				_set_pose(i, "pinch")
 				p = right * side * r.x + Vector3(0, BAT_Y + hh + 0.01, 0)
-				basis = Basis.looking_at(fwd * 0.7 + Vector3(0, -0.5, 0), -right * side)
 			_:
 				_set_pose(i, "open")
 				var radius := r.x + press
 				if zone == "inner":
 					radius = maxf(0.004, r.y - press)
 				p = right * side * radius + Vector3(0, y, 0)
-				basis = Basis.looking_at(fwd + Vector3(0, -0.25, 0), right * side)
-		var palm := Vector3(0, -0.01, -0.33)
-		var target := Transform3D(basis, p - basis * palm)
+		# arms reach in from below the camera, wrist at the contact point
+		var cam_local: Vector3 = global_transform.affine_inverse() * ctrl.cam.global_position
+		var elbow := cam_local + right * side * 0.2 + Vector3(0, -0.26, 0) + (p - cam_local).normalized() * 0.05
+		var dir := (p - elbow).normalized()
+		var arm_basis := Basis.looking_at(dir, Vector3.UP)
+		# roll the palm toward the pot (or downward when pressing from above)
+		var to_axis := Vector3(-p.x, 0, -p.z).normalized() if zone != "hollow" else Vector3.DOWN
+		var palm_dir := arm_basis.inverse() * to_axis
+		var roll := atan2(palm_dir.x, -palm_dir.y)
+		arm_basis = arm_basis * Basis(Vector3(0, 0, 1), roll)
+		var palm := Vector3(0, -0.012, -0.33)
+		var target := Transform3D(arm_basis, p - arm_basis * palm)
 		hand.transform = hand.transform.interpolate_with(target, 1.0 - exp(-18.0 * delta))
 
 

@@ -41,8 +41,10 @@ func _ready() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX if "TONE_MAPPER_AGX" in Environment else Environment.TONE_MAPPER_FILMIC
+	var tm := String(Game.cli.get("tonemap", "aces"))
+	env.tonemap_mode = {"agx": Environment.TONE_MAPPER_AGX, "filmic": Environment.TONE_MAPPER_FILMIC, "aces": Environment.TONE_MAPPER_ACES}.get(tm, Environment.TONE_MAPPER_ACES)
 	env.tonemap_exposure = 1.0
+	env.tonemap_white = 6.0
 	env.glow_enabled = true
 	env.glow_intensity = 0.55
 	env.glow_bloom = 0.06
@@ -205,7 +207,7 @@ func _apply(t: float) -> void:
 		sun.look_at_from_position(Vector3.ZERO, -sun_dir, Vector3.UP if abs(sun_dir.y) < 0.99 else Vector3.FORWARD)
 	var warm := Color(1.0, 0.97, 0.9).lerp(Color(1.0, 0.66, 0.4), sunset_k)
 	sun.light_color = warm.lerp(Color(0.8, 0.84, 0.9), oc * 0.6)
-	sun.light_energy = maxf(0.0, (1.35 - sunset_k * 0.35) * day * (1.0 - oc * 0.55))
+	sun.light_energy = maxf(0.0, (1.12 - sunset_k * 0.3) * day * (1.0 - oc * 0.5))
 	sun.shadow_enabled = sun.light_energy > 0.05
 	sun.shadow_opacity = 1.0 - oc * 0.5
 	moon.look_at_from_position(Vector3.ZERO, -moon_dir, Vector3.UP if abs(moon_dir.y) < 0.99 else Vector3.FORWARD)
@@ -218,8 +220,9 @@ func _apply(t: float) -> void:
 	sky_mat.set_shader_parameter("cloud_cover", clampf(cloud, 0.0, 1.0))
 	sky_mat.set_shader_parameter("moon_dir", moon_dir)
 
-	env.ambient_light_energy = lerpf(0.42, 1.0, day)
-	env.ambient_light_sky_contribution = 1.0
+	env.ambient_light_energy = lerpf(0.5, 0.62, day)
+	env.ambient_light_sky_contribution = 0.85
+	env.ambient_light_color = Color(0.55, 0.6, 0.7)
 	env.background_energy_multiplier = lerpf(0.9, 1.0, day)
 	var hor := Color(0.70, 0.80, 0.90).lerp(Color(0.05, 0.07, 0.13), 1.0 - day)
 	hor = hor.lerp(Color(0.62, 0.65, 0.7) * lerpf(0.2, 1.0, day), oc * 0.7)
@@ -227,7 +230,7 @@ func _apply(t: float) -> void:
 	env.fog_light_color = hor
 	env.fog_density = 0.0028 + oc * 0.004 + rn * 0.006 + fog_extra * 0.03
 	env.fog_light_energy = lerpf(0.35, 1.0, day)
-	env.tonemap_exposure = lerpf(1.35, 1.0, day)
+	env.tonemap_exposure = lerpf(1.25, 0.95, day)
 	for i in sea_mats.size():
 		var m := sea_mats[i]
 		m.set_shader_parameter("day", day)

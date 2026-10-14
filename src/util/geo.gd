@@ -1,6 +1,8 @@
 class_name Geo
 extends RefCounted
 ## Small geometry toolkit shared by procedural meshes and crafting systems.
+## Colours passed in are authored in sRGB; meshes store linear vertex colours
+## (the same convention as the Blender exports).
 
 static var _ico_cache: Dictionary = {}
 
@@ -73,9 +75,9 @@ static func flat_mesh(verts: PackedVector3Array, tris: PackedInt32Array, colors:
 		pn[i + 1] = n
 		pn[i + 2] = n
 		if use_col:
-			pc[i] = colors[tris[i]]
-			pc[i + 1] = colors[tris[i + 1]]
-			pc[i + 2] = colors[tris[i + 2]]
+			pc[i] = colors[tris[i]].srgb_to_linear()
+			pc[i + 1] = colors[tris[i + 1]].srgb_to_linear()
+			pc[i + 2] = colors[tris[i + 2]].srgb_to_linear()
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = pv
@@ -106,7 +108,11 @@ static func smooth_mesh(verts: PackedVector3Array, tris: PackedInt32Array, color
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	if colors.size() == verts.size():
-		arrays[Mesh.ARRAY_COLOR] = colors
+		var lin := PackedColorArray()
+		lin.resize(colors.size())
+		for i in colors.size():
+			lin[i] = colors[i].srgb_to_linear()
+		arrays[Mesh.ARRAY_COLOR] = lin
 	arrays[Mesh.ARRAY_INDEX] = tris
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

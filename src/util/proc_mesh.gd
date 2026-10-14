@@ -65,7 +65,7 @@ static func wood_piece(poly: PackedVector2Array, length: float, orig_radius: flo
 			for v in [[v0, v1, v2], [v0, v2, v3]]:
 				for p in v:
 					st.set_normal(nrm)
-					st.set_color(col * (0.96 + 0.08 * sin(p.x * 7.0 + bulge)))
+					st.set_color((col * (0.96 + 0.08 * sin(p.x * 7.0 + bulge))).srgb_to_linear())
 					st.add_vertex(p)
 	# end caps (triangle fans with ring colouring)
 	var cen := Geo.polygon_centroid(poly)
@@ -82,7 +82,7 @@ static func wood_piece(poly: PackedVector2Array, length: float, orig_radius: flo
 				if r > 0.93:
 					c = BARK_DARK
 				st.set_normal(nrm)
-				st.set_color(c)
+				st.set_color(c.srgb_to_linear())
 				st.add_vertex(Vector3(side * hx, p.x, p.y))
 	# subdivide the caps' ring colouring by adding an inner ring fan: good enough at item scale
 	return st.commit()
@@ -156,7 +156,7 @@ static func painted(prim: PrimitiveMesh, col: Color) -> ArrayMesh:
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var cols := PackedColorArray()
 	cols.resize(verts.size())
-	cols.fill(col)
+	cols.fill(col.srgb_to_linear())
 	arrays[Mesh.ARRAY_COLOR] = cols
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

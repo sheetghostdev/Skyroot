@@ -238,7 +238,7 @@ func _tube(st: SurfaceTool, pts: Array, r: float, col: Color) -> void:
 		for s in seg:
 			var s2 := (s + 1) % seg
 			for v in [rings[i][s], rings[i + 1][s], rings[i][s2], rings[i][s2], rings[i + 1][s], rings[i + 1][s2]]:
-				st.set_color(col)
+				st.set_color(col.srgb_to_linear())
 				st.add_vertex(v)
 
 

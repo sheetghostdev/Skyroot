@@ -20,7 +20,7 @@ static func make(id: String, d: Dictionary) -> Node3D:
 			var a := float(s) / segs * TAU
 			var nrm := Vector3(0, cos(a), sin(a))
 			st.set_normal(nrm)
-			st.set_color(ProcMesh.BARK.lerp(ProcMesh.WOOD, 0.35 + 0.1 * sin(a * 3.0 + f * 5.0)))
+			st.set_color(ProcMesh.BARK.lerp(ProcMesh.WOOD, 0.35 + 0.1 * sin(a * 3.0 + f * 5.0)).srgb_to_linear())
 			st.add_vertex(Vector3(x, cos(a) * rad, sin(a) * rad))
 	for r in rings:
 		for s in segs:

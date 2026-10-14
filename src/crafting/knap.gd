@@ -36,8 +36,8 @@ const TARGETS := {
 
 const STONE_L := 0.346          # litres of stone in one cobble (0.9 kg)
 const DENSITY := 2.6            # kg per litre
-const CORTEX := Color(0.6, 0.57, 0.51)
-const FRESH := Color(0.33, 0.34, 0.37)
+const CORTEX := Color(0.66, 0.62, 0.54)
+const FRESH := Color(0.27, 0.27, 0.3)
 
 
 static func params(seed_value: int) -> Dictionary:

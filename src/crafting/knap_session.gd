@@ -24,9 +24,10 @@ func _start() -> void:
 	outline_mi = MeshInstance3D.new()
 	var om := StandardMaterial3D.new()
 	om.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	om.albedo_color = Color(1.0, 0.97, 0.88, 0.75)
+	om.albedo_color = Color(1.0, 0.97, 0.88, 0.8)
 	om.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	om.no_depth_test = false
+	om.no_depth_test = true
+	om.render_priority = 10
 	outline_mi.material_override = om
 	outline_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(outline_mi)
@@ -43,14 +44,14 @@ func _start() -> void:
 	hammer = MeshInstance3D.new()
 	hammer.mesh = ProcMesh.stone(4242)
 	hammer.material_override = Models.material_for("Stone")
-	hammer.scale = Vector3.ONE * 0.8
+	hammer.scale = Vector3.ONE * 0.62
 	add_child(hammer)
 	_rebuild_outline()
 	_reeval()
 
 
 func camera_xf() -> Transform3D:
-	return xf_from(Vector3(0.0, 0.3, 0.2), Vector3(0.0, 0.02, 0.0))
+	return xf_from(Vector3(0.0, 0.34, 0.26), Vector3(0.0, 0.02, 0.0))
 
 
 func camera_fov() -> float:
@@ -187,7 +188,7 @@ func _tick(delta: float) -> void:
 		_charge = minf(_charge + delta, CHARGE_TIME * 1.2)
 	# the hammerstone hovers over the aim point, then strikes
 	_hammer_t = minf(1.0, _hammer_t + delta * 5.0)
-	var rest := (_hover if _hover_ok else Vector3(0.05, c, 0.05)) + Vector3(0.0, 0.05 + (0.025 * _charge / CHARGE_TIME if _charging else 0.0), 0.035)
+	var rest := (_hover + Vector3(0.0, 0.045 + (0.03 * _charge / CHARGE_TIME if _charging else 0.0), 0.03)) if _hover_ok else Vector3(0.115, c + 0.035, 0.085)
 	var target := rest
 	if _hammer_t < 1.0:
 		var k := sin(_hammer_t * PI)
