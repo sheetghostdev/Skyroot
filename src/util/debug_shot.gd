@@ -142,11 +142,11 @@ func _setup(nm: String, lp: LocalPlayer, gw) -> void:
 	if World.block(c) != 0:
 		World.set_block(c, 0)
 	match nm:
-		"firepit", "firepit_lit", "firepit_cook":
+		"firepit", "firepit_lit", "firepit_cook", "firepit_pot":
 			var lit := nm != "firepit"
-			World.spawn_be("firepit", c, {"tinder": 2, "sticks": 6, "logs": 2 if lit else 0, "tf": 0.24, "sf": 6 * FireActs.STICK_H, "lf": 2 * FireActs.LOG_H,
+			World.spawn_be("firepit", c, {"tinder": 2, "sticks": 6, "logs": (4 if nm == "firepit_pot" else 2) if lit else 0, "tf": 0.24, "sf": 6 * FireActs.STICK_H, "lf": 2 * FireActs.LOG_H,
 				"lit": lit, "ash": false, "food": [{"i": "mushroom", "t": 0.0, "cs": 22.0, "done": false}, {"i": "turnip_roasted", "t": 0.0, "cs": 30.0, "done": true}] if nm == "firepit_cook" else [],
-				"pot": {}, "heat": 1.0 if lit else 0.0, "phase": "logs" if lit else "", "caught": true})
+				"pot": {"water": 3, "items": ["turnip", "mushroom", "cattail_root"], "stew": 0, "t": 0.0} if nm == "firepit_pot" else {}, "heat": 1.0 if lit else 0.0, "phase": "logs" if lit else "", "caught": true})
 		"firepit_x":
 			for n in [1, 2, 4, 8]:
 				var cc := c + Vector3i((n - 4) / 2 * 2, 0, 0)
@@ -178,6 +178,24 @@ func _setup(nm: String, lp: LocalPlayer, gw) -> void:
 				"sticks": 6 if nm == "kiln_lit" else 0, "lit": nm == "kiln_lit", "t": 0.5, "stage": 1 if nm == "kiln_lit" else 0, "enc": 4})
 		"ground":
 			World.spawn_be("ground", c, {"items": [Inventory.make("bowl", 1), Inventory.make("stick", 5), Inventory.make("berries", 3)]})
+		"ground2":
+			# a spread of things set down, to look at the models
+			var side := Vector3i(roundi(cos(lp.yaw)), 0, roundi(-sin(lp.yaw)))
+			var spots := [c - side, c, c + side]
+			var sets := [
+				[Inventory.make("bowl", 1, {"c": "water"}), Inventory.make("stick", 6), Inventory.make("berries", 9), Inventory.make("stone", 5)],
+				[Inventory.make("turnip", 4), Inventory.make("firewood", 4), Inventory.make("clay", 3), Inventory.make("flint", 2)],
+				[Inventory.make("pot", 1), Inventory.make("bowl_raw", 3), Inventory.make("mushroom", 3)],
+			]
+			for i in 3:
+				var sc: Vector3i = spots[i]
+				sc.y = World.vox.surface_y(sc.x, sc.z) + 1
+				World.set_block(sc, 0)
+				World.spawn_be("ground", sc, {"items": sets[i]})
+			var jc: Vector3i = c + Vector3i(roundi(-sin(lp.yaw)), 0, roundi(-cos(lp.yaw))) + side
+			jc.y = World.vox.surface_y(jc.x, jc.z) + 1
+			World.set_block(jc, 0)
+			World.spawn_be("jar", jc, {"inv": [Inventory.make("berries", 4)]})
 		"items":
 			for i in 6:
 				a.drop_item(["stone", "stick", "flint", "berries", "log_oak", "knife"][i], 1 + i, {"mat": "flint"} if i == 5 else {}, front + Vector3(i * 0.4 - 1.0, 0.5, 0))

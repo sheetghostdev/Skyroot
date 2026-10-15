@@ -14,6 +14,8 @@ var arm_l: Node3D
 var arm_r: Node3D
 var leg_l: Node3D
 var leg_r: Node3D
+var shin_l: Node3D          # knees: the lower legs hang from the thighs
+var shin_r: Node3D
 var hand: Node3D
 var held_mi: MeshInstance3D
 var _walk := 0.0
@@ -36,9 +38,19 @@ func build(color: Color) -> void:
 	var leather := BlockTex.layer("leather")
 	var hair := BlockTex.layer("hair")
 	var shirt := color
-	# legs (pivot at the hip)
-	leg_l = _limb(Vector3(-0.11, 0.72, 0), Vector3(0.21, 0.72, 0.22), leather, TROUSERS.lerp(Color.WHITE, 0.4), Vector3(0, -0.36, 0))
-	leg_r = _limb(Vector3(0.11, 0.72, 0), Vector3(0.21, 0.72, 0.22), leather, TROUSERS.lerp(Color.WHITE, 0.4), Vector3(0, -0.36, 0))
+	# legs: thighs pivot at the hip, shins at the knee, a shoe at the foot
+	# (woven trousers: light enough to see in your own shadow when you look down)
+	var trousers := TROUSERS.lerp(Color.WHITE, 0.25)
+	leg_l = _limb(Vector3(-0.11, 0.72, 0), Vector3(0.21, 0.37, 0.22), cloth, trousers, Vector3(0, -0.18, 0))
+	leg_r = _limb(Vector3(0.11, 0.72, 0), Vector3(0.21, 0.37, 0.22), cloth, trousers, Vector3(0, -0.18, 0))
+	shin_l = Node3D.new()
+	shin_r = Node3D.new()
+	for pair in [[leg_l, shin_l], [leg_r, shin_r]]:
+		var sh: Node3D = pair[1]
+		sh.position = Vector3(0, -0.36, 0)
+		(pair[0] as Node3D).add_child(sh)
+		_box(sh, Vector3(0, -0.15, 0), Vector3(0.2, 0.3, 0.21), cloth, trousers)
+		_box(sh, Vector3(0, -0.32, -0.025), Vector3(0.21, 0.08, 0.26), leather, Color(0.55, 0.45, 0.36))
 	body = _limb(Vector3(0, 0.72, 0), Vector3(0.44, 0.62, 0.24), cloth, shirt, Vector3(0, 0.31, 0))
 	# arms hang from the shoulders
 	arm_l = _limb(Vector3(-0.32, 1.3, 0), Vector3(0.17, 0.42, 0.19), cloth, shirt.darkened(0.12), Vector3(0, -0.17, 0))
@@ -46,7 +58,7 @@ func build(color: Color) -> void:
 	_box(arm_l, Vector3(0, -0.47, 0), Vector3(0.15, 0.2, 0.17), skin, SKIN)
 	_box(arm_r, Vector3(0, -0.47, 0), Vector3(0.15, 0.2, 0.17), skin, SKIN)
 	# a belt
-	_box(self, Vector3(0, 0.75, 0), Vector3(0.45, 0.06, 0.25), leather, Color(0.7, 0.6, 0.5))
+	_box(body, Vector3(0, 0.03, 0), Vector3(0.45, 0.06, 0.25), leather, Color(0.7, 0.6, 0.5))
 	head = Node3D.new()
 	head.position = Vector3(0, 1.34, 0)
 	add_child(head)
@@ -89,10 +101,15 @@ func _box(parent: Node3D, center: Vector3, size: Vector3, tex: int, tint: Color)
 
 
 func set_first_person(on: bool) -> void:
+	## In first person you see your legs and feet when you look down (and your
+	## lap when you sit); head, chest and arms only cast shadows - from the eyes
+	## the top of your own shoulders just reads as a slab.  The arm you see is
+	## the first-person one.
 	_first_person = on
-	for c in get_children():
-		if c is Node3D:
-			_set_shadow_only(c, on)
+	for c in [head, body, arm_l, arm_r]:
+		_set_shadow_only(c, on)
+	for c in [leg_l, leg_r]:
+		_set_shadow_only(c, false)
 	if _torch:
 		_torch.visible = not on
 
@@ -139,6 +156,12 @@ func set_held(id: String, d: Dictionary) -> void:
 	_set_shadow_only(held_mi, _first_person)
 
 
+func _point(shin: Node3D, thigh: Node3D, dir: Vector3) -> void:
+	## Turn a shin so it points along dir (model space), whatever its thigh does.
+	var local := thigh.basis.inverse() * dir.normalized()
+	shin.quaternion = Quaternion(Vector3.DOWN, local)
+
+
 func swing(kind: String = "hit") -> void:
 	_swing = 1.0
 	_swing_kind = kind
@@ -158,6 +181,9 @@ func animate(delta: float, st: Dictionary) -> void:
 	var sw := sin(_walk) * amp
 	leg_l.rotation.x = sw
 	leg_r.rotation.x = -sw
+	# knees bend as each leg swings back through its step
+	shin_l.rotation = Vector3(-maxf(0.0, -sin(_walk + 0.6)) * amp * 1.1, 0, 0)
+	shin_r.rotation = Vector3(-maxf(0.0, sin(_walk + 0.6)) * amp * 1.1, 0, 0)
 	arm_l.rotation.x = -sw * 0.8
 	arm_r.rotation.x = sw * 0.8
 	arm_l.rotation.z = 0.05
@@ -170,11 +196,14 @@ func animate(delta: float, st: Dictionary) -> void:
 	body.rotation.x = lerpf(body.rotation.x, -lean, 1.0 - exp(-12.0 * delta))
 	var drop := 0.18 if crouch else (0.6 if sit else 0.0)
 	if sit:
-		# on the ground, legs out in front, hands near your work
-		leg_l.rotation = Vector3(PI * 0.5, 0.0, 0.12)
-		leg_r.rotation = Vector3(PI * 0.5, 0.0, -0.12)
-		arm_l.rotation.x = -0.7
-		arm_r.rotation.x = -0.7
+		# cross-legged on the ground: thighs forward and out, shins crossed in
+		# front, hands resting on the knees
+		leg_l.rotation = Vector3(PI * 0.5, 0.62, 0.0)
+		leg_r.rotation = Vector3(PI * 0.5, -0.62, 0.0)
+		_point(shin_l, leg_l, Vector3(1.0, 0.1, 0.32))
+		_point(shin_r, leg_r, Vector3(-1.0, -0.06, 0.22))
+		arm_l.rotation = Vector3(-0.75, 0.0, 0.25)
+		arm_r.rotation = Vector3(-0.75, 0.0, -0.25)
 	else:
 		leg_l.rotation.y = 0.0
 		leg_l.rotation.z = 0.0
@@ -201,7 +230,12 @@ func animate(delta: float, st: Dictionary) -> void:
 		# lying down, head where the player is (on the pillow), feet behind
 		rotation.x = -PI * 0.5
 		position = Basis(Vector3.UP, rotation.y) * Vector3(0, 0.12, 1.5)
-	elif absf(rotation.x) > 0.01:
-		rotation.x = 0.0
-		position.x = 0.0
-		position.z = 0.0
+	else:
+		if absf(rotation.x) > 0.01:
+			rotation.x = 0.0
+		# in first person, standing, the body sits a little behind the eyes (as
+		# a real one does), so looking down shows your feet just below you
+		var back := 0.1 if _first_person and not sit else 0.0
+		var off := Basis(Vector3.UP, rotation.y) * Vector3(0, 0, back)
+		position.x = off.x
+		position.z = off.z

@@ -12,6 +12,8 @@ const SPIT_ANGLES := [35.0, 125.0, 215.0, 305.0]
 var fuel_mi: MeshInstance3D
 var food_root: Node3D
 var pot_root: Node3D
+var _bobbers: Array = []
+var _fuel_top := 0.12
 var flames: Array[MeshInstance3D] = []
 var flame_mat: ShaderMaterial
 var ember_mi: MeshInstance3D
@@ -180,6 +182,8 @@ func _fuel_mesh(d: Dictionary) -> ArrayMesh:
 		boxes.append([c + Vector3(-half, y, -0.024), c + Vector3(half, y + 0.045, 0.024), "charred" if lit and i < 2 else "stick", Color(0.6, 0.55, 0.52) if lit else Color.WHITE, ang])
 	var logs := int(d.get("logs", 0))
 	var top := base_y + sticks * 0.032 + 0.04
+	# the highest point of the fuel: a pot sits on top of it, not inside it
+	_fuel_top = top + (0.0 if logs == 0 else (0.11 if logs <= 2 else 0.21))
 	for i in logs:
 		var along_x := i < 2
 		var off := (-0.17 if i % 2 == 0 else 0.17)
@@ -210,11 +214,19 @@ func _build_food(d: Dictionary) -> void:
 		smi.position = Vector3(0.44, 0, 0)
 		smi.rotation.z = deg_to_rad(38)
 		root.add_child(smi)
+		var model := ItemModels.mesh(String(f["i"]))
 		var mi := MeshInstance3D.new()
-		mi.mesh = Icons.mesh(String(f["i"]))
-		mi.scale = Vector3.ONE * 0.22
-		mi.position = Vector3(0.14, 0.43, 0)
-		mi.rotation.y = PI * 0.5
+		if model:
+			# skewered on the end of the stick
+			mi.mesh = model
+			mi.scale = Vector3.ONE * 1.1
+			mi.position = Vector3(0.12, 0.39, 0)
+			mi.rotation.z = deg_to_rad(-20)
+		else:
+			mi.mesh = Icons.mesh(String(f["i"]))
+			mi.scale = Vector3.ONE * 0.22
+			mi.position = Vector3(0.14, 0.43, 0)
+			mi.rotation.y = PI * 0.5
 		root.add_child(mi)
 
 
@@ -224,30 +236,35 @@ func _build_pot(d: Dictionary) -> void:
 	var pot: Dictionary = d.get("pot", {})
 	if pot.is_empty():
 		return
-	var boxes: Array = [
-		[Vector3(0.27, 0.12, 0.27), Vector3(0.73, 0.42, 0.73), "terracotta"],
-		[Vector3(0.24, 0.42, 0.24), Vector3(0.76, 0.46, 0.76), "terracotta", Color(0.9, 0.9, 0.9)],
-	]
 	var water := int(pot.get("water", 0))
 	var stew := int(pot.get("stew", 0))
-	if stew > 0:
-		boxes.append([Vector3(0.29, 0.43, 0.29), Vector3(0.71, 0.465, 0.71), "dirt", Color(1.3, 0.95, 0.6)])
-	elif water > 0:
-		boxes.append([Vector3(0.29, 0.43, 0.29), Vector3(0.71, 0.465, 0.71), "water"])
 	var mi := MeshInstance3D.new()
-	mi.mesh = boxes_mesh(boxes)
+	mi.mesh = ItemModels.mesh("pot", {"w": water} if stew == 0 else {"stew": stew})
+	mi.position = Vector3(0.5, 0.0, 0.5)
 	pot_root.add_child(mi)
-	for i in (pot.get("items", []) as Array).size():
-		var bob := MeshInstance3D.new()
-		bob.mesh = Icons.mesh(String(pot["items"][i]))
-		bob.scale = Vector3.ONE * 0.13
-		bob.position = Vector3(0.4 + (i % 2) * 0.2, 0.47, 0.4 + (i / 2) * 0.2)
-		bob.rotation.x = -PI * 0.5
+	# resting on the sticks and firewood, not sunk into them
+	pot_root.position.y = maxf(0.0, _fuel_top - 0.02)
+	# what's in it floats in the water (and bobs once it boils)
+	_bobbers.clear()
+	var items: Array = pot.get("items", [])
+	for i in items.size():
+		var bob := ItemModels.node(String(items[i]))
+		var a := TAU * i / maxf(1.0, items.size()) + 0.5
+		bob.position = Vector3(0.5, 0.29, 0.5) + Vector3(sin(a), 0, cos(a)) * (0.09 if items.size() > 1 else 0.0)
+		bob.rotation.y = a
+		bob.scale = Vector3.ONE * 0.85
 		pot_root.add_child(bob)
+		_bobbers.append(bob)
 
 
 func _process(delta: float) -> void:
 	_t += delta
+	for i in _bobbers.size():
+		var b: Node3D = _bobbers[i]
+		if is_instance_valid(b):
+			var boil := clampf(_heat, 0.0, 1.0)
+			b.position.y = 0.29 + sin(_t * (2.0 + boil * 3.0) + i * 1.9) * (0.004 + boil * 0.012)
+			b.rotation.y += delta * (0.1 + boil * 0.4) * (1.0 if i % 2 == 0 else -1.0)
 	if _heat <= 0.0:
 		if light.light_energy > 0.0:
 			light.light_energy = maxf(0.0, light.light_energy - delta * 2.0)
