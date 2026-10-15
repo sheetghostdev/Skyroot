@@ -2,19 +2,21 @@ class_name WaterSim
 extends RefCounted
 ## Finite water (host).  A water block holds 1-8 units; its meta is how many it
 ## is short of full (so a full block is meta 0).  Water drops into open space
-## below, then spreads to neighbours that hold at least two units less, one
-## unit at a time, and lets its last unit trickle over an edge.  It never makes
-## more of itself: dig beside the pond and the pond goes down; open it to the
-## sky under the island and it is gone.  Rain tops up open water and fills
+## below, trickles over edges, and every connected sheet of it evens out across
+## its whole surface (and into open cells around it).  It never makes more of
+## itself: dig beside the pond and the whole pond goes down a little; open it to
+## the sky under the island and it is gone.  Rain tops up open water and fills
 ## hollows; thin puddles dry up in the sun.
 
 const STEP := 0.2           # seconds between flow steps
 const BUDGET := 600         # cells updated per step at most (the rest wait)
+const MAX_BODY := 2048      # cells levelled together at most
 const SIDES := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 
 var a: Actions
 var water := 0
 var _active := {}
+var _leveled := {}          # cells already evened out this step
 var _acc := 0.0
 var _weather_acc := 0.0
 var _rng := RandomNumberGenerator.new()
@@ -115,6 +117,7 @@ func step(delta: float) -> void:
 		return
 	var cells: Array = _active.keys()
 	_active.clear()
+	_leveled.clear()
 	# lower cells first, so water settles from the bottom up
 	cells.sort_custom(func(p: Vector3i, q: Vector3i) -> bool: return p.y < q.y)
 	var n := 0
@@ -137,7 +140,7 @@ func settle(max_steps := 400) -> int:
 
 
 func _flow(c: Vector3i) -> void:
-	if World.block(c) != water:
+	if World.block(c) != water or _leveled.has(c):
 		return
 	var lv := level(c)
 	var below := c + Vector3i.DOWN
@@ -174,26 +177,90 @@ func _flow(c: Vector3i) -> void:
 			set_level(c, lv)
 			if lv <= 0:
 				return
-	# then out to the sides
-	var order := SIDES.duplicate()
-	order.shuffle()
-	for d in order:
+	# over an edge: a unit at a time trickles into open space with a drop below
+	for d in SIDES:
 		if lv <= 0:
-			break
+			return
 		var nb: Vector3i = c + d
 		var nid := World.block(nb)
-		var nl := 0
-		if nid == water:
-			nl = level(nb)
-		elif not _open(nb, nid):
-			continue
-		var drop := nid != water and _open(nb + Vector3i.DOWN, World.block(nb + Vector3i.DOWN))
-		if nl <= lv - 2 or (drop and lv >= 1):
-			if nid != water:
-				_clear_plant(nb)
-			set_level(nb, nl + 1)
+		if nid != water and _open(nb, nid) and _sinks(nb):
+			_clear_plant(nb)
+			set_level(nb, 1)
 			lv -= 1
 			set_level(c, lv)
+	# then everything connected at this height evens out
+	_level_body(c)
+
+
+func _sinks(p: Vector3i) -> bool:
+	## Water put here would go on down: open space or unfilled water below.
+	var b := p + Vector3i.DOWN
+	var id := World.block(b)
+	if id == water:
+		return level(b) < 8
+	return _open(b, id)
+
+
+func _supported(p: Vector3i) -> bool:
+	## Resting on something: a block, or water that is already full.
+	var b := p + Vector3i.DOWN
+	var id := World.block(b)
+	if id == water:
+		return level(b) >= 8
+	return not _open(b, id)
+
+
+func _level_body(c: Vector3i) -> void:
+	## Share the water of one connected sheet (all at this height, resting on
+	## something) evenly over it and the open cells around its edge.  Whoever
+	## holds more keeps the odd units, so a level body stays exactly as it is.
+	var cells: Array[Vector3i] = []
+	var opens: Array[Vector3i] = []
+	var seen := {c: true}
+	var total := 0
+	var head := 0
+	cells.append(c)
+	while head < cells.size() and cells.size() < MAX_BODY:
+		var p: Vector3i = cells[head]
+		head += 1
+		total += level(p)
+		_leveled[p] = true
+		for d in SIDES:
+			var n: Vector3i = p + d
+			if seen.has(n):
+				continue
+			seen[n] = true
+			var nid := World.block(n)
+			if nid == water:
+				if _supported(n):
+					cells.append(n)
+			elif _open(n, nid) and _supported(n):
+				opens.append(n)
+	if head < cells.size():
+		# too big to do at once: the rest is done from its own cells later
+		for i in range(head, cells.size()):
+			_active[cells[i]] = true
+		cells.resize(head)
+	var all: Array[Vector3i] = []
+	all.append_array(cells)
+	all.append_array(opens)
+	var n_all := all.size()
+	var base := total / n_all
+	var extra := total % n_all
+	# highest first (ties: nearest first), so the odd units stay where they are
+	var keys: Array = []
+	for i in n_all:
+		keys.append([level(all[i]), -i, i])
+	keys.sort_custom(func(x: Array, y: Array) -> bool: return x[0] > y[0] or (x[0] == y[0] and x[1] > y[1]))
+	for k in n_all:
+		var i: int = keys[k][2]
+		var want := base + (1 if k < extra else 0)
+		var p: Vector3i = all[i]
+		if want == level(p):
+			continue
+		if want > 0 and World.block(p) != water:
+			_clear_plant(p)
+		set_level(p, want)
 
 
 func _weather() -> void:

@@ -59,6 +59,8 @@
   "torch",
   "flame",
   "straw_bed",
+  "blanket",
+  "linen",
   "flint",
   "granite_knap",
   "dry_grass",
@@ -361,6 +363,16 @@
    0.712,
    0.602,
    0.307
+  ],
+  "blanket": [
+   0.711,
+   0.57,
+   0.46
+  ],
+  "linen": [
+   0.834,
+   0.796,
+   0.713
   ],
   "flint": [
    0.272,

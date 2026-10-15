@@ -94,6 +94,13 @@ Regenerate with:
 | sfx/bow_drill_1.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/bow_drill_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/bow_drill_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_press_1.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_press_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_press_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_press_4.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_pinch_1.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_pinch_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
+| sfx/clay_pinch_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/eat_1.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/eat_2.wav | synthesized by tools/audio/synth.py | CC0 1.0 |
 | sfx/eat_3.wav | synthesized by tools/audio/synth.py | CC0 1.0 |

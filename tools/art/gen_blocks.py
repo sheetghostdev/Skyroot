@@ -752,6 +752,33 @@ def _():
     return img
 
 
+@tile("blanket")
+def _():
+    # a homespun flax blanket: undyed weave with madder-red stripes
+    img = blank("#cbbd9c")
+    for y in range(S):
+        band = (y // 4) % 4
+        for x in range(S):
+            c = hexc("#a2442e") if band == 1 else (hexc("#7c3a2a") if band == 3 and y % 4 == 0 else img[y, x])
+            img[y, x] = c
+            if (x % 2) ^ (y % 2):
+                img[y, x, :3] *= 0.93
+    return jitter(img, 223, 0.03)
+
+
+@tile("linen")
+def _():
+    # plain linen (a pillow stuffed with straw)
+    img = blank("#ddd3bd")
+    for y in range(S):
+        for x in range(S):
+            if (x % 2) ^ (y % 2):
+                img[y, x, :3] *= 0.94
+            if y % 8 == 0 and x % 3 != 0:
+                img[y, x, :3] *= 0.9
+    return jitter(img, 224, 0.025)
+
+
 @tile("flint")
 def _():
     n = fbm(231, ((4, 0.5), (8, 0.5)))

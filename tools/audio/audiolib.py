@@ -54,7 +54,8 @@ SFX_GROUPS = {
     "plants": variants("cut_grass", 3) + variants("rustle", 3) + ["harvest_pop"],
     "earth": variants("dig_soil", 3) + variants("dig_clay", 2) + variants("place_soil", 2)
     + ["compost_turn"],
-    "clay": variants("clay_squish", 4) + ["clay_slap", "clay_smooth", "pottery_place",
+    "clay": variants("clay_squish", 4) + variants("clay_press", 4) + variants("clay_pinch", 3)
+    + ["clay_slap", "clay_smooth", "pottery_place",
                                            "pottery_crack", "pottery_tap"],
     "water": ["water_splash", "water_fill"] + variants("drink", 2) + ["sizzle"],
     "fire": ["fire_ignite", "ember_blow", "fire_out"],

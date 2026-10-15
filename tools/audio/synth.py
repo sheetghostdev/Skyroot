@@ -899,6 +899,35 @@ def clay_slap(rng, v):
     return lp(x, 6000)
 
 
+@sfx("clay_press", 4)
+def clay_press(rng, v):
+    """A fingertip of clay pressed into place: a tiny, muted, slightly wet
+    'tuk' - short and soft enough to repeat while you work a layer."""
+    dur = 0.16
+    n = N(dur)
+    t = tv(n)
+    f0 = [150, 175, 135, 190][v] * rng.uniform(0.95, 1.05)
+    thump = lp(white(rng, n) * expdec(n, 0.012), 700)
+    tone = chirp(n, f0 * (1 + 0.25 * np.exp(-t / 0.008)), expdec(n, 0.018))
+    wet = bp(white(rng, n) * ar(n, 0.004, 0.02), 900 + 120 * v, 1.2)
+    x = 0.8 * nz(thump) + 0.6 * nz(tone) + 0.18 * nz(wet)
+    x *= np.minimum(1.0, (dur - t) / 0.05)
+    return lp(x, 2200) * 0.5
+
+
+@sfx("clay_pinch", 3)
+def clay_pinch(rng, v):
+    """A pinch of clay picked off: a soft tacky pull, quieter than adding."""
+    dur = 0.14
+    n = N(dur)
+    t = tv(n)
+    tack = bp(white(rng, n) * ar(n, 0.006, 0.018), [1100, 1300, 950][v], 1.5)
+    pull = lp(white(rng, n) * ar(n, 0.01, 0.03), 600)
+    x = 0.5 * nz(tack) + 0.6 * nz(pull)
+    x *= np.minimum(1.0, (dur - t) / 0.04)
+    return lp(x, 2600) * 0.4
+
+
 @sfx("clay_smooth")
 def clay_smooth(rng, v):
     """Wet palm gliding over clay: soft friction swell with fine stick-slip."""

@@ -211,6 +211,13 @@ func _setup(nm: String, lp: LocalPlayer, gw) -> void:
 					World.set_block(wc + side * dx + Vector3i(0, dy, 0), Blocks.id_of("brick_block"))
 			World.set_block(wc - fwd + Vector3i(0, 1, 0), Blocks.id_of("torch"), Blocks.wall_meta(fwd))
 			World.set_block(wc + side * 2 - fwd + Vector3i(0, 1, 0), Blocks.id_of("torch"), Blocks.wall_meta(fwd))
+		"bed":
+			var fwd := Vector3i(roundi(-sin(lp.yaw)), 0, roundi(-cos(lp.yaw)))
+			var m := Blocks.facing_meta(lp.yaw + PI * 0.5)
+			World.set_block(c, Blocks.id_of("straw_bed"), m)
+			World.set_block(c + Blocks.facing_dir(m), Blocks.id_of("straw_bed_head"), m)
+			World.set_block(c + fwd * 2, Blocks.id_of("straw_bed"), Blocks.facing_meta(lp.yaw))
+			World.set_block(c + fwd * 3, Blocks.id_of("straw_bed_head"), Blocks.facing_meta(lp.yaw))
 		"inventory":
 			gw.hud.open_panel("inventory")
 		"handbook":
@@ -286,6 +293,23 @@ func run_play(kind: String, lp: LocalPlayer, gw) -> void:
 		World.set_block(up, 0)
 	await _frames_n(5)
 	match kind:
+		"swim":
+			# in the middle of the pond, swim at the bank holding jump: out you get
+			var pond := Vector3(IslandGen.POND.x + 0.5, IslandGen.TOP - 1.4, IslandGen.POND.y)
+			lp.respawn_at(pond, -PI * 0.5)
+			lp.pitch = 0.0
+			await _frames_n(10)
+			_say(lp.in_water, "in the pond")
+			Input.action_press("move_forward")
+			Input.action_press("jump")
+			var t := 0.0
+			while t < 8.0 and (lp.in_water or not lp.body.on_ground or lp.global_position.y < IslandGen.TOP - 0.2):
+				await get_tree().process_frame
+				t += get_process_delta_time()
+			Input.action_release("move_forward")
+			Input.action_release("jump")
+			await _frames_n(10)
+			_say(not lp.in_water and lp.body.on_ground and lp.global_position.y > IslandGen.TOP - 0.2, "swam to the bank and climbed out (%.1fs, y %.2f)" % [t, lp.global_position.y])
 		"knap":
 			inv.set_slot(0, Inventory.make("flint", 1))
 			World.mark_inventory(Net.my_id())

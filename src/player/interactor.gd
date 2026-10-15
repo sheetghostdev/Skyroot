@@ -32,6 +32,7 @@ var _cooldown := 0.0
 var _last_key := ""
 var _again := false
 var _repeat_ok := false
+var _clay_sent := {}        # clay cell -> msec it was last sent
 
 var _outline: MeshInstance3D
 var _outline_mesh: ImmediateMesh
@@ -204,6 +205,35 @@ func knap_cells(t: Dictionary) -> PackedInt32Array:
 			var z := z0 + dz - (n - 1) / 2
 			if x >= 0 and z >= 0 and x < 16 and z < 16:
 				out.append(x + z * 16)
+	return out
+
+
+func _not_pending(cells: PackedInt32Array) -> PackedInt32Array:
+	## Leave out cells just sent to the host whose change hasn't come back yet
+	## (online, the answer can take a moment).
+	var now := Time.get_ticks_msec()
+	var out := PackedInt32Array()
+	for i in cells:
+		if now - int(_clay_sent.get(i, -100000)) > 400:
+			out.append(i)
+	for i in out:
+		_clay_sent[i] = now
+	return out
+
+
+static func clay_changes(t: Dictionary, cells: PackedInt32Array, add: bool) -> PackedInt32Array:
+	## Of the brushed cells, those that would actually change on this layer.
+	var out := PackedInt32Array()
+	var be: Dictionary = t.get("be", {})
+	if be.is_empty():
+		return out
+	var d: Dictionary = be["d"]
+	var vox: PackedByteArray = d.get("vox", PackedByteArray())
+	var base := int(d.get("layer", 0)) * 256
+	for i in cells:
+		var k := base + i
+		if k >= 0 and k < vox.size() and (vox[k] == 0) == add:
+			out.append(i)
 	return out
 
 
@@ -412,12 +442,13 @@ func _handle_lmb(delta: float) -> void:
 			_crack.visible = false
 			_chip_t -= delta
 			if _chip_t <= 0.0:
-				var cells2 := brush_cells(target, false)
+				# only clay that is there can come off: no sound or swing for nothing
+				var cells2 := _not_pending(clay_changes(target, brush_cells(target, false), false))
 				if not cells2.is_empty():
 					_chip_t = 0.14
 					World.request("clay", {"c": target["cell"], "cells": cells2, "add": false})
 					player.play_action("swing")
-					Sfx.play("clay_squish", target["point"], -6.0)
+					Sfx.play("clay_pinch", target["point"], -14.0, 1.0, 0.12)
 		_:
 			_crack.visible = false
 			break_t = 0.0
@@ -505,11 +536,12 @@ func _start(r: Dictionary) -> void:
 			World.request("use", {"c": target["cell"], "face": target["normal"], "slot": player.hotbar, "sneak": Input.is_action_pressed("sneak")})
 			player.play_action("swing")
 		"clay_add":
-			var cells := brush_cells(target, true)
+			# only where there is no clay yet: no sound or swing for nothing
+			var cells := _not_pending(clay_changes(target, brush_cells(target, true), true))
 			if not cells.is_empty():
 				World.request("clay", {"c": target["cell"], "cells": cells, "add": true})
 				player.play_action("swing")
-				Sfx.play("clay_slap", target["point"], -6.0)
+				Sfx.play("clay_press", target["point"], -12.0, 1.0, 0.12)
 			_repeat_t = 0.16
 		"eat", "drink", "ignite":
 			_hold_rule = r

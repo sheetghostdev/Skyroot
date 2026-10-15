@@ -52,8 +52,8 @@ steps.
 ## How things work
 
 * **Knapping** — sneak-right-click a stone or flint onto flat ground and pick a shape
-  (knife blade, axe head, shovel head, hoe head).  The shape stays bright; the cells
-  touching it are red - chip those, and waste no longer joined to the shape falls away
+  (knife blade, axe head, shovel head, hoe head).  The shape stays bright, the waste dark;
+  chip the waste touching the shape, and whatever is no longer joined to it falls away
   by itself.  Left-click chips one cell; hold and sweep to chip a row (F: flakes).
   Chip into the shape three times and the stone splits.  Flint tools last longer.
   C sits you down for a closer look.

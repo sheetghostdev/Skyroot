@@ -26,6 +26,7 @@ static var hang: PackedByteArray = []     # hangs from the block above
 static var replace: PackedByteArray = []
 static var fixture: PackedByteArray = []  # drawn by a model of its own (torches), not the chunk mesh
 static var wall: PackedByteArray = []     # can hang on the side of a block (meta 1-4: which side)
+static var facing: PackedByteArray = []   # boxes turn with meta & 3 (drawn facing -Z)
 static var sway: PackedFloat32Array = []
 static var tint: PackedFloat32Array = []
 static var y_off: PackedFloat32Array = []
@@ -63,6 +64,7 @@ static func load_all() -> void:
 	replace.resize(MAX)
 	fixture.resize(MAX)
 	wall.resize(MAX)
+	facing.resize(MAX)
 	jitter.resize(MAX)
 	hang.resize(MAX)
 	sway.resize(MAX)
@@ -89,6 +91,7 @@ static func load_all() -> void:
 		axis[id] = 1 if bool(d.get("axis", false)) else 0
 		fixture[id] = 1 if String(d.get("fixture", "")) != "" else 0
 		wall[id] = 1 if bool(d.get("wall", false)) else 0
+		facing[id] = 1 if bool(d.get("facing", false)) else 0
 		replace[id] = 1 if bool(d.get("replace", false)) or sh == "none" or sh == "liquid" else 0
 		jitter[id] = 1 if sh == "cross" and not d.has("crop") else 0
 		hang[id] = 1 if String(d.get("attach", "")) == "ceiling" else 0
@@ -142,8 +145,10 @@ static func _shapes(id: int, d: Dictionary) -> void:
 				"rot": deg_to_rad(float(b.get("rot", 0.0)))})
 			lo = lo.min(a)
 			hi = hi.max(c)
-			if solid[id]:
+			if solid[id] and not d.has("collide"):
 				cols.append(AABB(a, c - a))
+		for cb in d.get("collide", []):
+			cols.append(AABB(Vector3(cb[0], cb[1], cb[2]) / 16.0, Vector3(cb[3] - cb[0], cb[4] - cb[1], cb[5] - cb[2]) / 16.0))
 		boxes[id] = list
 		var pad := Vector3(0.04, 0.02, 0.04)
 		select[id] = AABB((lo - pad).max(Vector3.ZERO), (hi - lo + pad * 2.0).min(Vector3.ONE))
@@ -181,6 +186,37 @@ static func select_box(id: int, m: int) -> AABB:
 		var ctr := Vector3(0.5, 0.52, 0.5) + Vector3(wall_dir(m)) * 0.3
 		return AABB(ctr - Vector3(0.17, 0.4, 0.17), Vector3(0.34, 0.8, 0.34))
 	return select.get(id, AABB())
+
+
+const FACE_DIRS := [Vector3i(0, 0, -1), Vector3i(1, 0, 0), Vector3i(0, 0, 1), Vector3i(-1, 0, 0)]
+
+
+static func facing_dir(m: int) -> Vector3i:
+	## Which way a turned block (a bed: from its foot to its head) points.
+	return FACE_DIRS[m & 3]
+
+
+static func facing_meta(yaw: float) -> int:
+	## The turn that points the way someone at this yaw is looking.
+	var f := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var best := 0
+	for i in 4:
+		if Vector3(FACE_DIRS[i]).dot(f) > Vector3(FACE_DIRS[best]).dot(f):
+			best = i
+	return best
+
+
+static func turn_box(a: Vector3, b: Vector3, m: int) -> AABB:
+	## A block-local box (drawn facing -Z) turned to face facing_dir(m).
+	var p := a
+	var q := b
+	for i in (m & 3):
+		# a quarter turn: -Z becomes +X
+		var p2 := Vector3(1.0 - p.z, p.y, p.x)
+		var q2 := Vector3(1.0 - q.z, q.y, q.x)
+		p = p2.min(q2)
+		q = p2.max(q2)
+	return AABB(p, q - p)
 
 
 static func id_of(nm: String) -> int:

@@ -411,6 +411,21 @@ func suite_blocks() -> void:
 	check(World.block(wall + Vector3i(1, 0, 0)) == Blocks.id_of("torch") and Blocks.on_wall(Blocks.id_of("torch"), tm) and Blocks.wall_dir(tm) == Vector3i(-1, 0, 0), "a torch hangs on the side of a block")
 	req("break", {"c": wall, "slot": 0})
 	check(World.block(wall + Vector3i(1, 0, 0)) == 0, "and drops when that block is dug out")
+	# a bed is two blocks long, its head the way you face; it goes as one
+	var bf := flat_spot(27, 31)
+	var bc := bf + Vector3i.UP
+	for dz in range(-3, 1):
+		World.set_block(bc + Vector3i(0, 0, dz), 0)
+		World.set_block(bf + Vector3i(0, 0, dz), Blocks.id_of("dirt"))
+	place_player(Vector3(bc) + Vector3(0.5, 0.0, 2.5))
+	Net.poses[pid]["y"] = 0.0   # looking toward -Z
+	clear_inv()
+	give("straw_bed", 1)
+	req("place", {"c": bc, "slot": 0, "face": Vector3i.UP})
+	var bh := bc + Vector3i(0, 0, -1)
+	check(World.block(bc) == Blocks.id_of("straw_bed") and World.block(bh) == Blocks.id_of("straw_bed_head") and Blocks.facing_dir(World.block_meta(bc)) == Vector3i(0, 0, -1), "a bed: foot where you put it, head the way you face")
+	req("break", {"c": bh, "slot": 0})
+	check(World.block(bc) == 0 and World.block(bh) == 0 and items_near(Vector3(bc), 3.0, "straw_bed") == 1, "breaking either end takes the whole bed (one bed back)")
 	# a number key over a slot swaps it onto the hotbar
 	clear_inv()
 	give("stick", 5, {}, 20)
@@ -497,6 +512,19 @@ func suite_water() -> void:
 	use_on(top2, 0)
 	ws.settle()
 	check(String(inv().get_slot(0).get("d", {}).get("c", "")) == "water" and water_units(pond, 9) == u1 - 1, "filling a bowl takes one part of eight from the pond")
+	# scoop a lot from one spot: the whole pond goes down evenly, no hole is left
+	for i in 5:
+		ws.take(top2, 1)
+	ws.settle()
+	var lo := 9
+	var hi := 0
+	for z in range(pond.z - 8, pond.z + 9):
+		for x in range(pond.x - 8, pond.x + 9):
+			var c := Vector3i(x, pond.y, z)
+			if World.block(c) == w and World.block(c + Vector3i.UP) != w:
+				lo = mini(lo, ws.level(c))
+				hi = maxi(hi, ws.level(c))
+	check(hi - lo <= 1 and ws.level(top2) >= hi - 1, "the pond evens out after water is taken from one spot (levels %d-%d)" % [lo, hi])
 	# poured on flat ground it spreads out thin, all of it
 	var f := flat_spot(36, 28)
 	World.set_block(f + Vector3i.UP, w, 0)

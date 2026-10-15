@@ -198,7 +198,10 @@ func animate(delta: float, st: Dictionary) -> void:
 		var t := 1.0 - _swing
 		arm_r.rotation.x = -1.6 + sin(t * PI) * 1.4 - pitch * 0.5
 	if mode == "sleep":
+		# lying down, head where the player is (on the pillow), feet behind
 		rotation.x = -PI * 0.5
-		position.y = 0.25
+		position = Basis(Vector3.UP, rotation.y) * Vector3(0, 0.12, 1.5)
 	elif absf(rotation.x) > 0.01:
 		rotation.x = 0.0
+		position.x = 0.0
+		position.z = 0.0

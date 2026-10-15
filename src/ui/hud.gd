@@ -393,7 +393,7 @@ func _target_name(t: Dictionary) -> String:
 					var nm2 := ("Flint" if String(d.get("mat", "")) == "flint" else "Stone") + " for knapping"
 					if r != "":
 						var left := CraftActs.edge_cells(d["cells"], ItemDB.knapping[r]["mask"])
-						nm2 = "%s: %s (%d red cells to chip)" % [nm2, String(ItemDB.knapping[r]["label"]).to_lower(), left]
+						nm2 = "%s: %s (%d cells left to chip)" % [nm2, String(ItemDB.knapping[r]["label"]).to_lower(), left]
 					return nm2
 				"clay":
 					var r2 := String(d.get("r", ""))

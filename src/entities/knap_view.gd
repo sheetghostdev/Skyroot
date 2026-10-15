@@ -17,27 +17,11 @@ func _refresh(_keys: Array) -> void:
 	var r := String(d.get("r", ""))
 	var mask: PackedByteArray = ItemDB.knapping[r]["mask"] if ItemDB.knapping.has(r) else PackedByteArray()
 	var tex := BlockTex.layer("flint" if String(d.get("mat", "stone")) == "flint" else "granite_knap")
-	# the shape stays bright; the cells touching it - the ones to chip - are red;
-	# the rest of the waste, which will fall away by itself, is dark
-	var ring := PackedByteArray()
-	ring.resize(256)
-	if not mask.is_empty():
-		for i in 256:
-			if cells[i] == 1 and mask[i] == 0:
-				var x := i % 16
-				var z := i / 16
-				for o in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
-					var nx: int = x + o[0]
-					var nz: int = z + o[1]
-					if nx >= 0 and nz >= 0 and nx < 16 and nz < 16 and mask[nx + nz * 16] == 1:
-						ring[i] = 1
-						break
 	mi.mesh = grid_mesh(cells, 16, 1, tex, func(i: int) -> Color:
 		if mask.is_empty():
 			return Color.WHITE
-		if mask[i % 256] == 1:
-			return Color(1.25, 1.22, 1.15)
-		return Color(0.95, 0.38, 0.3) if ring[i % 256] == 1 else Color(0.5, 0.48, 0.47))
+		# the shape that stays is bright; the waste around it is dark
+		return Color(1.25, 1.22, 1.15) if mask[i % 256] == 1 else Color(0.5, 0.48, 0.47))
 
 
 static func grid_mesh(vox: PackedByteArray, n: int, layers: int, tex: int, tint: Callable, mat: Material = null) -> ArrayMesh:

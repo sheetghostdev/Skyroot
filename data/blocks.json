@@ -41,7 +41,9 @@
 	"brick_block": {"id": 34, "label": "Fired bricks", "tex": "brick", "hard": 12.0, "sound": "stone", "item": "brick_block"},
 	"torch": {"id": 35, "label": "Torch", "shape": "boxes", "solid": false, "opaque": false, "hard": 0.05, "sound": "wood", "attach": "ground", "item": "torch_lit", "light": 12, "fixture": "torch", "wall": true,
 		"boxes": [{"from": [7.2, 0, 7.2], "to": [8.8, 9.6, 8.8], "tex": "stick"}, {"from": [6.6, 8.5, 6.6], "to": [9.4, 11.4, 9.4], "tex": "torch_head"}]},
-	"straw_bed": {"id": 36, "label": "Straw bed", "shape": "boxes", "solid": true, "opaque": false, "hard": 0.8, "sound": "grass", "item": "straw_bed", "bed": true,
-		"boxes": [{"from": [0, 0, 0], "to": [16, 5, 16], "tex": "straw_bed"}, {"from": [1, 5, 11], "to": [15, 7, 15], "tex": "thatch_top"}]},
+	"straw_bed": {"id": 36, "label": "Straw bed", "shape": "boxes", "solid": true, "opaque": false, "hard": 0.8, "sound": "grass", "item": "straw_bed", "bed": true, "facing": true, "collide": [[0, 0, 0, 16, 7, 16]],
+		"boxes": [{"from": [0, 0, 0], "to": [16, 6, 16], "tex": "straw_bed"}, {"from": [0.5, 6, 0], "to": [15.5, 7, 15], "tex": "blanket"}, {"from": [0.5, 1.5, 15], "to": [15.5, 7, 16], "tex": "blanket"}]},
+	"straw_bed_head": {"id": 38, "label": "Straw bed", "shape": "boxes", "solid": true, "opaque": false, "hard": 0.8, "sound": "grass", "item": "straw_bed", "bed": true, "facing": true, "collide": [[0, 0, 0, 16, 7, 16]],
+		"boxes": [{"from": [0, 0, 0], "to": [16, 6, 16], "tex": "straw_bed"}, {"from": [0.5, 6, 7.5], "to": [15.5, 7, 16], "tex": "blanket"}, {"from": [2, 6, 1.5], "to": [14, 9, 7], "tex": "linen"}]},
 	"planks": {"id": 37, "label": "Planks", "tex": "planks", "hard": 3.0, "tool": "axe", "sound": "wood", "item": "planks"}
 }

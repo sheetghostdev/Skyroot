@@ -45,6 +45,8 @@ var sleeping_at := Vector3i(-1, -1, -1)
 
 var _eye := EYE_STAND
 var sitting := false
+var _water_y := -INF        # feet height when last in water (for climbing out)
+var _hblocked := false      # last move ran into a wall
 var _sit_told := false
 var _lean := 0.0
 var _bob_t := 0.0
@@ -245,6 +247,9 @@ func _physics_process(delta: float) -> void:
 	in_water = vd.liquid_at(global_position + Vector3(0, 0.4, 0))
 	if in_water:
 		speed *= 0.6
+		_water_y = global_position.y
+	elif body.on_ground:
+		_water_y = -INF
 	var basis := Basis(Vector3.UP, yaw)
 	var wish := basis * Vector3(input.x, 0.0, input.y)
 	if wish.length() > 1.0:
@@ -257,6 +262,8 @@ func _physics_process(delta: float) -> void:
 	hv = hv.lerp(target, 1.0 - exp(-rate * delta))
 	velocity.x = hv.x
 	velocity.z = hv.z
+	# swimming against a bank with jump held: haul yourself up and out
+	var climb_out := playing and Input.is_action_pressed("jump") and _hblocked and wish.length() > 0.1 and global_position.y < _water_y + 1.55
 	if in_water:
 		velocity.y = maxf(velocity.y - GRAVITY * 0.25 * delta, -2.0)
 		if playing and Input.is_action_pressed("jump"):
@@ -264,6 +271,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y -= GRAVITY * delta
 		velocity.y = maxf(velocity.y, -55.0)
+	if climb_out:
+		velocity.y = maxf(velocity.y, 4.2)
 	if body.on_ground and playing and Input.is_action_just_pressed("jump") and not in_water and _eye > EYE_SIT + 0.2:
 		velocity.y = JUMP_V
 	var was_ground := body.on_ground
@@ -274,10 +283,13 @@ func _physics_process(delta: float) -> void:
 		if velocity.y < 0.0:
 			_on_land()
 		velocity.y = 0.0
+	_hblocked = false
 	if absf(moved.x - velocity.x * delta) > 1e-5:
 		velocity.x = 0.0
+		_hblocked = true
 	if absf(moved.z - velocity.z * delta) > 1e-5:
 		velocity.z = 0.0
+		_hblocked = true
 	if body.on_ground or in_water:
 		_fall_from = global_position.y
 	elif global_position.y > _fall_from:
@@ -348,7 +360,19 @@ func lie_down(c: Vector3i) -> void:
 		return
 	World.request("bed_set", {"c": c})
 	sleeping_at = c
-	global_position = Vector3(c) + Vector3(0.5, 0.36, 0.5)
+	# lie along the bed, head on the pillow
+	var id := World.block(c)
+	var m := World.block_meta(c)
+	var head := c
+	var dir := Vector3i(0, 0, -1)
+	if id >= 0 and Blocks.facing[id] == 1:
+		dir = Blocks.facing_dir(m)
+		var other := BlockActs.bed_partner(c, id, m)
+		if Blocks.name_of(id) == "straw_bed" and other.x >= 0:
+			head = other
+	global_position = Vector3(head) + Vector3(0.5, 0.45, 0.5) + Vector3(dir) * 0.15
+	facing_yaw = atan2(-float(dir.x), -float(dir.z))
+	model.rotation.y = facing_yaw
 	velocity = Vector3.ZERO
 	set_mode("sleep")
 	Events.toast.emit("Sleeping... the night passes when everyone sleeps. (Space to get up)", "info")
@@ -437,7 +461,7 @@ func shake_camera(amount: float) -> void:
 func _update_model(delta: float, hv: Vector3) -> void:
 	if hv.length() > 0.3 and third_person:
 		facing_yaw = lerp_angle(facing_yaw, atan2(-hv.x, -hv.z), 1.0 - exp(-10.0 * delta))
-	if not third_person or interactor.busy() or sitting:
+	if mode != "sleep" and (not third_person or interactor.busy() or sitting):
 		facing_yaw = lerp_angle(facing_yaw, yaw, 1.0 - exp(-14.0 * delta))
 	model.rotation.y = facing_yaw
 	model.animate(delta, {

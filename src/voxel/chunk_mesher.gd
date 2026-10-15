@@ -501,12 +501,17 @@ static func _boxes(s: Surf, rid: PackedByteArray, rl: PackedByteArray, ci: int, 
 			4: on_edge = b.x >= 0.999
 			5: on_edge = a.x <= 0.001
 		return on_edge and opaque[rid[ci + _face_off[f]]] == 1
+	var turned := Blocks.facing[id] == 1
 	for bx in Blocks.boxes.get(id, []):
 		var top_tex: int = bx["tex"]
 		var tops: PackedInt32Array = bx["top"]
-		if not tops.is_empty():
+		if not tops.is_empty() and not turned:
 			top_tex = tops[clampi(m, 0, tops.size() - 1)]
-		box_faces(s, bx["a"], bx["b"], bx["rot"], lp, bx["tex"], top_tex, col, cull)
+		if turned:
+			var tb := Blocks.turn_box(bx["a"], bx["b"], m)
+			box_faces(s, tb.position, tb.end, 0.0, lp, bx["tex"], top_tex, col, cull)
+		else:
+			box_faces(s, bx["a"], bx["b"], bx["rot"], lp, bx["tex"], top_tex, col, cull)
 
 
 static func liquid_h(m: int, covered: bool) -> float:
@@ -520,25 +525,39 @@ static func liquid_h(m: int, covered: bool) -> float:
 static func _liquid(s: Surf, rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteArray, ci: int, id: int, lp: Vector3) -> void:
 	var tex := Blocks.face_tex[id * 6]
 	var opaque := Blocks.opaque
-	var h := liquid_h(rmeta[ci], rid[ci + DY] == id)
+	var covered := rid[ci + DY] == id
+	var h := liquid_h(rmeta[ci], covered)
+	# each top corner stands at the average of the water around it, so a sheet
+	# that differs by a part here and there reads as one smooth surface
+	var hc := PackedFloat32Array([h, h, h, h])   # corner (x, z) -> hc[x + 2 * z]
+	if not covered:
+		for k in 4:
+			var ox := DX if (k & 1) == 1 else -DX
+			var oz := DZ if (k >> 1) == 1 else -DZ
+			var sum := 0.0
+			var cnt := 0
+			var full := false
+			for o in [0, ox, oz, ox + oz]:
+				var ni: int = ci + o
+				if rid[ni] != id:
+					continue
+				if rid[ni + DY] == id:
+					full = true
+					break
+				sum += liquid_h(rmeta[ni], false)
+				cnt += 1
+			hc[k] = 1.0 if full else sum / float(maxi(cnt, 1))
 	for f in 6:
 		var ni := ci + _face_off[f]
 		var nid := rid[ni]
-		var lo := 0.0
 		if f == 0:
-			if nid == id:
+			if covered:
 				continue
 		elif f == 1:
 			if nid == id or Blocks.solid[nid] == 1:
 				continue
-		else:
-			if opaque[nid] == 1:
-				continue
-			if nid == id:
-				# only the part that stands above the lower water next door
-				lo = liquid_h(rmeta[ni], rid[ni + DY] == id)
-				if lo >= h - 0.001:
-					continue
+		elif opaque[nid] == 1 or nid == id:
+			continue
 		var face: Dictionary = FACES[f]
 		var corners: Array = face["c"]
 		var uvs: Array = face["uv"]
@@ -547,7 +566,9 @@ static func _liquid(s: Surf, rid: PackedByteArray, rmeta: PackedByteArray, rl: P
 		var col := Color(1, 1, 1, _light_f(maxf(rl[ci], rl[ni])))
 		for k in 4:
 			var cp: Vector3 = corners[k]
-			var y := h if f == 0 else (0.0 if f == 1 else lerpf(lo, h, cp.y))
+			var y := 0.0
+			if cp.y > 0.5:
+				y = hc[int(cp.x) + 2 * int(cp.z)]
 			s.v.append(lp + Vector3(cp.x, y, cp.z))
 			s.n.append(n)
 			s.c.append(col)

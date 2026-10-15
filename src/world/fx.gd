@@ -135,7 +135,7 @@ func play(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 			burst(pos, Color(0.9, 0.85, 0.6), 10, 0.02, 1.2, -0.5, 1.0, 0.25)
 			Sfx.play("discovery", pos, -8.0)
 		"clay":
-			Sfx.play("clay_squish", pos, -6.0)
+			Sfx.play("clay_press", pos, -14.0, 1.0, 0.12)
 		"clay_done":
 			burst(pos, Color(0.9, 0.85, 0.6), 10, 0.02, 1.2, -0.5, 1.0, 0.25)
 			Sfx.play("clay_smooth", pos, -2.0)

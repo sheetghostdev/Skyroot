@@ -122,7 +122,13 @@ static func drops_of(id: int, m: int, kind: String) -> Array:
 
 func remove_block(c: Vector3i) -> void:
 	## Take a block out, and with it what depended on it.
+	var was := World.block(c)
+	var was_m := World.block_meta(c)
 	World.set_block(c, 0)
+	# the other half of a bed goes with it
+	var other := bed_partner(c, was, was_m)
+	if other.x >= 0:
+		World.set_block(other, 0)
 	# what stood on it
 	var up := c + Vector3i.UP
 	var uid := World.block(up)
@@ -155,6 +161,18 @@ func remove_block(c: Vector3i) -> void:
 		World.set_block(land, fid)
 		col += Vector3i.UP
 	a.resettle_items(c)
+
+
+static func bed_partner(c: Vector3i, id: int, m: int) -> Vector3i:
+	## The other half of a two-block bed, or (-1,-1,-1).
+	if id < 0 or Blocks.facing[id] != 1 or not Blocks.has_flag(id, "bed"):
+		return Vector3i(-1, -1, -1)
+	var head := Blocks.name_of(id) == "straw_bed_head"
+	var o := c + (Blocks.facing_dir(m) * (-1 if head else 1))
+	var want := "straw_bed" if head else "straw_bed_head"
+	if World.block(o) == Blocks.id_of(want) and (World.block_meta(o) & 3) == (m & 3):
+		return o
+	return Vector3i(-1, -1, -1)
 
 
 func _pop(c: Vector3i, id: int) -> void:
@@ -373,15 +391,27 @@ func place(pid: int, args: Dictionary) -> void:
 		return
 	if Blocks.is_solid(id) and _hits_player(c):
 		return
+	var head := Vector3i(-1, -1, -1)
+	if Blocks.facing[id] == 1 and Blocks.has_flag(id, "bed"):
+		# a bed is two blocks long: its head goes the way you face
+		var fm := Blocks.facing_meta(float((Net.poses.get(pid, {}) as Dictionary).get("y", 0.0)))
+		head = c + Blocks.facing_dir(fm)
+		if not World.cell_free(head) or not Blocks.is_solid(World.block(head + Vector3i.DOWN)) or not Blocks.is_solid(World.block(c + Vector3i.DOWN)) or _hits_player(head):
+			World.notify(pid, "A bed needs two free blocks of flat floor.", "warn")
+			return
 	var m := 0
 	if Blocks.axis[id] == 1:
 		m = 1 if face.x != 0 else (2 if face.z != 0 else 0)
 	if on_wall:
 		m = Blocks.wall_meta(-face)
+	if head.x >= 0:
+		m = Blocks.facing_meta(float((Net.poses.get(pid, {}) as Dictionary).get("y", 0.0)))
 	World.inventory_of(pid).take_from(slot, 1)
 	World.mark_inventory(pid)
 	var displaced := a.water.level(c)
 	World.set_block(c, id, m)
+	if head.x >= 0:
+		World.set_block(head, Blocks.id_of("straw_bed_head"), m)
 	if displaced > 0:
 		_displace(c, displaced)
 	World.fx_except(pid, "place", Vector3(c) + Vector3(0.5, 0.5, 0.5), {"b": id})
