@@ -10,14 +10,17 @@ extends Node
 ## the order the host made them.  Clients never change state: they call
 ## request(action, args) and the host's Actions validate and apply it.
 
-const SAVE_VERSION := 10
+const SAVE_VERSION := 11
+const MIN_VERSION := 10            # older saves are from before the block world
 const SAVE_DIR := "user://saves"
 const START_HOUR := 7.0
 
 var running := false
 var world_name := ""
 var world_seed := 0
-var vox := VoxelData.new()
+var kind := "sky"                  # "sky": one floating island, "sea": an archipelago
+var geo: Dictionary = {}           # facts about the generated world (islands, spawn...), replicated
+var vox := IslandGen.new_grid()
 var entities: Dictionary = {}      # id -> {"id": int, "t": String, "xf": Transform3D, "d": Dictionary}
 var be_at: Dictionary = {}         # Vector3i -> entity id (block entities: one per cell)
 var next_id := 1
@@ -49,11 +52,16 @@ func is_host() -> bool:
 # Lifecycle
 # ---------------------------------------------------------------------------
 
-func new_world(name: String, seed_value: int = 0) -> void:
+func new_world(name: String, seed_value: int = 0, world_kind: String = "sky") -> void:
 	reset()
 	world_name = name
 	world_seed = seed_value if seed_value != 0 else randi()
-	IslandGen.generate(vox)
+	kind = world_kind
+	if kind == "sea":
+		vox = ArchipelagoGen.new_grid()
+		geo = ArchipelagoGen.generate(vox, world_seed)
+	else:
+		IslandGen.generate(vox)
 	env = {
 		"t": 24.0 + START_HOUR,   # absolute game hours; day 1 starts at t=24
 		"rain": 0.0, "cloud": 0.2, "wind": Vector2(1.2, 0.4), "fog": 0.0, "rain_target": 0.0,
@@ -63,7 +71,9 @@ func new_world(name: String, seed_value: int = 0) -> void:
 
 func reset() -> void:
 	running = false
-	vox = VoxelData.new()
+	kind = "sky"
+	geo = {}
+	vox = IslandGen.new_grid()
 	entities.clear()
 	be_at.clear()
 	next_id = 1
@@ -135,7 +145,7 @@ func block_meta(c: Vector3i) -> int:
 
 
 func set_block(c: Vector3i, id: int, m: int = 0) -> void:
-	if not VoxelData.in_bounds(c.x, c.y, c.z):
+	if not vox.in_bounds_v(c):
 		return
 	var old_h := vox.column_height(c.x, c.z)
 	vox.set_block(c.x, c.y, c.z, id, m)
@@ -328,10 +338,11 @@ func default_stats() -> Dictionary:
 
 
 func spawn_point(pid: int) -> Vector3:
-	var p := IslandGen.SPAWN + Vector3(cos(pid * 1.7), 0.0, sin(pid * 1.7)) * 1.2 * float(pid % 4)
+	var base: Vector3 = geo.get("spawn", IslandGen.SPAWN) if kind == "sea" else IslandGen.SPAWN
+	var p := base + Vector3(cos(pid * 1.7), 0.0, sin(pid * 1.7)) * 1.2 * float(pid % 4)
 	var y := vox.rest_height(Vector3(p.x, p.y + 6.0, p.z))
 	if y == -INF:
-		return IslandGen.SPAWN
+		return base
 	return Vector3(p.x, y + 0.02, p.z)
 
 
@@ -404,7 +415,7 @@ func _apply_stats(st: Dictionary) -> void:
 func build_snapshot() -> Dictionary:
 	return {
 		"name": world_name, "seed": world_seed, "entities": entities, "next_id": next_id,
-		"vox": vox.to_dict(), "env": env, "discoveries": discoveries,
+		"vox": vox.to_dict(), "env": env, "discoveries": discoveries, "kind": kind, "geo": geo,
 	}
 
 
@@ -418,10 +429,14 @@ func _rpc_snapshot(snap: Dictionary) -> void:
 	reset()
 	world_name = snap["name"]
 	world_seed = snap["seed"]
+	kind = String(snap.get("kind", "sky"))
+	geo = snap.get("geo", {})
 	entities = snap["entities"]
 	_reindex()
 	next_id = snap["next_id"]
-	vox.from_dict(snap["vox"])
+	var v := VoxelData.from_saved(snap["vox"])
+	if v:
+		vox = v
 	env = snap["env"]
 	discoveries = snap["discoveries"]
 	running = true
@@ -608,7 +623,7 @@ func save_world(players_live: Dictionary = {}) -> Error:
 		var p: Dictionary = players_live[pid]
 		store_player_record(pid, p["name"], p["pos"], p["yaw"])
 	var data := {
-		"version": SAVE_VERSION,
+		"version": SAVE_VERSION, "kind": kind, "geo": geo,
 		"name": world_name, "seed": world_seed, "next_id": next_id,
 		"entities": entities, "vox": vox.to_dict(), "env": env,
 		"discoveries": discoveries, "players": player_saves,
@@ -626,7 +641,7 @@ func save_world(players_live: Dictionary = {}) -> Error:
 	DirAccess.rename_absolute(tmp, path)
 	var meta := FileAccess.open(path + ".meta", FileAccess.WRITE)
 	if meta:
-		meta.store_string(JSON.stringify({"name": world_name, "day": day(), "saved_at": data["saved_at"], "version": SAVE_VERSION}))
+		meta.store_string(JSON.stringify({"name": world_name, "day": day(), "saved_at": data["saved_at"], "version": SAVE_VERSION, "kind": kind}))
 	return OK
 
 
@@ -638,11 +653,13 @@ func load_world(name: String) -> Error:
 	var data = f.get_var()
 	if not data is Dictionary or not data.has("version"):
 		return ERR_FILE_CORRUPT
-	if int(data["version"]) < SAVE_VERSION:
+	if int(data["version"]) < MIN_VERSION:
 		return ERR_FILE_UNRECOGNIZED   # an island from before the block world
 	reset()
 	world_name = data["name"]
 	world_seed = data["seed"]
+	kind = String(data.get("kind", "sky"))
+	geo = data.get("geo", {})
 	next_id = data["next_id"]
 	entities = data["entities"]
 	for k in entities:
@@ -654,9 +671,11 @@ func load_world(name: String) -> Error:
 			d.erase("w")
 			d["t"] = -100000
 	_reindex()
-	if not vox.from_dict(data["vox"]):
+	var v := VoxelData.from_saved(data["vox"])
+	if v == null:
 		reset()
 		return ERR_FILE_CORRUPT
+	vox = v
 	env = data["env"]
 	discoveries = data["discoveries"]
 	player_saves = data["players"]
@@ -682,7 +701,7 @@ static func list_saves() -> Array:
 			if f:
 				var meta = JSON.parse_string(f.get_as_text())
 				if meta is Dictionary:
-					meta["old"] = int(meta.get("version", 0)) < SAVE_VERSION
+					meta["old"] = int(meta.get("version", 0)) < MIN_VERSION
 					out.append(meta)
 	out.sort_custom(func(a, b): return String(a.get("saved_at", "")) > String(b.get("saved_at", "")))
 	return out

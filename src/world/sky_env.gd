@@ -105,6 +105,9 @@ func _ready() -> void:
 		add_child(mi)
 		seas.append(mi)
 		sea_mats.append(m)
+	if use_world and World.kind == "sea":
+		for s in seas:
+			s.visible = false
 	_build_rain()
 	Events.env_changed.connect(_on_env_changed)
 	_on_env_changed()
@@ -244,6 +247,14 @@ func _apply(t: float) -> void:
 		m.set_shader_parameter("day", day)
 		m.set_shader_parameter("fade_col", Color(0.30, 0.42, 0.62).lerp(Color(0.62, 0.65, 0.7), oc * 0.6))
 		m.set_shader_parameter("lit_col", Color(0.95, 0.96, 1.0).lerp(Color(1.0, 0.75, 0.55), sunset_k * 0.6))
+	var ocean := get_tree().get_first_node_in_group("ocean") as Ocean
+	if ocean:
+		ocean.set_colors(day, oc)
+		if ocean.underwater:
+			# under the sea: close, green-blue, dimmer the deeper (and darker at night)
+			env.fog_light_color = Color(0.06, 0.32, 0.36).lerp(Color(0.01, 0.04, 0.06), 1.0 - day)
+			env.fog_density = 0.07
+			env.fog_light_energy = lerpf(0.25, 0.9, day)
 	rain_fx.emitting = rn > 0.05
 	# the pond mirrors a little starlight and moonlight at night
 	if _island == null or not is_instance_valid(_island):

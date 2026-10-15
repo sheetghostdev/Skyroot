@@ -712,6 +712,74 @@ def _():
     return img
 
 
+@tile("seawater")
+def _():
+    # clearer, greener than the pond: you can see the sand below in the shallows
+    n = fbm(212, ((4, 0.5), (8, 0.5)))
+    img = ramp(["#1d6a7c", "#227a8b", "#2a8899", "#3596a5"], n, steps=4)
+    for y in range(S):
+        for x in range(S):
+            if (math.sin(x * 0.55 + n[y, x] * 7) + math.sin(y * 0.5 + x * 0.1)) > 1.5:
+                img[y, x] = hexc("#7cc7cf")
+    return img
+
+
+@tile("palm_log")
+def _():
+    # ringed, fibrous trunk
+    img = bark(213, ["#6b5638", "#7a6442", "#87704b", "#937b53"], ["#5a472d", "#655034"])
+    for y in range(0, S, 5):
+        for x in range(S):
+            put(img, x, y, "#4e3d27")
+            if x % 3:
+                put(img, x, y + 1, "#5c4830")
+    return img
+
+
+@tile("palm_log_top")
+def _():
+    img = blank("#a58a5c")
+    c = (S - 1) / 2.0
+    for y in range(S):
+        for x in range(S):
+            d = math.hypot(x - c, y - c)
+            if d > 14.5:
+                img[y, x] = hexc("#6b5638")
+            elif (x * 7 + y * 13) % 5 == 0:
+                img[y, x] = hexc("#8f7449")
+    return img
+
+
+@tile("palm_leaves")
+def _():
+    # dense frond foliage: leaflets slanting off pale midribs
+    img = leaves(214, ["#3a6420", "#457327", "#50822d", "#5c9035", "#69a03e"], 0.16)
+    for k in range(5):
+        y0 = 2 + k * 7
+        for x in range(S):
+            y = y0 + x // 6
+            put(img, x, y % S, "#9aa858")
+            if x % 3 == 0:
+                put(img, x, (y + 1) % S, "#2f561b")
+    return img
+
+
+@tile("coconut")
+def _():
+    n = fbm(215, ((8, 0.6), (16, 0.4)))
+    img = ramp(["#4a3420", "#5a3f26", "#6b4c2e", "#7a5835"], n, steps=4)
+    r = rnd(216)
+    for _ in range(40):
+        x, y = r.randrange(S), r.randrange(S)
+        put(img, x, y, "#3a2818")
+    return img
+
+
+@tile("seaweed")
+def _():
+    return blades(217, ["#2f6b3a", "#3a7d45", "#2a5e33", "#4b8a4f"], n=7, hmin=24, hmax=32, curve=0.25, width=2)
+
+
 @tile("torch")
 def _():
     img = blank()

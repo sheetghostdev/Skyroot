@@ -1,7 +1,7 @@
 extends Node3D
 ## The title screen's live background: the island, slowly turning, at golden hour.
 
-var vd := VoxelData.new()
+var vd := IslandGen.new_grid()
 var cam: Camera3D
 var sky: SkyEnv
 var view: VoxelView

@@ -189,6 +189,12 @@ func drop_item(id: String, n: int, d: Dictionary, p: Vector3, vel := Vector3.ZER
 		World.fx("lost", land, {"i": id})
 		return -1
 	land.y = y
+	# things float: on water they rest at the surface
+	var wc := VoxelData.cell_of(Vector3(land.x, y + 0.05, land.z))
+	if Blocks.is_water(World.block(wc)):
+		while Blocks.is_water(World.block(wc + Vector3i.UP)):
+			wc += Vector3i.UP
+		land.y = wc.y + 0.8
 	var t := Time.get_ticks_msec()
 	var ed := {"i": id, "n": n, "d": d, "t": t + wait_ms, "by": by, "from": p}
 	if wait_ms > 0:
@@ -383,6 +389,9 @@ func eat(pid: int, args: Dictionary) -> void:
 		var what := String(d["c"])
 		if what == "water":
 			Survival.drink(pid, 0.35)
+		elif what == "sea":
+			Survival.drink(pid, -0.08)
+			World.notify(pid, "Salt water! It only makes you thirstier. (Boil it in a pot over a fire.)", "warn")
 		elif what == "stew":
 			Survival.eat(pid, {"hunger": 0.32, "thirst": 0.05}, true)
 		inv.set_data(slot, {})
@@ -405,9 +414,15 @@ func eat(pid: int, args: Dictionary) -> void:
 func drink(pid: int, args: Dictionary) -> void:
 	## Drinking straight from the pond (hold right click on water with an empty hand).
 	var c: Vector3i = args.get("c", Vector3i(-1, -1, -1))
-	if not in_reach(pid, c) or Blocks.shape[World.block(c)] != Blocks.Shape.LIQUID:
+	if not in_reach(pid, c) or not Blocks.is_water(World.block(c)):
 		return
 	if not _rate(pid, "drink", 450):
+		return
+	if World.block(c) != Blocks.id_of("water"):
+		# the sea: salt, and only makes it worse
+		Survival.drink(pid, -0.06)
+		World.notify(pid, "Salt water! It only makes you thirstier.", "warn")
+		World.fx("drink", Vector3(c) + Vector3(0.5, 0.9, 0.5), {"pid": pid})
 		return
 	Survival.drink(pid, 0.12)
 	World.fx("drink", Vector3(c) + Vector3(0.5, 0.9, 0.5), {"pid": pid})

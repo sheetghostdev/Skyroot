@@ -16,6 +16,8 @@ const SIDES := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector
 var a: Actions
 var water := 0
 var _active := {}
+var _sea_q := {}             # cells the sea may pour into (archipelago)
+var sea_level := -1          # the sea's top layer, -1 if there's no sea
 var _leveled := {}          # cells already evened out this step
 var _acc := 0.0
 var _weather_acc := 0.0
@@ -25,6 +27,8 @@ var _rng := RandomNumberGenerator.new()
 func _init(actions: Actions) -> void:
 	a = actions
 	water = Blocks.id_of("water")
+	if World.kind == "sea":
+		sea_level = int(World.geo.get("sea", 30))
 	Events.block_changed.connect(_on_block_changed)
 
 
@@ -81,6 +85,8 @@ func busy() -> bool:
 func _on_block_changed(c: Vector3i, _old_h: int) -> void:
 	if not World.is_host():
 		return
+	if sea_level >= 0 and c.y <= sea_level and _sea_next_to(c):
+		_sea_q[c] = true
 	if World.block(c) == water:
 		_active[c] = true
 	for d in [Vector3i.UP, Vector3i.DOWN, Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
@@ -91,7 +97,7 @@ func _on_block_changed(c: Vector3i, _old_h: int) -> void:
 
 func _open(c: Vector3i, id: int) -> bool:
 	## Can water move into this cell?  Air, or a small plant it washes away.
-	if not VoxelData.in_bounds(c.x, c.y, c.z) or World.be_at.has(c):
+	if not World.vox.in_bounds_v(c) or World.be_at.has(c):
 		return false
 	if id == 0:
 		return true
@@ -104,6 +110,39 @@ func _clear_plant(c: Vector3i) -> void:
 		a.blocks._pop(c, id)
 
 
+func _sea_next_to(c: Vector3i) -> bool:
+	## Sea water beside or above this cell (it can pour in).
+	for d in [Vector3i.UP, Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var id := World.block(c + d)
+		if id == Blocks.sea or Blocks.waterlog[id] == 1:
+			return true
+	return false
+
+
+func _sea_step() -> void:
+	## The sea pours into holes opened at or below its level: a cell at a time
+	## each step, so a channel you dig fills along its length.
+	if _sea_q.is_empty():
+		return
+	var cells: Array = _sea_q.keys()
+	_sea_q.clear()
+	var n := 0
+	for c in cells:
+		n += 1
+		if n > BUDGET:
+			_sea_q[c] = true
+			continue
+		var id := World.block(c)
+		if id == Blocks.sea or not _open(c, id) or not _sea_next_to(c):
+			continue
+		_clear_plant(c)
+		World.set_block(c, Blocks.sea)
+		for d in [Vector3i.DOWN, Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var nb: Vector3i = c + d
+			if nb.y <= sea_level and _open(nb, World.block(nb)):
+				_sea_q[nb] = true
+
+
 func step(delta: float) -> void:
 	_acc += delta
 	_weather_acc += delta
@@ -113,6 +152,7 @@ func step(delta: float) -> void:
 	if _acc < STEP:
 		return
 	_acc = 0.0
+	_sea_step()
 	if _active.is_empty():
 		return
 	var cells: Array = _active.keys()
@@ -132,7 +172,7 @@ func step(delta: float) -> void:
 func settle(max_steps := 400) -> int:
 	## Run the flow until it rests (tests, world setup).  Returns steps taken.
 	var i := 0
-	while busy() and i < max_steps:
+	while (busy() or not _sea_q.is_empty()) and i < max_steps:
 		_acc = STEP
 		step(0.0)
 		i += 1
@@ -270,7 +310,7 @@ func _weather() -> void:
 	if rain < 0.3 and not sunny:
 		return
 	for i in 48:
-		weather_at(_rng.randi_range(0, VoxelData.SX - 1), _rng.randi_range(0, VoxelData.SZ - 1), rain, sunny, _rng.randf())
+		weather_at(_rng.randi_range(0, World.vox.sx - 1), _rng.randi_range(0, World.vox.sz - 1), rain, sunny, _rng.randf())
 
 
 func weather_at(x: int, z: int, rain: float, sunny: bool, roll: float) -> void:

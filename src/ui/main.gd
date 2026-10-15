@@ -22,7 +22,7 @@ func _ready() -> void:
 
 func _autostart() -> void:
 	## Used by automated tests and quick iteration:
-	##   --autostart=solo|host|join  --world=<name>  --new  --ip=<ip>  --port=<n>
+	##   --autostart=solo|host|join  --world=<name>  --new  --kind=sea|sky  --seed=<n>  --ip=<ip>  --port=<n>
 	var mode: String = Game.cli["autostart"]
 	var port := int(Game.cli.get("port", str(Net.DEFAULT_PORT)))
 	var err := ""
@@ -31,7 +31,7 @@ func _autostart() -> void:
 	else:
 		var wname: String = Game.cli.get("world", "TestIsland")
 		var is_new: bool = Game.cli.has("new") or not FileAccess.file_exists(World.save_path(wname))
-		err = Game.start_world(mode, wname, is_new, port)
+		err = Game.start_world(mode, wname, is_new, port, String(Game.cli.get("kind", "sky")), int(Game.cli.get("seed", "0")))
 	if err != "":
 		push_error(err)
 		print("AUTOSTART_ERROR ", err)

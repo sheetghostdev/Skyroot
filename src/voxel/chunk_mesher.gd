@@ -16,7 +16,6 @@ const R := CS + 2 * MARGIN       # region edge (32)
 const DY := 1
 const DX := R
 const DZ := R * R
-const SXY := VoxelData.SY
 
 const AO_F := [0.52, 0.7, 0.85, 1.0]
 const TOP_F := 1.0
@@ -90,23 +89,44 @@ class Surf:
 		return a
 
 
-static func build(ids: PackedByteArray, meta: PackedByteArray, heights: PackedInt32Array, lows: PackedInt32Array, cx: int, cy: int, cz: int) -> Dictionary:
+static func build(vd: VoxelData, cx: int, cy: int, cz: int) -> Dictionary:
+	## Mesh a chunk right here (menu backdrop, screenshots, tests).
+	var reg := region(vd, cx, cy, cz)
+	if reg.is_empty():
+		return {}
+	return mesh_region(reg, cx, cy, cz)
+
+
+static func region(vd: VoxelData, cx: int, cy: int, cz: int) -> Dictionary:
+	## Copy what a chunk's mesh depends on (its blocks plus MARGIN all round,
+	## and where each column's sky-blocking run lies) so a worker thread can
+	## mesh it while the world goes on changing.  {} if the chunk is all air.
 	_tables()
+	var sxy := vd.sy
 	var bx := cx * CS - MARGIN
 	var by := cy * CS - MARGIN
 	var bz := cz * CS - MARGIN
+	var ids := vd.ids
+	var meta := vd.meta
 	# quick reject: nothing but air in the chunk itself
 	var any := false
 	for z in range(cz * CS, cz * CS + CS):
 		for x in range(cx * CS, cx * CS + CS):
-			var col := x * SXY + z * SXY * VoxelData.SX
-			var h := heights[x + z * VoxelData.SX]
-			if h >= cy * CS and lows[x + z * VoxelData.SX] < cy * CS + CS:
+			if x < 0 or z < 0 or x >= vd.sx or z >= vd.sz:
+				# beyond the edge: whatever lies out there (open sea, or nothing)
+				var osl := vd.outside.slice(cy * CS, mini(cy * CS + CS, sxy))
+				if osl.count(0) != osl.size():
+					any = true
+					break
+				continue
+			var col := x * sxy + z * sxy * vd.sx
+			var h := vd.height[x + z * vd.sx]
+			if h >= cy * CS and vd.low[x + z * vd.sx] < cy * CS + CS:
 				any = true
 				break
 			# below-ground air columns can still hold leaves/plants above h: scan the slice
-			var s := ids.slice(col + cy * CS, col + cy * CS + CS)
-			if s.count(0) != CS:
+			var sl := ids.slice(col + cy * CS, col + mini(cy * CS + CS, sxy))
+			if sl.count(0) != sl.size():
 				any = true
 				break
 		if any:
@@ -123,35 +143,42 @@ static func build(ids: PackedByteArray, meta: PackedByteArray, heights: PackedIn
 	var dhi := PackedInt32Array()
 	dlo.resize(R * R)
 	dhi.resize(R * R)
+	var outside := vd.outside
+	var out_ids := PackedByteArray()
+	out_ids.resize(R)
+	for ry in R:
+		var wy := by + ry
+		out_ids[ry] = outside[wy] if wy >= 0 and wy < sxy else 0
 	for rz in R:
 		var wz := bz + rz
 		for rx in R:
 			var wx := bx + rx
-			if wx < 0 or wz < 0 or wx >= VoxelData.SX or wz >= VoxelData.SZ:
-				rid.append_array(_zeros)
+			if wx < 0 or wz < 0 or wx >= vd.sx or wz >= vd.sz:
+				# beyond the edge: the abyss, or open sea
+				rid.append_array(out_ids)
 				rmeta.append_array(_zeros)
-				rl.append_array(_lit)
 				dlo[rx + rz * R] = 0
 				dhi[rx + rz * R] = 0
+				rl.append_array(_lit)
 				continue
-			var col := wx * SXY + wz * SXY * VoxelData.SX
+			var col := wx * sxy + wz * sxy * vd.sx
 			var y0 := by
 			var y1 := by + R
 			var pre := clampi(-y0, 0, R)
-			var post := clampi(y1 - SXY, 0, R)
+			var post := clampi(y1 - sxy, 0, R)
 			if pre > 0:
 				rid.append_array(_zeros.slice(0, pre))
 				rmeta.append_array(_zeros.slice(0, pre))
 			var a := col + maxi(y0, 0)
-			var b := col + mini(y1, SXY)
+			var b := col + mini(y1, sxy)
 			if b > a:
 				rid.append_array(ids.slice(a, b))
 				rmeta.append_array(meta.slice(a, b))
 			if post > 0:
 				rid.append_array(_zeros.slice(0, post))
 				rmeta.append_array(_zeros.slice(0, post))
-			var h := heights[wx + wz * VoxelData.SX]
-			var lo := lows[wx + wz * VoxelData.SX]
+			var h := vd.height[wx + wz * vd.sx]
+			var lo := vd.low[wx + wz * vd.sx]
 			var hi_r := clampi(h - by + 1, 0, R)
 			var lo_r := clampi(lo - by, 0, hi_r)
 			if h < 0:
@@ -165,8 +192,14 @@ static func build(ids: PackedByteArray, meta: PackedByteArray, heights: PackedIn
 				rl.append_array(_zeros.slice(0, hi_r - lo_r))
 			if hi_r < R:
 				rl.append_array(_lit.slice(0, R - hi_r))
-	_skylight(rid, rl, dlo, dhi)
-	return _mesh(rid, rmeta, rl, cx, cy, cz)
+	return {"rid": rid, "rmeta": rmeta, "rl": rl, "dlo": dlo, "dhi": dhi}
+
+
+static func mesh_region(reg: Dictionary, cx: int, cy: int, cz: int) -> Dictionary:
+	## The worker half: skylight, then faces.
+	var rl: PackedByteArray = reg["rl"]
+	_skylight(reg["rid"], rl, reg["dlo"], reg["dhi"])
+	return _mesh(reg["rid"], reg["rmeta"], rl, cx, cy, cz)
 
 
 static func _skylight(rid: PackedByteArray, rl: PackedByteArray, dlo: PackedInt32Array, dhi: PackedInt32Array) -> void:
@@ -287,6 +320,8 @@ static func _mesh(rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteAr
 						_cube_face(s, rid, rl, ci, f, lp, tex, tint, _axis_rot(f, m, id), Blocks.sway[id] * 0.25)
 				elif sh == Blocks.Shape.CROSS:
 					_cross(cut, id, rmeta[ci], rl[ci], lp, wx, wy, wz)
+					if Blocks.waterlog[id] == 1 and Blocks.sea > 0:
+						_liquid(water, rid, rmeta, rl, ci, Blocks.sea, lp)
 				elif sh == Blocks.Shape.BUSH:
 					_bush(cut, rid, rl, ci, id, rmeta[ci], lp, wx, wy, wz)
 				elif sh == Blocks.Shape.BOXES:
@@ -525,8 +560,9 @@ static func liquid_h(m: int, covered: bool) -> float:
 static func _liquid(s: Surf, rid: PackedByteArray, rmeta: PackedByteArray, rl: PackedByteArray, ci: int, id: int, lp: Vector3) -> void:
 	var tex := Blocks.face_tex[id * 6]
 	var opaque := Blocks.opaque
-	var covered := rid[ci + DY] == id
-	var h := liquid_h(rmeta[ci], covered)
+	var wl := Blocks.waterlog
+	var covered := rid[ci + DY] == id or wl[rid[ci + DY]] == 1
+	var h := liquid_h(0 if wl[rid[ci]] == 1 else rmeta[ci], covered)
 	# each top corner stands at the average of the water around it, so a sheet
 	# that differs by a part here and there reads as one smooth surface
 	var hc := PackedFloat32Array([h, h, h, h])   # corner (x, z) -> hc[x + 2 * z]
@@ -539,24 +575,26 @@ static func _liquid(s: Surf, rid: PackedByteArray, rmeta: PackedByteArray, rl: P
 			var full := false
 			for o in [0, ox, oz, ox + oz]:
 				var ni: int = ci + o
-				if rid[ni] != id:
+				var nwl := wl[rid[ni]] == 1
+				if rid[ni] != id and not nwl:
 					continue
-				if rid[ni + DY] == id:
+				if rid[ni + DY] == id or wl[rid[ni + DY]] == 1:
 					full = true
 					break
-				sum += liquid_h(rmeta[ni], false)
+				sum += liquid_h(0 if nwl else rmeta[ni], false)
 				cnt += 1
 			hc[k] = 1.0 if full else sum / float(maxi(cnt, 1))
 	for f in 6:
 		var ni := ci + _face_off[f]
 		var nid := rid[ni]
+		var same := nid == id or wl[nid] == 1
 		if f == 0:
 			if covered:
 				continue
 		elif f == 1:
-			if nid == id or Blocks.solid[nid] == 1:
+			if same or Blocks.solid[nid] == 1:
 				continue
-		elif opaque[nid] == 1 or nid == id:
+		elif opaque[nid] == 1 or same:
 			continue
 		var face: Dictionary = FACES[f]
 		var corners: Array = face["c"]

@@ -27,6 +27,8 @@ static var replace: PackedByteArray = []
 static var fixture: PackedByteArray = []  # drawn by a model of its own (torches), not the chunk mesh
 static var wall: PackedByteArray = []     # can hang on the side of a block (meta 1-4: which side)
 static var facing: PackedByteArray = []   # boxes turn with meta & 3 (drawn facing -Z)
+static var waterlog: PackedByteArray = [] # a plant that stands in sea water (the cell counts as water too)
+static var sea := 0                       # id of sea water (0 if none)
 static var sway: PackedFloat32Array = []
 static var tint: PackedFloat32Array = []
 static var y_off: PackedFloat32Array = []
@@ -65,6 +67,7 @@ static func load_all() -> void:
 	fixture.resize(MAX)
 	wall.resize(MAX)
 	facing.resize(MAX)
+	waterlog.resize(MAX)
 	jitter.resize(MAX)
 	hang.resize(MAX)
 	sway.resize(MAX)
@@ -92,6 +95,9 @@ static func load_all() -> void:
 		fixture[id] = 1 if String(d.get("fixture", "")) != "" else 0
 		wall[id] = 1 if bool(d.get("wall", false)) else 0
 		facing[id] = 1 if bool(d.get("facing", false)) else 0
+		waterlog[id] = 1 if bool(d.get("waterlogged", false)) else 0
+		if bool(d.get("sea", false)):
+			sea = id
 		replace[id] = 1 if bool(d.get("replace", false)) or sh == "none" or sh == "liquid" else 0
 		jitter[id] = 1 if sh == "cross" and not d.has("crop") else 0
 		hang[id] = 1 if String(d.get("attach", "")) == "ceiling" else 0
@@ -103,6 +109,8 @@ static func load_all() -> void:
 			sky_cost[id] = 2
 		elif opaque[id] == 0 and sh == "bush":
 			sky_cost[id] = 1
+		if d.has("sky_cost"):
+			sky_cost[id] = int(d["sky_cost"])
 		_textures(id, d)
 		_shapes(id, d)
 	loaded = true
@@ -179,6 +187,11 @@ static func wall_dir(m: int) -> Vector3i:
 
 static func wall_meta(to_wall: Vector3i) -> int:
 	return WALL_DIRS.find(to_wall) + 1
+
+
+static func is_water(id: int) -> bool:
+	## Any water you can swim in: a pond, the sea, or seaweed standing in it.
+	return shape[id] == Shape.LIQUID or waterlog[id] == 1
 
 
 static func select_box(id: int, m: int) -> AABB:

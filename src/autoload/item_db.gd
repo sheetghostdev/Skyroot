@@ -112,6 +112,8 @@ func label(id: String, d: Dictionary = {}) -> String:
 	var c := String(d.get("c", ""))
 	if c == "water":
 		base += " of water"
+	elif c == "sea":
+		base += " of sea water"
 	elif c == "stew":
 		base += " of stew"
 	var inside: Array = d.get("inv", [])

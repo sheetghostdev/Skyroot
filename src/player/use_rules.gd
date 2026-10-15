@@ -72,6 +72,8 @@ static func rmb(t: Dictionary, s: Dictionary, sneak: bool) -> Dictionary:
 		return {"text": "Eat", "kind": "eat", "hold": EAT_S}
 	if id == "bowl" and String(d.get("c", "")) == "water":
 		return {"text": "Drink", "kind": "eat", "hold": DRINK_S}
+	if id == "bowl" and String(d.get("c", "")) == "sea":
+		return {"text": "Drink the sea water (salty!)", "kind": "eat", "hold": DRINK_S}
 	if id == "bowl" and String(d.get("c", "")) == "stew":
 		return {"text": "Eat the stew", "kind": "eat", "hold": EAT_S}
 	return {}
@@ -188,13 +190,14 @@ static func _block(t: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dic
 	if nm == "berry_bush" and not sneak:
 		if World.block_meta(c) == 1:
 			return {"text": "Pick berries", "kind": "use"}
-	if Blocks.shape[b] == Blocks.Shape.LIQUID:
+	if Blocks.is_water(b):
+		var salt := b != Blocks.id_of("water")
 		if id == "":
-			return {"text": "Drink", "kind": "drink", "hold": DRINK_S}
+			return {"text": "Drink (it's salt water!)" if salt else "Drink", "kind": "drink", "hold": DRINK_S}
 		if id == "bowl" and String(d.get("c", "")) == "":
-			return {"text": "Fill the bowl", "kind": "use"}
+			return {"text": "Fill the bowl with sea water" if salt else "Fill the bowl", "kind": "use"}
 		if id == "pot" and int(d.get("w", 0)) < 3:
-			return {"text": "Fill the pot", "kind": "use"}
+			return {"text": "Fill the pot with sea water" if salt else "Fill the pot", "kind": "use"}
 	if Blocks.has_flag(b, "bed") and id == "":
 		return {"text": "Sleep", "kind": "sleep"}
 	if ItemDB.tool_kind(id) == "hoe" and face == Vector3i.UP and nm in ["grass", "dirt"]:

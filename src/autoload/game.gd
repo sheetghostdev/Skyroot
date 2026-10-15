@@ -29,7 +29,7 @@ func main_node() -> Node:
 	return get_tree().get_first_node_in_group("main")
 
 
-func start_world(mode: String, world_name: String, is_new: bool, port: int = Net.DEFAULT_PORT) -> String:
+func start_world(mode: String, world_name: String, is_new: bool, port: int = Net.DEFAULT_PORT, world_kind := "sky", seed_value := 0) -> String:
 	## Returns "" on success or an error message.
 	if mode == "host":
 		var err := Net.host(port)
@@ -38,7 +38,7 @@ func start_world(mode: String, world_name: String, is_new: bool, port: int = Net
 	else:
 		Net.start_offline()
 	if is_new:
-		World.new_world(world_name)
+		World.new_world(world_name, seed_value, world_kind)
 	else:
 		var lerr := World.load_world(world_name)
 		if lerr != OK:

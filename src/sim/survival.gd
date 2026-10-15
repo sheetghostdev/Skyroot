@@ -68,7 +68,7 @@ static func die(pid: int, cause: String) -> void:
 	inv.clear()
 	World.mark_inventory(pid)
 	var pos: Vector3 = a.player_pos(pid) if a else Vector3.ZERO
-	if cause == "abyss":
+	if cause == "abyss" or cause == "drown":
 		# your things are left at the edge you went over, not lost with you
 		pos = st.get("safe", World.spawn_point(pid))
 	if not items.is_empty() and a:
@@ -90,6 +90,7 @@ static func _death_text(cause: String) -> String:
 		"hunger": return "You starved. Your things are in a bag where you fell."
 		"thirst": return "You died of thirst. Your things are in a bag where you fell."
 		"cold": return "The cold took you. Your things are in a bag where you fell."
+		"drown": return "You drowned. Your things are in a bag on the shore."
 	return "You died. Your things are in a bag where you fell."
 
 

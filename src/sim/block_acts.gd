@@ -132,7 +132,7 @@ func remove_block(c: Vector3i) -> void:
 	# what stood on it
 	var up := c + Vector3i.UP
 	var uid := World.block(up)
-	if uid != 0 and String(Blocks.def(uid).get("attach", "")) in ["ground", "soil", "farmland"] and not Blocks.on_wall(uid, World.block_meta(up)):
+	if uid != 0 and String(Blocks.def(uid).get("attach", "")) in ["ground", "soil", "sand", "farmland"] and not Blocks.on_wall(uid, World.block_meta(up)):
 		_pop(up, uid)
 	# what hung on its sides
 	for d in Blocks.WALL_DIRS:
@@ -201,7 +201,7 @@ func _fell(pid: int, c: Vector3i, id: int, slot: int) -> void:
 					seen[n] = true
 					if World.block(n) == id and World.block_meta(n) & NATURAL and n.y >= c.y:
 						q.append(n)
-	var leaf_id := Blocks.id_of("leaves_oak" if Blocks.name_of(id) == "log_oak" else "leaves_birch")
+	var leaf_id := Blocks.id_of(String(Blocks.def(id).get("leaf", "leaves_oak")))
 	var leaves: Array[Vector3i] = []
 	var lseen := {}
 	var lq: Array = []
@@ -261,7 +261,7 @@ func _fell(pid: int, c: Vector3i, id: int, slot: int) -> void:
 	if sticks > 0:
 		a.drop_item("stick", sticks, {}, land.call(crown + randf_range(-0.8, 0.8), randf_range(-1.2, 1.2)), Vector3.ZERO, 0, FALL_MS)
 	if saplings > 0 or randf() < 0.6:
-		var sap := "sapling_oak" if leaf_id == Blocks.id_of("leaves_oak") else "sapling_birch"
+		var sap := String(Blocks.def(id).get("sapling_item", "sapling_oak"))
 		a.drop_item(sap, maxi(1, saplings), {}, land.call(crown + randf_range(-0.8, 0.8), randf_range(-1.2, 1.2)), Vector3.ZERO, 0, FALL_MS)
 	a.wear_tool(pid, slot, 1 + logs.size() / 3)
 	# everyone sees the same tree come down (cells relative to the stump)
@@ -370,7 +370,7 @@ func place(pid: int, args: Dictionary) -> void:
 	var c: Vector3i = args.get("c", Vector3i(-1, -1, -1))
 	var slot := int(args.get("slot", -1))
 	var face: Vector3i = args.get("face", Vector3i.UP)
-	if not VoxelData.in_bounds(c.x, c.y, c.z) or not a.in_reach(pid, c):
+	if not World.vox.in_bounds_v(c) or not a.in_reach(pid, c):
 		return
 	if not a._rate(pid, "place", 120):
 		return
@@ -436,6 +436,8 @@ static func can_stand(id: int, c: Vector3i) -> bool:
 			return Blocks.is_solid(below)
 		"soil":
 			return Blocks.name_of(below) in ["grass", "dirt", "farmland"]
+		"sand":
+			return Blocks.name_of(below) in ["sand", "grass", "dirt"]
 		"farmland":
 			return Blocks.name_of(below) == "farmland"
 		"ceiling":

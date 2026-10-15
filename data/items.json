@@ -53,5 +53,10 @@
 	"cattail_roasted": {"label": "Roasted cattail root", "stack": 16, "food": {"hunger": 0.1}, "desc": "Like a nutty potato."},
 	"charred_food": {"label": "Charred food", "stack": 16, "food": {"hunger": 0.015}, "desc": "Left on the fire too long."},
 	"seeds_turnip": {"label": "Turnip seeds", "stack": 32, "crop": "crop_turnip", "desc": "Right-click farmland to sow."},
-	"seeds_flax": {"label": "Flax seeds", "stack": 32, "crop": "crop_flax", "desc": "Right-click farmland to sow. Flax gives fiber."}
+	"seeds_flax": {"label": "Flax seeds", "stack": 32, "crop": "crop_flax", "desc": "Right-click farmland to sow. Flax gives fiber."},
+	"palm_log": {"label": "Palm log", "stack": 16, "block": "palm_log", "desc": "Light and straight: good raft timber. Split it into firewood with an axe, or build with it."},
+	"palm_frond": {"label": "Palm frond", "stack": 32, "fuel": "tinder", "desc": "A long palm leaf. Two make a bundle of thatch; dry, it catches fire easily."},
+	"coconut": {"label": "Coconut", "stack": 8, "food": {"hunger": 0.06, "thirst": 0.22}, "desc": "Hold right click to drink the milk and eat the flesh. Fresh water where there is none."},
+	"seaweed": {"label": "Seaweed", "stack": 32, "food": {"hunger": 0.02, "thirst": -0.03}, "desc": "Salty. It fills you a little, but makes you thirsty."},
+	"sapling_palm": {"label": "Palm sapling", "stack": 16, "block": "sapling_palm", "desc": "Plant it in sand or soil and in a few days there will be a palm."}
 }

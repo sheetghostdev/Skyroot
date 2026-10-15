@@ -46,6 +46,10 @@ var sleeping_at := Vector3i(-1, -1, -1)
 var _eye := EYE_STAND
 var sitting := false
 var _water_y := -INF        # feet height when last in water (for climbing out)
+var breath := 1.0           # air left while your head is under water (0..1)
+var head_under := false
+var _drown_t := 0.0
+const BREATH_S := 35.0      # seconds you can hold your breath
 var _hblocked := false      # last move ran into a wall
 var _sit_told := false
 var _lean := 0.0
@@ -234,7 +238,7 @@ func _physics_process(delta: float) -> void:
 		if input.length() > 0.3 or (playing and Input.is_action_just_pressed("jump")) or not body.on_ground:
 			sitting = false
 		input = Vector2.ZERO
-	var want_sneak := playing and Input.is_action_pressed("sneak") and not sitting
+	var want_sneak := playing and Input.is_action_pressed("sneak") and not sitting and not in_water
 	if want_sneak:
 		sneaking = true
 	elif sneaking and body.fits(vd, global_position, STAND_H):
@@ -245,6 +249,8 @@ func _physics_process(delta: float) -> void:
 	sprinting = playing and Input.is_action_pressed("sprint") and input.y < -0.2 and not sneaking
 	var speed := SNEAK if sneaking else (SPRINT if sprinting else WALK)
 	in_water = vd.liquid_at(global_position + Vector3(0, 0.4, 0))
+	head_under = vd.liquid_at(global_position + Vector3(0, _eye + 0.05, 0))
+	_breathe(delta)
 	if in_water:
 		speed *= 0.6
 		_water_y = global_position.y
@@ -265,9 +271,16 @@ func _physics_process(delta: float) -> void:
 	# swimming against a bank with jump held: haul yourself up and out
 	var climb_out := playing and Input.is_action_pressed("jump") and _hblocked and wish.length() > 0.1 and global_position.y < _water_y + 1.55
 	if in_water:
-		velocity.y = maxf(velocity.y - GRAVITY * 0.25 * delta, -2.0)
+		# swimming: you float up to the surface and bob there; Space swims up,
+		# Shift dives
+		var want := -0.25
+		if head_under:
+			want = 1.1
 		if playing and Input.is_action_pressed("jump"):
-			velocity.y = minf(velocity.y + 18.0 * delta, 3.2)
+			want = 3.2
+		elif playing and Input.is_action_pressed("sneak"):
+			want = -3.0
+		velocity.y = lerpf(velocity.y, want, 1.0 - exp(-3.5 * delta))
 	else:
 		velocity.y -= GRAVITY * delta
 		velocity.y = maxf(velocity.y, -55.0)
@@ -301,6 +314,20 @@ func _physics_process(delta: float) -> void:
 	_update_camera(delta, input, hv.length())
 	_update_model(delta, hv)
 	_pose_tick(delta, hv)
+
+
+func _breathe(delta: float) -> void:
+	## Hold your breath under water; out of air, you start to drown.
+	if head_under and mode == "play":
+		breath = maxf(0.0, breath - delta / BREATH_S)
+		if breath <= 0.0:
+			_drown_t -= delta
+			if _drown_t <= 0.0:
+				_drown_t = 1.0
+				World.request("hurt", {"amount": 0.07, "cause": "drown"})
+	else:
+		breath = minf(1.0, breath + delta / 2.5)
+		_drown_t = 0.0
 
 
 func _on_land() -> void:

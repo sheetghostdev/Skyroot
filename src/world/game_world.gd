@@ -11,6 +11,7 @@ var fx: FX
 var hud: HUD
 var actions: Actions
 var sim: SimDriver
+var ocean: Ocean
 var _amb_t := 0.0
 
 
@@ -20,8 +21,17 @@ func _ready() -> void:
 	add_child(sky)
 	voxels = VoxelView.new()
 	voxels.name = "Voxels"
+	if World.kind == "sea":
+		# only the blocks near you; the open sea and far islands beyond
+		voxels.radius = clampi(int(Game.cli.get("view", str(Settings.view_chunks))), 4, 16)
 	add_child(voxels)
 	voxels.build(World.vox)
+	if World.kind == "sea":
+		ocean = Ocean.new()
+		ocean.name = "Ocean"
+		ocean.voxels = voxels
+		ocean.add_to_group("ocean")
+		add_child(ocean)
 	fx = FX.new()
 	fx.name = "FX"
 	add_child(fx)

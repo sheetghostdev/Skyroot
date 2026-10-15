@@ -5,7 +5,8 @@ extends Node
 ##   godot --headless --path . res://tests/test_main.tscn -- --suite=core,blocks,water,craft,fire,kiln,survival,farm,save,longrun
 ##   (--suite=all runs everything)
 
-const SUITES := ["core", "blocks", "water", "craft", "fire", "kiln", "survival", "farm", "save", "longrun"]
+const SUITES := ["core", "blocks", "water", "craft", "fire", "kiln", "survival", "farm", "save", "longrun", "sea"]
+const SEA_SUITES := ["sea"]          # these run on an archipelago
 
 var passes := 0
 var fails := 0
@@ -31,7 +32,7 @@ func _ready() -> void:
 			continue
 		_suite = s
 		print("== suite ", s)
-		await _fresh()
+		await _fresh("sea" if s in SEA_SUITES else "sky")
 		await call("suite_" + s)
 	print("RESULT %d passed, %d failed" % [passes, fails])
 	Game._teardown()
@@ -51,11 +52,11 @@ func _start() -> void:
 		await get_tree().process_frame
 
 
-func _fresh() -> void:
-	## A brand-new island for every suite.
+func _fresh(kind := "sky") -> void:
+	## A brand-new island (or archipelago) for every suite.
 	Game._teardown()
 	await get_tree().process_frame
-	Game.start_world("solo", "TestIsland", true)
+	Game.start_world("solo", "TestIsland", true, Net.DEFAULT_PORT, kind, 777)
 	for i in 3:
 		await get_tree().process_frame
 	a = World.actions
@@ -449,7 +450,7 @@ func water_units(ctr: Vector3i, r: int) -> int:
 	var w := Blocks.id_of("water")
 	for z in range(ctr.z - r, ctr.z + r + 1):
 		for x in range(ctr.x - r, ctr.x + r + 1):
-			for y in range(maxi(0, ctr.y - r), mini(VoxelData.SY, ctr.y + r + 1)):
+			for y in range(maxi(0, ctr.y - r), mini(World.vox.sy, ctr.y + r + 1)):
 				var c := Vector3i(x, y, z)
 				if World.block(c) == w:
 					n += a.water.level(c)
@@ -563,12 +564,128 @@ func suite_water() -> void:
 	check(not World.vox.liquid_at(Vector3(hc) + Vector3(0.5, 0.4, 0.5)) and World.vox.liquid_at(Vector3(hc) + Vector3(0.5, 0.05, 0.5)), "a puddle is only ankle deep")
 
 
+# ---------------------------------------------------------------------------
+# The archipelago
+# ---------------------------------------------------------------------------
+
+func _island_of(b: String) -> Dictionary:
+	for it in World.geo["islands"]:
+		if String(it["b"]) == b:
+			return it
+	return {}
+
+
+func _count_near(it: Dictionary, nm: String) -> int:
+	var id := Blocks.id_of(nm)
+	var c: Vector2 = it["c"]
+	var r := int(float(it["r"]) * 1.3) + 2
+	var n := 0
+	for z in range(int(c.y) - r, int(c.y) + r + 1):
+		for x in range(int(c.x) - r, int(c.x) + r + 1):
+			for y in range(ArchipelagoGen.SEA - 4, World.vox.sy):
+				if World.vox.get_id(x, y, z) == id:
+					n += 1
+	return n
+
+
+func suite_sea() -> void:
+	var vd := World.vox
+	var sea := int(World.geo["sea"])
+	check(World.kind == "sea" and vd.sx == ArchipelagoGen.W and vd.sz == ArchipelagoGen.D, "an archipelago world (%dx%dx%d)" % [vd.sx, vd.sy, vd.sz])
+	var isl: Array = World.geo["islands"]
+	check(isl.size() >= 12, "a dozen or more islands (%d)" % isl.size())
+	var kinds := {}
+	for it in isl:
+		kinds[String(it["b"])] = true
+		check(float(it["r"]) <= 22.0, "no island is huge (%s r %.1f)" % [it["b"], it["r"]])
+	for b in ["home", "atoll", "grove", "rocky", "marsh", "meadow"]:
+		check(kinds.has(b), "there is a %s island" % b)
+	var sp := World.spawn_point(pid)
+	check(sp.y > sea + 1 and Blocks.is_solid(World.block(VoxelData.cell_of(sp - Vector3(0, 0.1, 0)))), "you wake on dry land (%.1f)" % sp.y)
+	# the nearest other island is a short row away
+	var home: Dictionary = isl[0]
+	var nearest := 9999.0
+	for it in isl:
+		if it != home:
+			nearest = minf(nearest, (it["c"] as Vector2).distance_to(home["c"]) - float(it["r"]) - float(home["r"]))
+	check(nearest < 50.0, "another island within reach of a first raft (%.0f m of water)" % nearest)
+	# each kind of island has its own things to find
+	check(_count_near(_island_of("rocky"), "loose_flint") > 0 and _count_near(_island_of("home"), "loose_flint") == 0, "flint on the rocky isle, none at home")
+	check(_count_near(_island_of("grove"), "water") > 0, "a fresh pond on the grove island")
+	check(_count_near(_island_of("marsh"), "clay") > 20, "clay in the marsh")
+	check(_count_near(_island_of("atoll"), "coconut") > 0 or _count_near(_island_of("home"), "coconut") > 0, "coconuts on the palms")
+	check(_count_near(_island_of("home"), "palm_log") > 0, "palms on the home island")
+	check(vd.ids.count(Blocks.id_of("seaweed")) > 50, "seaweed in the shallows")
+	# the sea reaches past the edge of the world
+	check(vd.get_id(-5, sea, 40) == Blocks.sea and vd.get_id(vd.sx + 3, sea, 40) == Blocks.sea, "open sea beyond the edge")
+	# the sea is salt
+	var shore := _find_shore(home)
+	if check(shore.x >= 0, "found the shore of the home island"):
+		var wcell := shore + Vector3i(0, 0, 0)
+		stand_near(shore + Vector3i.UP)
+		var st: Dictionary = World.stats[pid]
+		st["thirst"] = 0.5
+		req("drink", {"c": wcell})
+		check(float(st["thirst"]) < 0.5, "drinking sea water makes you thirstier (%.2f)" % float(st["thirst"]))
+		clear_inv()
+		give("bowl", 1)
+		use_on(wcell, 0)
+		check(String(inv().get_slot(0).get("d", {}).get("c", "")) == "sea", "a bowl dipped in the sea holds sea water")
+	# dig out a beach block at sea level beside the water: the sea pours in
+	var beach := _find_beach(home)
+	if check(beach.x >= 0, "found a beach cell at sea level"):
+		World.set_block(beach, 0)
+		a.water.settle()
+		check(World.block(beach) == Blocks.sea, "the sea pours into a hole dug at the water's edge")
+	# things dropped in the sea float
+	if shore.x >= 0:
+		var eid := a.drop_item("stick", 1, {}, Vector3(shore) + Vector3(0.5, 3.0, 0.5))
+		var e: Dictionary = World.entities.get(eid, {})
+		check(not e.is_empty() and absf((e["xf"] as Transform3D).origin.y - (sea + 0.8)) < 0.05, "a stick dropped in the sea floats")
+	# time passes without trouble across the whole sea
+	hours(2.0)
+	check(true, "two hours of random ticks over the islands")
+	# saved and loaded, it is the same sea
+	check(Game.save() == OK, "the archipelago saves")
+	var n_isl := isl.size()
+	check(World.load_world("TestIsland") == OK and World.kind == "sea" and World.vox.sx == ArchipelagoGen.W and (World.geo["islands"] as Array).size() == n_isl, "and loads again as the same archipelago")
+	World.on_player_joined(pid, Settings.player_name)
+
+
+func _find_shore(it: Dictionary) -> Vector3i:
+	## A sea-water cell at the surface right next to the island's beach.
+	var c: Vector2 = it["c"]
+	var sea := int(World.geo["sea"])
+	for k in 64:
+		var dir := Vector2.from_angle(k * TAU / 64.0)
+		for s in range(int(it["r"] * 0.5), int(it["r"] * 2.0)):
+			var p := Vector2i(c + dir * s)
+			if World.vox.get_id(p.x, sea, p.y) == Blocks.sea:
+				return Vector3i(p.x, sea, p.y)
+	return Vector3i(-1, -1, -1)
+
+
+func _find_beach(it: Dictionary) -> Vector3i:
+	## A dry beach block at sea level with the sea beside it.
+	var c: Vector2 = it["c"]
+	var sea := int(World.geo["sea"])
+	var r := int(float(it["r"]) * 1.3)
+	for z in range(int(c.y) - r, int(c.y) + r + 1):
+		for x in range(int(c.x) - r, int(c.x) + r + 1):
+			var p := Vector3i(x, sea, z)
+			if Blocks.is_solid(World.block(p)) and World.block(p + Vector3i.UP) == 0:
+				for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+					if World.block(p + d) == Blocks.sea:
+						return p
+	return Vector3i(-1, -1, -1)
+
+
 func _find(nm: String) -> Vector3i:
 	var id := Blocks.id_of(nm)
 	for z in range(10, 54):
 		for x in range(10, 54):
 			var h := World.vox.column_height(x, z)
-			for y in range(maxi(h - 12, 0), mini(h + 3, VoxelData.SY)):
+			for y in range(maxi(h - 12, 0), mini(h + 3, World.vox.sy)):
 				if World.vox.get_id(x, y, z) == id:
 					return Vector3i(x, y, z)
 	return Vector3i(-1, -1, -1)

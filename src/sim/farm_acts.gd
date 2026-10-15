@@ -32,23 +32,32 @@ func use_block(pid: int, c: Vector3i, target: int, slot: int, s: Dictionary, fac
 		if id == "":
 			World.notify(pid, "No berries yet. They come back in a day or two.")
 			return true
-	if Blocks.shape[target] == Blocks.Shape.LIQUID:
+	if Blocks.is_water(target):
+		var salt := target != Blocks.id_of("water")
 		if id == "bowl" and String(s["d"].get("c", "")) == "":
-			if a.water.take(c, 1) < 1:
+			# the sea never runs out; a pond does
+			if not salt and a.water.take(c, 1) < 1:
 				return true
+			var what := "sea" if salt else "water"
 			if int(s["n"]) > 1:
 				inv.take_from(slot, 1)
-				a.give(pid, "bowl", 1, {"c": "water"})
+				a.give(pid, "bowl", 1, {"c": what})
 			else:
-				inv.set_data(slot, {"c": "water"})
+				inv.set_data(slot, {"c": what})
 			World.mark_inventory(pid)
 			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
 			return true
 		if id == "pot" and int(s["d"].get("w", 0)) < 3:
-			var got := a.water.take(c, 3 - int(s["d"].get("w", 0)))
+			if salt and int(s["d"].get("w", 0)) > 0 and not bool(s["d"].get("salt", false)):
+				World.notify(pid, "There's fresh water in the pot already.")
+				return true
+			var got := 3 - int(s["d"].get("w", 0)) if salt else a.water.take(c, 3 - int(s["d"].get("w", 0)))
 			if got < 1:
 				return true
-			inv.set_data(slot, {"w": int(s["d"].get("w", 0)) + got})
+			var pd := {"w": int(s["d"].get("w", 0)) + got}
+			if salt or bool(s["d"].get("salt", false)):
+				pd["salt"] = true
+			inv.set_data(slot, pd)
 			World.mark_inventory(pid)
 			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
 			return true
@@ -97,7 +106,7 @@ func _near_water(c: Vector3i) -> bool:
 	for dz in range(-4, 5):
 		for dx in range(-4, 5):
 			for dy in [-1, 0]:
-				if Blocks.shape[World.block(c + Vector3i(dx, dy, dz))] == Blocks.Shape.LIQUID:
+				if World.block(c + Vector3i(dx, dy, dz)) == Blocks.id_of("water"):
 					return true
 	return false
 
@@ -109,12 +118,28 @@ func _near_water(c: Vector3i) -> bool:
 func tick(hours: float) -> void:
 	var vd := World.vox
 	var rain := float(World.env.get("rain", 0.0)) > 0.3
-	# every sampled column stands for (columns / samples) of game time
+	# every sampled column stands for (columns / samples) of game time; in an
+	# archipelago the samples fall on the islands (bigger ones more often)
+	var isl: Array = World.geo.get("islands", []) if World.kind == "sea" else []
 	var cols := 48 * 48
-	var dt_h := hours * float(cols) / RANDOM_TICKS
-	for _i in RANDOM_TICKS:
+	var weights := PackedFloat32Array()
+	if not isl.is_empty():
+		cols = 0
+		for it in isl:
+			var side := int(float(it["r"]) * 2.4)
+			cols += side * side
+			weights.append(float(side * side))
+	var ticks := RANDOM_TICKS if isl.is_empty() else mini(RANDOM_TICKS * cols / (48 * 48), RANDOM_TICKS * 6)
+	var dt_h := hours * float(cols) / ticks
+	for _i in ticks:
 		var x := _rng.randi_range(8, 55)
 		var z := _rng.randi_range(4, 59)
+		if not isl.is_empty():
+			var it: Dictionary = isl[_rng.rand_weighted(weights)]
+			var hr := int(float(it["r"]) * 1.2)
+			var ic: Vector2 = it["c"]
+			x = int(ic.x) + _rng.randi_range(-hr, hr)
+			z = int(ic.y) + _rng.randi_range(-hr, hr)
 		var h := vd.column_height(x, z)
 		if h < 0:
 			continue
@@ -146,9 +171,9 @@ func tick(hours: float) -> void:
 		elif uname == "berry_bush":
 			if vd.get_m(x, y + 1, z) == 0 and _rng.randf() < dt_h / BERRY_H:
 				World.set_block_meta(up, 1)
-		elif uname == "sapling_oak" or uname == "sapling_birch":
+		elif Blocks.def(uid).has("sapling"):
 			if _rng.randf() < dt_h / SAPLING_H:
-				_grow_sapling(up, "oak" if uname == "sapling_oak" else "birch")
+				_grow_sapling(up, String(Blocks.def(uid)["sapling"]))
 		elif uid == 0 and not World.be_at.has(up):
 			if gname == "grass":
 				var p := _rng.randf()

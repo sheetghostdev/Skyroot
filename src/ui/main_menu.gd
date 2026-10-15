@@ -10,6 +10,8 @@ var _msg: Label
 var _name_edit: LineEdit
 var _saves_list: ItemList
 var _new_name: LineEdit
+var _kind: OptionButton
+const KINDS := [["sea", "Archipelago: many islands, sail between them on a raft"], ["sky", "Sky island: one island above the clouds"]]
 var _host_check: CheckBox
 var _port_edit: LineEdit
 var _ip_edit: LineEdit
@@ -108,7 +110,8 @@ func refresh() -> void:
 				var i := _saves_list.add_item("%s   —   from before the block world (can't be opened)" % s.get("name", "?"))
 				_saves_list.set_item_custom_fg_color(i, UITheme.TEXT_DIM)
 			else:
-				_saves_list.add_item("%s   —   day %d   (%s)" % [s.get("name", "?"), int(s.get("day", 1)), String(s.get("saved_at", "")).replace("T", " ")])
+				var kind_txt := "archipelago" if String(s.get("kind", "sky")) == "sea" else "sky island"
+				_saves_list.add_item("%s   —   %s, day %d   (%s)" % [s.get("name", "?"), kind_txt, int(s.get("day", 1)), String(s.get("saved_at", "")).replace("T", " ")])
 		if _saves.size() > 0:
 			_saves_list.select(0)
 		else:
@@ -182,6 +185,11 @@ func _build_play_panel() -> void:
 	_new_name.text = "Skyroot %d" % (randi() % 900 + 100)
 	_new_name.max_length = 28
 	v.add_child(_labeled("New island", _new_name))
+	_kind = OptionButton.new()
+	for k in KINDS:
+		_kind.add_item(String(k[1]))
+	_kind.selected = 0
+	v.add_child(_labeled("World", _kind))
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation", 10)
 	row2.add_child(UITheme.button("Wake on a new island", _start_new, 260))
@@ -261,6 +269,7 @@ func _start_new() -> void:
 
 
 func _launch(world_name: String, is_new: bool) -> void:
+	var kind := String(KINDS[_kind.selected][0]) if _kind else "sea"
 	if not _port_edit.text.is_valid_int():
 		show_message("Port must be a number.")
 		return
@@ -268,7 +277,10 @@ func _launch(world_name: String, is_new: bool) -> void:
 	Settings.save_settings()
 	show_message("Waking up...")
 	await get_tree().process_frame
-	var err := Game.start_world("host" if _host_check.button_pressed else "solo", world_name, is_new, Settings.port)
+	if is_new and kind == "sea":
+		show_message("Raising the islands from the sea...")
+		await get_tree().process_frame
+	var err := Game.start_world("host" if _host_check.button_pressed else "solo", world_name, is_new, Settings.port, kind)
 	if err != "":
 		show_message(err)
 

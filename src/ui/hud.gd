@@ -16,6 +16,7 @@ var prompt_lines: Array[Label] = []
 var hotbar_slots: Array[SlotView] = []
 var held_label: Label
 var bars: Dictionary = {}
+var air_bar: VitalBar
 var status_label: Label
 var clock_label: Label
 var goal_panel: PanelContainer
@@ -167,6 +168,18 @@ func _build_hotbar() -> void:
 		b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		(spec[3] as Control).add_child(b)
 		bars[spec[0]] = b
+	air_bar = VitalBar.new()
+	air_bar.label = "Air"
+	air_bar.color = Color(0.75, 0.9, 1.0)
+	air_bar.custom_minimum_size = Vector2(250, 22)
+	air_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	air_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	air_bar.offset_left = -125
+	air_bar.offset_right = 125
+	air_bar.offset_top = -176
+	air_bar.offset_bottom = -154
+	air_bar.visible = false
+	root.add_child(air_bar)
 	status_label = _outlined(UITheme.label("", 14, Color(UITheme.PAPER, 0.9)))
 	status_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	status_label.offset_left = -300
@@ -280,6 +293,9 @@ func _build_overlays() -> void:
 func _process(delta: float) -> void:
 	var p := player()
 	ring.queue_redraw()
+	if p:
+		air_bar.visible = p.breath < 0.999
+		air_bar.value = p.breath
 	_held_t -= delta
 	if _held_t <= 0.0:
 		held_label.modulate.a = move_toward(held_label.modulate.a, 0.0, delta * 2.0)

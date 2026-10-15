@@ -8,8 +8,8 @@
 	"clay": {"id": 5, "label": "Blue clay", "tex": "clay", "hard": 2.2, "tool": "shovel", "sound": "clay", "drops": [{"item": "clay", "n": [4, 4]}]},
 	"gravel": {"id": 6, "label": "Gravel", "tex": "gravel", "hard": 1.8, "tool": "shovel", "sound": "gravel", "drops": [{"item": "gravel", "n": [1, 1], "p": 0.85}, {"item": "flint", "n": [1, 1], "p": 0.15}], "falls": true},
 	"sand": {"id": 7, "label": "Sand", "tex": "sand", "hard": 1.4, "tool": "shovel", "sound": "gravel", "item": "sand", "falls": true},
-	"log_oak": {"id": 8, "label": "Oak log", "tex": {"top": "log_oak_top", "side": "log_oak", "bottom": "log_oak_top"}, "axis": true, "hard": 6.0, "needs": "axe", "sound": "wood", "item": "log_oak", "tree": true},
-	"log_birch": {"id": 9, "label": "Birch log", "tex": {"top": "log_birch_top", "side": "log_birch", "bottom": "log_birch_top"}, "axis": true, "hard": 5.0, "needs": "axe", "sound": "wood", "item": "log_birch", "tree": true},
+	"log_oak": {"id": 8, "label": "Oak log", "tex": {"top": "log_oak_top", "side": "log_oak", "bottom": "log_oak_top"}, "axis": true, "hard": 6.0, "needs": "axe", "sound": "wood", "item": "log_oak", "tree": true, "leaf": "leaves_oak", "sapling_item": "sapling_oak"},
+	"log_birch": {"id": 9, "label": "Birch log", "tex": {"top": "log_birch_top", "side": "log_birch", "bottom": "log_birch_top"}, "axis": true, "hard": 5.0, "needs": "axe", "sound": "wood", "item": "log_birch", "tree": true, "leaf": "leaves_birch", "sapling_item": "sapling_birch"},
 	"leaves_oak": {"id": 10, "label": "Oak leaves", "tex": "leaves_oak", "opaque": false, "cutout": true, "hard": 0.35, "tool": "knife", "sound": "leaves", "leaves": true, "drops": [{"item": "stick", "n": [1, 1], "p": 0.3}, {"item": "sapling_oak", "n": [1, 1], "p": 0.05}], "tint": 0.1},
 	"leaves_birch": {"id": 11, "label": "Birch leaves", "tex": "leaves_birch", "opaque": false, "cutout": true, "hard": 0.35, "tool": "knife", "sound": "leaves", "leaves": true, "drops": [{"item": "stick", "n": [1, 1], "p": 0.3}, {"item": "sapling_birch", "n": [1, 1], "p": 0.05}], "tint": 0.1},
 	"water": {"id": 12, "label": "Water", "shape": "liquid", "tex": "water", "solid": false, "opaque": false, "liquid": true, "hard": -1, "drops": []},
@@ -45,5 +45,12 @@
 		"boxes": [{"from": [0, 0, 0], "to": [16, 6, 16], "tex": "straw_bed"}, {"from": [0.5, 6, 0], "to": [15.5, 7, 15], "tex": "blanket"}, {"from": [0.5, 1.5, 15], "to": [15.5, 7, 16], "tex": "blanket"}]},
 	"straw_bed_head": {"id": 38, "label": "Straw bed", "shape": "boxes", "solid": true, "opaque": false, "hard": 0.8, "sound": "grass", "item": "straw_bed", "bed": true, "facing": true, "collide": [[0, 0, 0, 16, 7, 16]],
 		"boxes": [{"from": [0, 0, 0], "to": [16, 6, 16], "tex": "straw_bed"}, {"from": [0.5, 6, 7.5], "to": [15.5, 7, 16], "tex": "blanket"}, {"from": [2, 6, 1.5], "to": [14, 9, 7], "tex": "linen"}]},
-	"planks": {"id": 37, "label": "Planks", "tex": "planks", "hard": 3.0, "tool": "axe", "sound": "wood", "item": "planks"}
+	"planks": {"id": 37, "label": "Planks", "tex": "planks", "hard": 3.0, "tool": "axe", "sound": "wood", "item": "planks"},
+	"seawater": {"id": 39, "label": "Sea water", "shape": "liquid", "tex": "seawater", "solid": false, "opaque": false, "liquid": true, "sea": true, "sky_cost": 0, "hard": -1, "drops": []},
+	"palm_log": {"id": 40, "label": "Palm log", "tex": {"top": "palm_log_top", "side": "palm_log", "bottom": "palm_log_top"}, "axis": true, "hard": 4.5, "needs": "axe", "sound": "wood", "item": "palm_log", "tree": true, "leaf": "palm_leaves", "sapling_item": "sapling_palm"},
+	"palm_leaves": {"id": 41, "label": "Palm fronds", "tex": "palm_leaves", "opaque": false, "cutout": true, "hard": 0.3, "tool": "knife", "sound": "leaves", "leaves": true, "drops": [{"item": "palm_frond", "n": [1, 1], "p": 0.5}, {"item": "sapling_palm", "n": [1, 1], "p": 0.04}], "tint": 0.08},
+	"coconut": {"id": 42, "label": "Coconuts", "shape": "boxes", "solid": false, "opaque": false, "hard": 0.4, "sound": "wood", "attach": "ceiling", "drops": [{"item": "coconut", "n": [1, 2]}],
+		"boxes": [{"from": [3, 8, 3], "to": [8, 14, 8], "tex": "coconut"}, {"from": [8, 7, 7], "to": [13, 13, 12], "tex": "coconut"}, {"from": [5, 6, 9], "to": [10, 12, 14], "tex": "coconut"}]},
+	"seaweed": {"id": 43, "label": "Seaweed", "shape": "cross", "tex": "seaweed", "solid": false, "opaque": false, "cutout": true, "replace": true, "hard": 0.1, "sound": "grass", "attach": "ground", "waterlogged": true, "drops": [{"item": "seaweed", "n": [1, 1]}], "sway": 0.8, "tint": 0.1},
+	"sapling_palm": {"id": 44, "label": "Palm sapling", "shape": "cross", "tex": "palm_leaves", "solid": false, "opaque": false, "cutout": true, "hard": 0.1, "sound": "grass", "attach": "sand", "item": "sapling_palm", "sapling": "palm", "sway": 0.4, "scale": 0.6}
 }

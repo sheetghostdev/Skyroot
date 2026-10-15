@@ -5,6 +5,9 @@ extends RefCounted
 ## the islet across the gap) and the same on every new world; noise only roughens
 ## the outline, the ground and the underside.
 
+const W := 64                     # the sky island's grid
+const H := 80
+const D := 64
 const CENTER := Vector2(32, 32)
 const RADIUS := 17.5
 const TOP := 44                   # y of the grass at the island's middle
@@ -32,8 +35,12 @@ func _init(data: VoxelData) -> void:
 	rng.seed = 424242
 	for n in Blocks.by_name:
 		B[n] = Blocks.id_of(n)
-	top_y.resize(VoxelData.SX * VoxelData.SZ)
+	top_y.resize(W * D)
 	top_y.fill(-1)
+
+
+static func new_grid() -> VoxelData:
+	return VoxelData.new(W, H, D)
 
 
 static func generate(data: VoxelData) -> void:
@@ -65,8 +72,8 @@ func _at(x: int, y: int, z: int) -> String:
 func _mass(c: Vector2, radius: float, top: int, depth_k: float) -> void:
 	## A floating mass: an irregular disc of turf over soil over rock, tapering
 	## to a jagged point underneath.
-	for z in VoxelData.SZ:
-		for x in VoxelData.SX:
+	for z in D:
+		for x in W:
 			var d := Vector2(x + 0.5, z + 0.5) - c
 			var ang := atan2(d.y, d.x)
 			var r := radius + _n(cos(ang) * 9.0 + c.x, sin(ang) * 9.0) * 2.6 + _n(cos(ang) * 23.0, sin(ang) * 23.0 + c.y) * 1.2
@@ -89,14 +96,14 @@ func _mass(c: Vector2, radius: float, top: int, depth_k: float) -> void:
 				elif below_top <= 2 + int(absf(_n(x * 1.3, z * 1.3)) * 2.0):
 					nm = "dirt"
 				_put(x, y, z, nm)
-			top_y[x + z * VoxelData.SX] = ty
+			top_y[x + z * W] = ty
 
 
 func _hill() -> void:
 	## A rocky knoll: turf on its gentle slopes, bare granite where it is steep.
-	for z in VoxelData.SZ:
-		for x in VoxelData.SX:
-			var ty := top_y[x + z * VoxelData.SX]
+	for z in D:
+		for x in W:
+			var ty := top_y[x + z * W]
 			if ty < 0:
 				continue
 			var d := Vector2(x + 0.5, z + 0.5).distance_to(HILL)
@@ -113,7 +120,7 @@ func _hill() -> void:
 				_put(x, nt - 1, z, "dirt")
 			elif _n(x * 1.7 + 9.0, z * 1.7) > 0.0:
 				_put(x, nt, z, "stone_mossy")
-			top_y[x + z * VoxelData.SX] = nt
+			top_y[x + z * W] = nt
 
 
 func _pond() -> void:
@@ -122,7 +129,7 @@ func _pond() -> void:
 		for x in range(int(POND.x) - 7, int(POND.x) + 8):
 			var dv := (Vector2(x + 0.5, z + 0.5) - POND) / Vector2(4.2, 3.3)
 			var e := dv.length() + _n(x * 1.1, z * 1.1) * 0.18
-			var ty := top_y[x + z * VoxelData.SX]
+			var ty := top_y[x + z * W]
 			if ty < 0:
 				continue
 			if e < 1.0:
@@ -135,7 +142,7 @@ func _pond() -> void:
 				# clay floor
 				for y in range(surface - depth - 2, surface - depth + 1):
 					_put(x, y, z, "clay" if _n(x * 2.0, y * 2.0 + z) > -0.45 else "dirt")
-				top_y[x + z * VoxelData.SX] = surface
+				top_y[x + z * W] = surface
 			elif e < 1.55:
 				# banks: clay under the turf, sand right at the water
 				for y in range(ty - 3, ty):
@@ -147,7 +154,7 @@ func _pond() -> void:
 					_put(x, ty, z, "clay")
 	# a little exposed clay on the near bank so it can be found
 	for p in [Vector2i(27, 41), Vector2i(28, 40), Vector2i(27, 40)]:
-		var ty := top_y[p.x + p.y * VoxelData.SX]
+		var ty := top_y[p.x + p.y * W]
 		if ty > 0:
 			_put(p.x, ty, p.y, "clay")
 
@@ -199,6 +206,8 @@ static func grow_tree(data: VoxelData, x: int, y: int, z: int, kind: String, see
 			data.set_block(px, py, pz, id, m)
 	var r := RandomNumberGenerator.new()
 	r.seed = seed_v
+	if kind == "palm":
+		return _grow_palm(data, x, y, z, r, put)
 	var log_id := Blocks.id_of("log_oak" if kind == "oak" else "log_birch")
 	var leaf_id := Blocks.id_of("leaves_oak" if kind == "oak" else "leaves_birch")
 	var h := r.randi_range(4, 6) if kind == "oak" else r.randi_range(5, 7)
@@ -206,7 +215,7 @@ static func grow_tree(data: VoxelData, x: int, y: int, z: int, kind: String, see
 		var id := data.get_id(x, y + i, z)
 		if id != 0 and not Blocks.is_replaceable(id) and Blocks.shape[id] != Blocks.Shape.CROSS:
 			return false
-	if y + h + 3 >= VoxelData.SY:
+	if y + h + 3 >= data.sy:
 		return false
 	var top := y + h
 	var rad := 2.4 if kind == "oak" else 1.8
@@ -222,11 +231,60 @@ static func grow_tree(data: VoxelData, x: int, y: int, z: int, kind: String, see
 				var px := x + dx
 				var py := top + dy
 				var pz := z + dz
-				if VoxelData.in_bounds(px, py, pz) and data.get_id(px, py, pz) == 0:
+				if data.in_bounds(px, py, pz) and data.get_id(px, py, pz) == 0:
 					put.call(px, py, pz, leaf_id, 0)
 	for i in h:
 		put.call(x, y + i, z, log_id, BlockActs.NATURAL)
 	# the soil under a trunk
+	if Blocks.name_of(data.get_id(x, y - 1, z)) == "grass":
+		put.call(x, y - 1, z, Blocks.id_of("dirt"), 0)
+	return true
+
+
+static func _grow_palm(data: VoxelData, x: int, y: int, z: int, r: RandomNumberGenerator, put: Callable) -> bool:
+	## A palm: a tall trunk that leans as it rises, a crown of drooping fronds,
+	## and coconuts hanging under it.
+	var log_id := Blocks.id_of("palm_log")
+	var leaf_id := Blocks.id_of("palm_leaves")
+	var nut_id := Blocks.id_of("coconut")
+	var h := r.randi_range(5, 8)
+	var lean: Vector2i = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][r.randi_range(0, 3)]
+	var bend := r.randi_range(h / 2, h - 1)
+	var cells: Array[Vector3i] = []
+	var px := x
+	var pz := z
+	for i in h:
+		if i == bend:
+			px += lean.x
+			pz += lean.y
+		cells.append(Vector3i(px, y + i, pz))
+	if y + h + 3 >= data.sy:
+		return false
+	for c in cells:
+		var id := data.get_id(c.x, c.y, c.z)
+		if id != 0 and not Blocks.is_replaceable(id) and Blocks.shape[id] != Blocks.Shape.CROSS:
+			return false
+	for c in cells:
+		put.call(c.x, c.y, c.z, log_id, BlockActs.NATURAL)
+	var top: Vector3i = cells[cells.size() - 1]
+	var leaf := func(c: Vector3i) -> void:
+		if data.in_bounds(c.x, c.y, c.z) and data.get_id(c.x, c.y, c.z) == 0:
+			put.call(c.x, c.y, c.z, leaf_id, 0)
+	leaf.call(top + Vector3i.UP)
+	for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		# each frond runs out and droops at the end
+		leaf.call(top + Vector3i.UP + d)
+		leaf.call(top + Vector3i.UP + d * 2)
+		leaf.call(top + d * 3)
+	for d in [Vector3i(1, 0, 1), Vector3i(-1, 0, 1), Vector3i(1, 0, -1), Vector3i(-1, 0, -1)]:
+		leaf.call(top + Vector3i.UP + d)
+		if r.randf() < 0.6:
+			leaf.call(top + d * 2)
+	# coconuts under the crown, against the trunk
+	for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var c: Vector3i = top + d
+		if r.randf() < 0.55 and data.get_id(c.x, c.y, c.z) == 0 and data.get_id(c.x, c.y + 1, c.z) == leaf_id:
+			put.call(c.x, c.y, c.z, nut_id, 0)
 	if Blocks.name_of(data.get_id(x, y - 1, z)) == "grass":
 		put.call(x, y - 1, z, Blocks.id_of("dirt"), 0)
 	return true
@@ -276,8 +334,8 @@ func _decorate() -> void:
 			if _near(x, ty, z, 1, ["water"]) and rng.randf() < 0.5:
 				_put(x, ty + 1, z, "reeds")
 	# grass and flowers
-	for z in VoxelData.SZ:
-		for x in VoxelData.SX:
+	for z in D:
+		for x in W:
 			var ty := _top_solid(x, z)
 			if ty < 0 or _at(x, ty, z) != "grass" or _at(x, ty + 1, z) != "air":
 				continue
@@ -304,11 +362,11 @@ func _near(x: int, y: int, z: int, r: int, kinds: Array) -> bool:
 
 func _underside() -> void:
 	## Roots and vines hang from the island's belly; soil patches on the rock.
-	for z in VoxelData.SZ:
-		for x in VoxelData.SX:
+	for z in D:
+		for x in W:
 			# lowest block of the column
 			var low := -1
-			for y in range(1, VoxelData.SY):
+			for y in range(1, H):
 				if vd.get_id(x, y, z) != 0:
 					low = y
 					break

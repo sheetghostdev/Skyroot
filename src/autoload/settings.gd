@@ -20,6 +20,7 @@ var show_hints := true
 var fullscreen := false
 var vsync := true
 var ssao := true
+var view_chunks := 8            # archipelago: how far the blocks are drawn (in 16-block chunks)
 
 # action -> list of event specs.  "k:<keycode>" keyboard (physical), "m:<button>" mouse.
 const INPUTS := {
