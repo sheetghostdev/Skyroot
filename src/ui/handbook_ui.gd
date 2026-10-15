@@ -71,9 +71,12 @@ func _fill() -> void:
 	if q == "":
 		_add("goals", "Your goals", true)
 		for c in Guide.categories:
+			if not Guide.for_this_world(c):
+				continue
 			_add("", String(c["title"]).to_upper(), false)
 			for pid in c["pages"]:
-				_add(pid, "   " + String(Guide.pages[pid]["title"]), true)
+				if Guide.for_this_world(Guide.pages[pid]):
+					_add(pid, "   " + String(Guide.pages[pid]["title"]), true)
 		_add("", "ITEMS", false)
 		var items := ItemDB.items.keys()
 		items.sort_custom(func(a, b): return ItemDB.label(a) < ItemDB.label(b))
@@ -108,7 +111,7 @@ func _open(id: String) -> void:
 		title.text = "Your goals"
 		var t := ""
 		var current := Guide.current_goal()
-		for g in Guide.goals:
+		for g in Guide.active_goals():
 			var mark := "[color=#9fb98a]✔[/color] " if Guide.done.has(g["id"]) else ("[color=#e0a64a]▶[/color] " if g == current else "   ")
 			t += "%s[b]%s[/b]\n      %s\n" % [mark, g["title"], g["text"]]
 		body.text = t

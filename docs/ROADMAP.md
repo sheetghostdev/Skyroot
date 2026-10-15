@@ -3,6 +3,46 @@
 Notes for the owner and for future Claude sessions.  Section 1 is measured; the
 rest are proposals to discuss before building anything.
 
+## 0. The archipelago (built)
+
+The owner's pivot: keep the sky island as a second mode, and make the main game an
+archipelago in the spirit of Stranded Deep, played with Vintage Story's mechanics,
+with rafts like the game Raft.  Built so far:
+
+- **Worlds**: 512 x 512 of sea, about eighteen islands of six kinds (home, atoll,
+  wooded, rocky, marsh, meadow), each with things the others lack.  Far islands show
+  on the horizon; only the blocks near you are meshed.
+- **Water**: the sea is salt.  Coconuts, fresh ponds on some islands, and boiling
+  sea water fresh in a pot over a fire; a waterskin carries four drinks.
+- **Rafts**: built section by section on the water, ridden (you're carried, and can
+  build on the deck), paddled, sailed with the wind, steered at a steering oar,
+  anchored; they ground in the shallows.
+- **Animals**: crabs, junglefowl (eggs), wild goats (hides); shy, huntable with a
+  knapped spear; led on twine onto a raft and across the sea; fed in pairs they
+  have young; hunted-out islands refill when no one is there.
+
+How it answers section 1's worries: stone, flint, clay and wood now come from
+different islands, so running low means a voyage, not a soft-lock; animals and
+eggs are a renewable food that you can farm once you've brought a pair home.
+
+### Next at sea (to discuss)
+
+- **Fishing** (a line of twine and a bone/thorn hook from the raft; a fish trap in
+  the shallows) and seaweed farming in the shallows.
+- **Base on the raft**: storage jars and a fire pit (on a clay hearth) on deck, so a
+  raft can be a real home; rafts that bump each other; mooring to a post.
+- **Currents and weather at sea**: trade winds that change with the season, squalls
+  that make sailing dangerous, a calm that makes paddling matter.
+- **A chart**: the islands you've seen drawn into a map in the handbook (by sight,
+  not handed to you), and landmarks (a beacon fire you build on a peak).
+- **More island kinds**: a volcanic isle (obsidian for the best knapped edges, hot
+  springs, later copper ore), a sea-stack with nesting birds, a wreck washed up
+  after a storm with odd finds.
+- **Sea life**: turtles laying eggs on the atolls, fish shoals, seabirds; sharks
+  maybe, if it stays fun.
+- **Animal care**: pens (fences need planks, so a saw), milking goats, shearing,
+  feathers for fletching, leather from scraped and dried hides.
+
 ## 1. What the island holds today (fresh island, measured)
 
 | Resource | Amount | Renews? | What it's for |

@@ -134,7 +134,7 @@ func save_settings() -> void:
 
 
 func _keys() -> Array:
-	return ["player_name", "last_ip", "port", "mouse_sensitivity", "invert_y", "fov", "head_bob",
+	return ["player_name", "last_ip", "port", "mouse_sensitivity", "invert_y", "fov", "head_bob", "view_chunks",
 		"master_volume", "sfx_volume", "ambience_volume", "shadows_quality", "render_scale",
 		"show_hints", "fullscreen", "vsync", "ssao", "client_token"]
 

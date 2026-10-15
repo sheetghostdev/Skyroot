@@ -43,6 +43,7 @@ static var boxes: Dictionary = {}
 static var collide: Dictionary = {}
 # selection boxes: id -> AABB
 static var select: Dictionary = {}
+static var select_whole: Dictionary = {}  # BOXES blocks: the outline of the whole model, past its cell (rafts' masts and oars)
 
 
 static func load_all() -> void:
@@ -160,6 +161,7 @@ static func _shapes(id: int, d: Dictionary) -> void:
 		boxes[id] = list
 		var pad := Vector3(0.04, 0.02, 0.04)
 		select[id] = AABB((lo - pad).max(Vector3.ZERO), (hi - lo + pad * 2.0).min(Vector3.ONE))
+		select_whole[id] = AABB(lo - pad, hi - lo + pad * 2.0)
 	elif sh == Shape.CUBE:
 		cols.append(AABB(Vector3.ZERO, Vector3.ONE))
 		select[id] = AABB(Vector3.ZERO, Vector3.ONE)

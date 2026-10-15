@@ -10,6 +10,8 @@ var _last_seq := -1
 var _vel := Vector3.ZERO
 var _mode := "play"
 var _held := ""
+var _ride_raft := -1
+var _ride_prev := Vector3.ZERO
 
 const DELAY := 0.1
 
@@ -69,10 +71,26 @@ func _physics_process(delta: float) -> void:
 	var pos: Vector3 = (pa["p"] as Vector3).lerp(pb["p"], t)
 	if now > b[0]:
 		pos = (pb["p"] as Vector3) + (pb.get("v", Vector3.ZERO) as Vector3) * clampf(now - b[0], 0.0, 0.25)
+	var facing := lerp_angle(float(pa.get("f", 0.0)), float(pb.get("f", 0.0)), t)
+	# on a raft: placed on the raft as this machine draws it
+	var raft := RaftView.find(int(pb.get("rv", -1)))
 	var old := global_position
+	if raft != null:
+		var rxf := raft.view_xf()
+		var rp: Vector3 = pb["rp"]
+		var rf := float(pb.get("rf", 0.0))
+		if int(pa.get("rv", -1)) == int(pb["rv"]):
+			rp = (pa["rp"] as Vector3).lerp(pb["rp"], minf(t, 1.0))
+			rf = lerp_angle(float(pa.get("rf", 0.0)), rf, minf(t, 1.0))
+		pos = rxf * rp
+		facing = rf + rxf.basis.get_euler().y
+		old = rxf * (_ride_prev if _ride_raft == raft.entity_id else rp)
+		_ride_prev = rp
+		_ride_raft = raft.entity_id
+	else:
+		_ride_raft = -1
 	global_position = pos
 	_vel = _vel.lerp((pos - old) / maxf(delta, 0.001), 0.25)
-	var facing := lerp_angle(float(pa.get("f", 0.0)), float(pb.get("f", 0.0)), t)
 	model.rotation.y = lerp_angle(model.rotation.y, facing, 1.0 - exp(-14.0 * delta))
 	var hv := Vector2(_vel.x, _vel.z).length()
 	model.animate(delta, {"speed": hv, "crouch": bool(pb.get("c", false)), "air": not bool(pb.get("g", true)),

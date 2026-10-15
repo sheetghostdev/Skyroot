@@ -917,6 +917,43 @@ def _():
     return ramp(["#4b3322", "#5a3e2a", "#684a33"], n, steps=3)
 
 
+@tile("fur")
+def _():
+    # short coarse hair in streaks (light: tinted per animal)
+    n = fbm(256, ((4, 0.4), (16, 0.6)))
+    img = ramp(["#b9b2a6", "#cdc6b9", "#ddd7cb", "#e9e4d9"], n, steps=4)
+    r = rnd(257)
+    for _ in range(70):
+        x, y = r.randrange(S), r.randrange(S)
+        for k in range(3):
+            put(img, x, y + k, shade(img[(y + k) % S, x], 0.82))
+    return img
+
+
+@tile("feathers")
+def _():
+    # overlapping rows of feathers, light so a tint colours them
+    img = blank("#d9d2c4")
+    for row in range(0, S, 4):
+        off = 2 if (row // 4) % 2 else 0
+        for x0 in range(off, S + 4, 4):
+            for dx in range(4):
+                for dy in range(4):
+                    k = 1.0 - 0.07 * dy - (0.12 if dx == 0 else 0.0)
+                    put(img, x0 + dx, row + dy, shade(hexc("#d9d2c4"), k))
+    return jitter(img, 258, 0.04)
+
+
+@tile("shell")
+def _():
+    n = fbm(259, ((4, 0.5), (8, 0.5)))
+    img = ramp(["#c9b8a8", "#dacbbb", "#e8dccf"], n, steps=3)
+    r = rnd(260)
+    for _ in range(26):
+        put(img, r.randrange(S), r.randrange(S), shade(hexc("#dacbbb"), 0.7))
+    return img
+
+
 # crack overlay stages
 for st in range(8):
     def _crack(st=st):

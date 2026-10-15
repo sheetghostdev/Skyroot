@@ -380,6 +380,9 @@ func place(pid: int, args: Dictionary) -> void:
 	var id := ItemDB.block_of(String(s["i"]))
 	if id < 0 or not World.cell_free(c):
 		return
+	if Blocks.has_flag(id, "raft_only"):
+		World.notify(pid, "That goes on a raft.", "warn")
+		return
 	# a torch put against the side of a block hangs on it
 	var on_wall := Blocks.wall[id] == 1 and face.y == 0 and face != Vector3i.ZERO and Blocks.is_solid(World.block(c - face)) and Blocks.is_opaque(World.block(c - face))
 	if not on_wall and not can_stand(id, c):

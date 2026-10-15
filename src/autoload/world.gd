@@ -205,6 +205,18 @@ func set_xf(id: int, xf: Transform3D) -> void:
 	Events.entity_changed.emit(id, ["xf"])
 
 
+func move_entity(id: int, xf: Transform3D, replicate: bool) -> void:
+	## Host: an entity that moves every frame (a raft) - changed here at once,
+	## sent to the others only now and then (they smooth in between).
+	var e = entities.get(id)
+	if e == null:
+		return
+	e["xf"] = xf
+	if replicate and is_host():
+		_ops.append(["x", id, xf])
+	Events.entity_changed.emit(id, ["xf"])
+
+
 func despawn(id: int) -> void:
 	if not entities.has(id):
 		return

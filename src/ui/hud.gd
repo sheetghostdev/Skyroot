@@ -383,6 +383,30 @@ func _target_name(t: Dictionary) -> String:
 			return nm
 		"satchel":
 			return "Bag of things"
+		"animal":
+			var ae := World.get_entity(int(t["eid"]))
+			if ae.is_empty():
+				return ""
+			var ad: Dictionary = ae["d"]
+			var an := String(ItemDB.animals.get(String(ad.get("s", "")), {}).get("label", "Animal"))
+			var bits: Array = []
+			if AnimalSim.grown(ad) < 1.0:
+				bits.append("young")
+			if int(ad.get("lead", -1)) >= 0:
+				bits.append("on your lead" if int(ad["lead"]) == Net.my_id() else "led by " + Net.player_name(int(ad["lead"])))
+			if float(ad.get("hp", 1.0)) < 0.99:
+				bits.append("hurt")
+			if World.hours() - float(ad.get("fed", -1000.0)) < AnimalSim.FED_H:
+				bits.append("fed")
+			return an + (" (" + ", ".join(bits) + ")" if not bits.is_empty() else "")
+		"raft":
+			var rid: int = t["id"]
+			var rn := Blocks.label(rid)
+			if Blocks.has_flag(rid, "sail"):
+				rn += " (up)" if (int(t["m"]) & 4) != 0 else " (furled)"
+			elif Blocks.has_flag(rid, "anchor"):
+				rn += " (down)" if bool(World.get_entity(int(t["eid"])).get("d", {}).get("anchor", false)) else " (up)"
+			return rn
 		"be":
 			var be: Dictionary = t["be"]
 			var d: Dictionary = be["d"]
@@ -399,6 +423,18 @@ func _target_name(t: Dictionary) -> String:
 						bits.append("%d stick%s" % [int(d["sticks"]), "" if int(d["sticks"]) == 1 else "s"])
 					if int(d.get("logs", 0)) > 0:
 						bits.append("%d firewood" % int(d["logs"]))
+					var pot: Dictionary = d.get("pot", {})
+					if not pot.is_empty():
+						if int(pot.get("stew", 0)) > 0:
+							bits.append("a pot of stew")
+						elif not (pot.get("items", []) as Array).is_empty():
+							bits.append("a pot of stew cooking" if bool(d.get("lit", false)) else "a pot of stew to cook")
+						elif int(pot.get("water", 0)) > 0 and bool(pot.get("salt", false)):
+							bits.append("a pot of sea water" + (", boiling" if bool(d.get("lit", false)) else ""))
+						elif int(pot.get("water", 0)) > 0:
+							bits.append("a pot of fresh water")
+						else:
+							bits.append("an empty pot")
 					return "Fire pit" + (" (" + ", ".join(bits) + ")" if not bits.is_empty() else "")
 				"kiln":
 					if bool(d.get("lit", false)):
@@ -514,6 +550,7 @@ func _trim(box: Control, keep: int) -> void:
 
 
 func _on_hint(hint_id: String) -> void:
+	hint_id = Guide.hint_for(hint_id)
 	if not Guide.should_show(hint_id) or _hint_queue.has(hint_id) or _hint_id == hint_id:
 		return
 	_hint_queue.append(hint_id)

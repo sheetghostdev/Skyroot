@@ -257,8 +257,20 @@ func _build_pot(d: Dictionary) -> void:
 		_bobbers.append(bob)
 
 
+var _steam_t := 0.0
+
+
 func _process(delta: float) -> void:
 	_t += delta
+	# a pot of water over a good fire steams
+	_steam_t -= delta
+	if _steam_t <= 0.0:
+		_steam_t = 0.3
+		var pot: Dictionary = data().get("pot", {})
+		if _heat > 0.4 and not pot.is_empty() and (int(pot.get("water", 0)) > 0 or int(pot.get("stew", 0)) > 0):
+			var fxn := get_tree().get_first_node_in_group("fx")
+			if fxn:
+				fxn.burst(global_position + Vector3(0.5, pot_root.position.y + 0.42, 0.5), Color(0.92, 0.93, 0.95), 2, 0.07, 0.2, -0.5, 1.6, 0.08)
 	for i in _bobbers.size():
 		var b: Node3D = _bobbers[i]
 		if is_instance_valid(b):

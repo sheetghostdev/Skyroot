@@ -325,7 +325,11 @@ def knapped(img, pts, mat, seed):
                 put(img, x + 1, y, shade(img[y, x + 1], 1.2), wrap=False)
 
 
-HEADS = {"knife_blade": blade_pts, "axe_head": axe_pts, "shovel_head": shovel_pts, "hoe_head": hoe_pts}
+def spear_pts(ox=0, oy=0, s=1.0):
+    return [(ox + 9 * s, oy + 23 * s), (ox + 14 * s, oy + 13 * s), (ox + 26 * s, oy + 4 * s), (ox + 19 * s, oy + 17 * s), (ox + 11 * s, oy + 25 * s)]
+
+
+HEADS = {"knife_blade": blade_pts, "axe_head": axe_pts, "shovel_head": shovel_pts, "hoe_head": hoe_pts, "spear_head": spear_pts}
 for head, fn in HEADS.items():
     for mat in MATS:
         def _head(fn=fn, mat=mat, head=head):
@@ -359,10 +363,14 @@ def tool(kind, mat):
         stroke(img, 5, 29, 21, 6, 3.0, WOOD, 26)
         knapped(img, [(14, 6), (27, 3), (28, 9), (22, 13), (17, 11)], mat, 27)
         lashing(img, 19, 9)
+    elif kind == "spear":
+        stroke(img, 2, 30, 21, 11, 2.4, WOOD, 28)
+        knapped(img, [(19, 13), (22, 8), (30, 1), (25, 10), (21, 15)], mat, 29)
+        lashing(img, 21, 12)
     return finish(img)
 
 
-for kind in ["knife", "axe", "shovel", "hoe"]:
+for kind in ["knife", "axe", "shovel", "hoe", "spear"]:
     for mat in MATS:
         ICONS.append(("%s@%s" % (kind, mat), (lambda kind=kind, mat=mat: tool(kind, mat))))
 
@@ -592,6 +600,219 @@ def _():
 @icon("seeds_flax")
 def _():
     return seeds(["#a5793e", "#b98a4a", "#c99c5c"], 61)
+
+
+# ---------------------------------------------------------------------------
+# The sea
+# ---------------------------------------------------------------------------
+
+ICONS.append(("palm_log", lambda: iso("palm_log_top", "palm_log", "palm_log")))
+@icon("sapling_palm")
+def _():
+    # a young palm: a short ringed stem and a fan of fronds, in a tuft of sand
+    img = blank()
+    blob(img, 16, 27, 8, 3, lambda dx, dy: shade(hexc("#d8c48e"), 1.0 - dy * 0.15), wrap=False)
+    stroke(img, 16, 27, 16, 15, 2.4, ["#5a4630", "#6d5639", "#816744"], 89)
+    for ang, ln in [(-150, 11), (-120, 12), (-90, 10), (-60, 12), (-30, 11), (-170, 8), (-10, 8)]:
+        a = math.radians(ang)
+        for i in range(ln):
+            t = i / ln
+            x = 16 + math.cos(a) * i
+            y = 15 + math.sin(a) * i + t * t * 5
+            c = ["#2f6b2a", "#3c7f33", "#4d943d"][i % 3]
+            put(img, int(x), int(y), c, wrap=False)
+            put(img, int(x), int(y) + 1, shade(hexc(c), 0.8), wrap=False)
+    return finish(img)
+
+
+@icon("palm_frond")
+def _():
+    img = blank()
+    # a long midrib with leaflets down both sides
+    for i in range(24):
+        x = 4 + i
+        y = 27 - i * 0.9
+        put(img, x, int(y), "#9aa858", wrap=False)
+        for j in range(1, 5):
+            c = ["#3e6b23", "#4a7a29", "#558a30", "#62983a"][(i + j) % 4]
+            if i > 2:
+                put(img, x - j // 2, int(y - j), c, wrap=False)
+                put(img, x + j // 2, int(y + j), c, wrap=False)
+    return finish(img)
+
+
+@icon("coconut")
+def _():
+    img = blank()
+    lit_fill(img, [(8, 14), (12, 8), (19, 7), (25, 11), (26, 19), (21, 26), (13, 26), (8, 21)], ["#3a2818", "#4a3420", "#5a3f26", "#6b4c2e", "#7a5835"], 50)
+    for (x, y) in [(13, 11), (16, 10), (14, 14)]:
+        put(img, x, y, "#2a1c10", wrap=False)
+    return finish(img)
+
+
+@icon("seaweed")
+def _():
+    img = blank()
+    r = rnd(51)
+    for k in range(4):
+        x0 = 9 + k * 4 + r.uniform(-1, 1)
+        for y in range(4, 29):
+            x = x0 + math.sin(y * 0.35 + k) * 2.0
+            c = ["#2f6b3a", "#3a7d45", "#2a5e33", "#4b8a4f"][k]
+            put(img, int(x), y, c, wrap=False)
+            put(img, int(x) + 1, y, shade(hexc(c), 0.85), wrap=False)
+    return finish(img)
+
+
+@icon("bowl@sea")
+def _():
+    return bowl(FIRED, "#2a8899")
+
+
+@icon("raft_floor")
+def _():
+    # logs lashed side by side, seen from above at a slant
+    img = blank()
+    for k in range(4):
+        y0 = 7 + k * 5
+        lit_fill(img, [(4, y0 + 2), (24, y0 - 2), (28, y0 + 1), (8, y0 + 5)], ["#6b5638", "#7a6442", "#87704b", "#937b53"], 60 + k)
+    for x in (10, 20):
+        line(img, x, 4, x + 2, 27, "#c8b06a")
+    return finish(img)
+
+
+@icon("paddle")
+def _():
+    img = blank()
+    stroke(img, 6, 27, 20, 11, 2.4, WOOD, 61)
+    lit_fill(img, [(18, 9), (23, 3), (29, 6), (27, 13), (22, 14)], ["#8a6538", "#a47d4c", "#bd935b", "#cfa66c"], 62)
+    return finish(img)
+
+
+@icon("sail")
+def _():
+    img = blank()
+    stroke(img, 15, 30, 15, 2, 2.2, WOOD, 63)
+    lit_fill(img, [(16, 5), (28, 7), (27, 23), (16, 21)], ["#a58a4a", "#b99d57", "#ccb066", "#dcc27a"], 64)
+    for y in range(7, 22, 4):
+        line(img, 17, y, 27, y + 1, "#8c7442")
+    return finish(img)
+
+
+@icon("steering_oar")
+def _():
+    img = blank()
+    stroke(img, 4, 28, 22, 6, 2.4, WOOD, 65)
+    lit_fill(img, [(20, 6), (26, 2), (30, 5), (27, 12), (22, 10)], ["#8a6538", "#a47d4c", "#bd935b", "#cfa66c"], 66)
+    line(img, 9, 20, 13, 24, "#c8b06a")
+    return finish(img)
+
+
+@icon("anchor")
+def _():
+    img = blank()
+    lit_fill(img, [(8, 16), (13, 11), (21, 11), (25, 16), (22, 25), (11, 25)], MATS["stone"], 67)
+    for i in range(10):
+        put(img, 16 + int(math.sin(i * 0.8) * 2), 1 + i, "#b39d6a", wrap=False)
+    return finish(img)
+
+
+def meat(lean, fat, seed):
+    img = blank()
+    lit_fill(img, [(5, 15), (9, 8), (18, 6), (26, 9), (28, 17), (23, 25), (12, 26), (6, 22)], lean, seed)
+    # a rim of fat and a bone end
+    for i in range(14):
+        a = i / 13.0 * math.pi
+        put(img, int(16 + math.cos(a) * 11), int(17 + math.sin(a) * 8), fat, wrap=False)
+    blob(img, 8, 21, 3, 3, lambda dx, dy: shade(hexc("#e8e0cc"), 1.0 - dy * 0.15), wrap=False)
+    return finish(img)
+
+
+@icon("meat_raw")
+def _():
+    return meat(["#7a1f22", "#93282a", "#ab3a37", "#c45550", "#d77a72"], "#efe2d4", 80)
+
+
+@icon("meat_cooked")
+def _():
+    return meat(["#4a2614", "#5e321b", "#764224", "#8d5530", "#a46a3e"], "#c99b62", 81)
+
+
+def crab(body, leg):
+    img = blank()
+    # legs and claws first, the shell over them
+    for side in (-1, 1):
+        for k in range(3):
+            y = 17 + k * 3
+            line(img, 16 + side * 6, y, 16 + side * 12, y + 3, leg)
+            line(img, 16 + side * 12, y + 3, 16 + side * 13, y + 6, leg)
+        line(img, 16 + side * 6, 13, 16 + side * 10, 8, leg)
+        blob(img, 16 + side * 11, 6, 3, 2, lambda dx, dy: shade(hexc(body[2]), 1.0 - dy * 0.2), wrap=False)
+    lit_fill(img, [(8, 15), (11, 11), (21, 11), (24, 15), (21, 21), (11, 21)], body, 82)
+    put(img, 13, 11, "#111111", wrap=False)
+    put(img, 19, 11, "#111111", wrap=False)
+    return finish(img)
+
+
+@icon("crab_raw")
+def _():
+    return crab(["#4b2a1e", "#6a3a26", "#87502f", "#a3663a", "#bb7c48"], "#7a4a2c")
+
+
+@icon("crab_cooked")
+def _():
+    return crab(["#8e2414", "#b2361c", "#d14b26", "#e66a38", "#f08a55"], "#c2482a")
+
+
+def egg(cols, seed):
+    img = blank()
+    blob(img, 16, 17, 8, 10, lambda dx, dy: ramp(cols, np.array([[0.75 - dx * 0.25 - dy * 0.3]]), steps=len(cols))[0, 0], wrap=False)
+    r = rnd(seed)
+    for _ in range(6):
+        x, y = int(r.uniform(11, 21)), int(r.uniform(11, 24))
+        if img[y, x, 3] > 0:
+            put(img, x, y, shade(img[y, x], 0.85), wrap=False)
+    return finish(img)
+
+
+@icon("egg")
+def _():
+    return egg(["#b39e7c", "#cbb795", "#ddcbaa", "#ebdcc0", "#f5ead6"], 83)
+
+
+@icon("egg_roasted")
+def _():
+    return egg(["#6b4a2c", "#86603a", "#a07a4c", "#b89260", "#ccaa78"], 84)
+
+
+@icon("hide")
+def _():
+    img = blank()
+    lit_fill(img, [(6, 9), (11, 5), (15, 8), (20, 5), (26, 9), (25, 17), (28, 24), (21, 27), (16, 24), (10, 28), (4, 23), (7, 16)],
+             ["#4a3424", "#5e432d", "#735538", "#8a6844", "#9e7b52"], 85, noise=0.4)
+    return finish(img)
+
+
+def skin_bag(fill):
+    img = blank()
+    lit_fill(img, [(9, 12), (13, 9), (20, 9), (24, 13), (26, 22), (22, 28), (11, 28), (7, 22)], ["#4b3322", "#5e412b", "#735236", "#876342", "#9b744e"], 86)
+    stroke(img, 14, 9, 17, 3, 2.6, ["#3b2819", "#4b3322", "#5e412b"], 87)
+    for i in range(-2, 3):
+        put(img, 16 + i, 8, "#c9b27a", wrap=False)
+    if fill:
+        blob(img, 16, 20, 5, 4, lambda dx, dy: (0.0, 0.0, 0.0, 0.0), wrap=False)
+        lit_fill(img, [(12, 18), (20, 18), (21, 22), (16, 25), (11, 22)], ["#3c4f5a", "#4e6773", "#5f7d8a"], 88)
+    return finish(img)
+
+
+@icon("waterskin")
+def _():
+    return skin_bag(False)
+
+
+@icon("waterskin@water")
+def _():
+    return skin_bag(True)
 
 
 @icon("hand")

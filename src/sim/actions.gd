@@ -21,6 +21,8 @@ var fire: FireActs
 var craft: CraftActs
 var farm: FarmActs
 var water: WaterSim
+var rafts: RaftSim
+var animals: AnimalSim
 
 
 func _ready() -> void:
@@ -29,6 +31,11 @@ func _ready() -> void:
 	craft = CraftActs.new(self)
 	farm = FarmActs.new(self)
 	water = WaterSim.new(self)
+	rafts = RaftSim.new(self)
+	animals = AnimalSim.new(self)
+	animals.populate()
+	# rafts move before the players who ride them
+	process_physics_priority = -10
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +46,7 @@ const ARG_TYPES := {
 	"c": TYPE_VECTOR3I, "face": TYPE_VECTOR3I, "slot": TYPE_INT, "i": TYPE_INT, "r": TYPE_STRING,
 	"sneak": TYPE_BOOL, "add": TYPE_BOOL, "cells": TYPE_PACKED_INT32_ARRAY, "button": TYPE_INT, "shift": TYPE_BOOL,
 	"all": TYPE_BOOL, "amount": TYPE_FLOAT, "cause": TYPE_STRING, "state": TYPE_DICTIONARY, "eid": TYPE_INT,
-	"point": TYPE_VECTOR3, "kind": TYPE_STRING, "yaw": TYPE_FLOAT,
+	"point": TYPE_VECTOR3, "kind": TYPE_STRING, "yaw": TYPE_FLOAT, "cell": TYPE_VECTOR3I, "dir": TYPE_VECTOR3,
 }
 
 
@@ -68,6 +75,14 @@ func handle(pid: int, action: String, args: Dictionary) -> void:
 		"drink": drink(pid, args)
 		"inv_click": inv_click(pid, args)
 		"inv_swap": inv_swap(pid, args)
+		"raft_new": rafts.new_raft(pid, args)
+		"raft_place": rafts.place(pid, args)
+		"raft_break": rafts.take(pid, args)
+		"raft_use": rafts.use(pid, args)
+		"paddle": rafts.paddle(pid, args)
+		"helm": rafts.helm(pid, args)
+		"hit": animals.hit(pid, args)
+		"animal_use": animals.use(pid, args)
 		"inv_close": close_inventory(pid)
 		"container_click": craft.container_click(pid, args)
 		"drop": drop(pid, args)
@@ -230,6 +245,8 @@ func _physics_process(delta: float) -> void:
 	if not World.running:
 		return
 	water.step(delta)
+	rafts.step(delta)
+	animals.step(delta)
 	_pickup_t -= delta
 	if _pickup_t > 0.0:
 		return
@@ -398,6 +415,25 @@ func eat(pid: int, args: Dictionary) -> void:
 		World.mark_inventory(pid)
 		World.fx("drink" if what == "water" else "eat", player_pos(pid) + Vector3(0, 1.5, 0), {"pid": pid})
 		return
+	# a pot of water, a waterskin
+	if id == "pot" and int(d.get("w", 0)) > 0:
+		if bool(d.get("salt", false)):
+			Survival.drink(pid, -0.08)
+			World.notify(pid, "Salt water! Boil it over a fire first.", "warn")
+		else:
+			Survival.drink(pid, 0.35)
+		var left := int(d["w"]) - 1
+		inv.set_data(slot, {"w": left, "salt": d.get("salt", false)} if left > 0 else {})
+		World.mark_inventory(pid)
+		World.fx("drink", player_pos(pid) + Vector3(0, 1.5, 0), {"pid": pid})
+		return
+	if id == "waterskin" and String(d.get("c", "")) == "water" and int(d.get("n", 0)) > 0:
+		Survival.drink(pid, 0.35)
+		var n := int(d["n"]) - 1
+		inv.set_data(slot, {"c": "water", "n": n} if n > 0 else {})
+		World.mark_inventory(pid)
+		World.fx("drink", player_pos(pid) + Vector3(0, 1.5, 0), {"pid": pid})
+		return
 	var f := ItemDB.food(id)
 	if f.is_empty():
 		return
@@ -408,6 +444,7 @@ func eat(pid: int, args: Dictionary) -> void:
 	inv.take_from(slot, 1)
 	World.mark_inventory(pid)
 	Survival.eat(pid, f, not f.has("cook"))
+	flag_player(pid, "ate:" + id)
 	World.fx("eat", player_pos(pid) + Vector3(0, 1.5, 0), {"pid": pid})
 
 

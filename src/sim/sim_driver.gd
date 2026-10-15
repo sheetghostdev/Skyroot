@@ -47,6 +47,7 @@ func _tick(hours: float, real_dt: float) -> void:
 		return
 	a.fire.tick(hours, real_dt)
 	a.farm.tick(hours)
+	a.animals.tick(hours)
 	var fires: Array = a.fire.heat_sources()
 	for pid in Net.players:
 		var pose: Dictionary = Net.poses.get(pid, {})

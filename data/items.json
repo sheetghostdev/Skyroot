@@ -56,7 +56,23 @@
 	"seeds_flax": {"label": "Flax seeds", "stack": 32, "crop": "crop_flax", "desc": "Right-click farmland to sow. Flax gives fiber."},
 	"palm_log": {"label": "Palm log", "stack": 16, "block": "palm_log", "desc": "Light and straight: good raft timber. Split it into firewood with an axe, or build with it."},
 	"palm_frond": {"label": "Palm frond", "stack": 32, "fuel": "tinder", "desc": "A long palm leaf. Two make a bundle of thatch; dry, it catches fire easily."},
-	"coconut": {"label": "Coconut", "stack": 8, "food": {"hunger": 0.06, "thirst": 0.22}, "desc": "Hold right click to drink the milk and eat the flesh. Fresh water where there is none."},
+	"coconut": {"label": "Coconut", "stack": 8, "food": {"hunger": 0.06, "thirst": 0.22}, "desc": "Hold right click to drink the milk and eat the flesh: fresh water where there is none. Sneak and right-click one onto sand to plant a palm."},
 	"seaweed": {"label": "Seaweed", "stack": 32, "food": {"hunger": 0.02, "thirst": -0.03}, "desc": "Salty. It fills you a little, but makes you thirsty."},
-	"sapling_palm": {"label": "Palm sapling", "stack": 16, "block": "sapling_palm", "desc": "Plant it in sand or soil and in a few days there will be a palm."}
+	"raft_floor": {"label": "Raft section", "stack": 16, "block": "raft_floor", "raft": true, "desc": "Logs lashed together. Right-click the sea to float one; right-click the edge of a raft to add another. Build on it like ground."},
+	"paddle": {"label": "Paddle", "stack": 1, "tool": {"kind": "paddle", "dur": 400, "speed": 1.0}, "desc": "Stand on a raft and hold right click to paddle the way you look. Paddle on one side to turn."},
+	"sail": {"label": "Sail", "stack": 4, "block": "raft_sail", "raft": true, "desc": "A mast and a sail of woven fronds. Set it on a raft; right-click it to raise or lower the sail. The wind pushes a raised sail."},
+	"steering_oar": {"label": "Steering oar", "stack": 1, "block": "steering_oar", "raft": true, "desc": "Set it at the back of a raft and right-click it to take the helm: A and D steer while the raft moves."},
+	"anchor": {"label": "Anchor stone", "stack": 4, "block": "anchor", "raft": true, "desc": "A stone on a rope. Set it on a raft and right-click it to drop it: the raft stays where it is."},
+	"sapling_palm": {"label": "Palm sapling", "stack": 16, "block": "sapling_palm", "desc": "Plant it in sand or soil and in a few days there will be a palm."},
+
+	"spear_head": {"label": "Spear point", "stack": 1, "desc": "Knapped spear point. Lash it to the end of two sticks in the crafting grid.", "part": true},
+	"spear": {"label": "Spear", "stack": 1, "tool": {"kind": "spear", "dur": 40, "speed": 1.0}, "desc": "For hunting: it strikes harder and from further away than a knife."},
+	"meat_raw": {"label": "Raw meat", "stack": 16, "food": {"hunger": 0.04, "cook": "meat_cooked", "cook_s": 40}, "desc": "Roast it over a fire, or put it in a stew."},
+	"meat_cooked": {"label": "Roast meat", "stack": 16, "food": {"hunger": 0.32}, "desc": "Rich and filling."},
+	"crab_raw": {"label": "Crab", "stack": 16, "food": {"hunger": 0.03, "cook": "crab_cooked", "cook_s": 25}, "desc": "Caught on the beach. Roast it over a fire."},
+	"crab_cooked": {"label": "Roast crab", "stack": 16, "food": {"hunger": 0.16}, "desc": "Sweet white meat in a red shell."},
+	"egg": {"label": "Egg", "stack": 16, "food": {"hunger": 0.03, "cook": "egg_roasted", "cook_s": 15}, "desc": "Junglefowl lay them where they live. Roast it, or stew it."},
+	"egg_roasted": {"label": "Roasted egg", "stack": 16, "food": {"hunger": 0.12}, "desc": "Hot from the embers."},
+	"hide": {"label": "Goat hide", "stack": 8, "desc": "A raw hide. Lash it into a waterskin with twine to carry fresh water to sea."},
+	"waterskin": {"label": "Waterskin", "stack": 1, "desc": "Right-click fresh water to fill it; it holds four long drinks. Hold right click to drink."}
 }

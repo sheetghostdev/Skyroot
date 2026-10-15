@@ -1,3 +1,4 @@
+class_name DebugShot
 extends Node
 ## Automated looks at the game, for development: starts a world (main.gd's
 ## --autostart), sets up a scene, saves a screenshot and quits.
@@ -6,7 +7,7 @@ extends Node
 ##   --pos=x,y,z          put the player here       --yaw=deg --pitch=deg
 ##   --hour=h             time of day               --tp  third person    --sit  sitting down
 ##   --give=id:n,id:n     items in the hotbar       --slot=n  select hotbar slot
-##   --setup=name         a staged scene (firepit, firepit_lit, knap, clay, kiln, kiln_lit, ground, fell, inventory, handbook, chooser, night, rain)
+##   --setup=name         a staged scene (firepit, firepit_lit, knap, clay, kiln, kiln_lit, ground, fell, inventory, handbook, chooser, night, rain, raft)
 ##   --after=secs         (fell) how long after the felling to take the picture
 ##   --smoke=secs         just run for a while, then quit
 ##   --perf=secs          print frame time stats
@@ -236,6 +237,35 @@ func _setup(nm: String, lp: LocalPlayer, gw) -> void:
 			World.set_block(c + Blocks.facing_dir(m), Blocks.id_of("straw_bed_head"), m)
 			World.set_block(c + fwd * 2, Blocks.id_of("straw_bed"), Blocks.facing_meta(lp.yaw))
 			World.set_block(c + fwd * 3, Blocks.id_of("straw_bed_head"), Blocks.facing_meta(lp.yaw))
+		"raft":
+			# a raft lying off the shore, rigged, with you aboard
+			var w := sea_spot(lp.global_position, 6.0)
+			var cells := {}
+			for z in 4:
+				for x in 3:
+					cells[Vector3i(x, 0, z)] = Vector2i(Blocks.id_of("raft_floor"), 0)
+			cells[Vector3i(1, 1, 1)] = Vector2i(Blocks.id_of("raft_sail"), 4)
+			cells[Vector3i(1, 1, 3)] = Vector2i(Blocks.id_of("steering_oar"), 0)
+			cells[Vector3i(2, 1, 0)] = Vector2i(Blocks.id_of("anchor"), 0)
+			cells[Vector3i(0, 1, 3)] = Vector2i(Blocks.id_of("torch"), 0)
+			var basis := Basis(Vector3.UP, lp.yaw)
+			var origin := Vector3(w.x, Raft.origin_y(int(World.geo.get("sea", 30))), w.z) - basis * Vector3(1.5, 0, 2.0)
+			World.spawn("raft", Transform3D(basis, origin), {"cells": cells, "v": Vector3.ZERO, "w": 0.0, "anchor": false})
+			if Game.cli.has("aboard"):
+				lp.respawn_at(Transform3D(basis, origin) * Vector3(1.5, Raft.DECK + 0.05, 3.4), lp.yaw)
+		"animals":
+			# one of each, standing still in front of you (and a young goat on a lead)
+			a.animals.paused = true
+			var fwd2 := Vector3(-sin(lp.yaw), 0, -cos(lp.yaw))
+			var side2 := Vector3(-fwd2.z, 0, fwd2.x)
+			var spots := [["crab", -1.4, 2.2], ["fowl", -0.4, 3.0], ["goat", 1.0, 3.6], ["goat", 2.3, 2.4]]
+			for k in spots.size():
+				var at: Vector3 = lp.global_position + fwd2 * float(spots[k][2]) + side2 * float(spots[k][1])
+				at.y = World.vox.rest_height(at + Vector3(0, 2.0, 0))
+				var yaw2: float = lp.yaw + PI + randf_range(-0.8, 0.8)
+				var eid2 := a.animals.spawn(String(spots[k][0]), at, a.animals.island_at(at), yaw2, World.hours() - (10.0 if k == 3 else 1000.0))
+				if k == 3:
+					World.update(eid2, {"lead": pid})
 		"inventory":
 			gw.hud.open_panel("inventory")
 		"handbook":
@@ -255,12 +285,13 @@ var _ok := 0
 var _bad := 0
 
 
-func _say(cond: bool, what: String) -> void:
+func _say(cond: bool, what: String) -> bool:
 	if cond:
 		_ok += 1
 	else:
 		_bad += 1
 	print("PLAY %s %s" % ["ok  " if cond else "FAIL", what])
+	return cond
 
 
 func aim_at(lp: LocalPlayer, p: Vector3) -> void:
@@ -291,6 +322,40 @@ func _hold_for(action: String, secs: float) -> void:
 	Input.action_release(action)
 	await get_tree().process_frame
 	await get_tree().process_frame
+
+
+static func land_near(p: Vector3) -> Vector3:
+	## The ground at (or nearest to) p.
+	for r in range(0, 8):
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var x := int(p.x) + dx
+				var z := int(p.z) + dz
+				var y := World.vox.surface_y(x, z)
+				if y > int(World.geo.get("sea", 30)) and World.block(Vector3i(x, y + 1, z)) == 0 and World.block(Vector3i(x, y + 2, z)) == 0:
+					return Vector3(x + 0.5, y + 1.0, z + 0.5)
+	return p
+
+
+static func sea_spot(near: Vector3, clear: float) -> Vector3:
+	## The nearest point on the sea surface with open water (no bottom near the
+	## top) for clear metres all round.
+	var sea := int(World.geo.get("sea", 30))
+	var r := int(clear)
+	for ring in range(2, 60):
+		for k in ring * 8:
+			var a := k * TAU / (ring * 8)
+			var x := int(near.x + cos(a) * ring)
+			var z := int(near.z + sin(a) * ring)
+			var ok := true
+			for dz in range(-r, r + 1, 2):
+				for dx in range(-r, r + 1, 2):
+					for y in [sea - 1, sea, sea + 1]:
+						if Blocks.is_solid(World.vox.get_id(x + dx, y, z + dz)):
+							ok = false
+			if ok and World.vox.get_id(x, sea, z) == Blocks.sea:
+				return Vector3(x + 0.5, sea + 0.875, z + 0.5)
+	return near
 
 
 func _frames_n(n: int) -> void:
@@ -419,6 +484,8 @@ func run_play(kind: String, lp: LocalPlayer, gw) -> void:
 			await _frames_n(6)
 			var left := inv.count("berries")
 			_say(left <= 3, "holding right click eats one after another (%d left of 5)" % left)
+		"raft":
+			await _play_raft(lp, gw, inv)
 		"build":
 			inv.set_slot(0, Inventory.make("dirt", 5))
 			World.mark_inventory(Net.my_id())
@@ -435,3 +502,141 @@ func run_play(kind: String, lp: LocalPlayer, gw) -> void:
 			await _frames_n(4)
 			_say(World.block(up) == 0, "holding left click dug it out again")
 	print("PLAY RESULT %d ok, %d failed" % [_ok, _bad])
+
+
+func _wait_s(secs: float) -> void:
+	var t := 0.0
+	while t < secs:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+
+
+func _play_raft(lp: LocalPlayer, gw, inv: Inventory) -> void:
+	## Build a raft from the shore, climb aboard, rig it, sail and paddle, fall
+	## off and climb back on.
+	var w := sea_spot(lp.global_position, 3.0)
+	var sea := float(World.geo.get("sea", 30)) + 0.875
+	# stand in the shallows a little way off, looking at the spot
+	var to := Vector3(w.x, 0, w.z) - Vector3(lp.global_position.x, 0, lp.global_position.z)
+	var stand := w - to.normalized() * 3.0
+	stand.y = sea + 0.2
+	lp.respawn_at(stand, atan2(-to.x, -to.z))
+	inv.set_slot(0, Inventory.make("raft_floor", 6))
+	inv.set_slot(1, Inventory.make("sail", 1))
+	inv.set_slot(2, Inventory.make("paddle", 1, {"dur": 400}))
+	inv.set_slot(3, Inventory.make("steering_oar", 1))
+	World.mark_inventory(Net.my_id())
+	lp.select_hotbar(0)
+	await _frames_n(20)
+	aim_at(lp, Vector3(w.x, sea, w.z))
+	await _frames_n(4)
+	var tg := lp.interactor.target
+	_say(String(lp.interactor.rmb_rule.get("kind", "")) == "raft_new", "holding a raft section over the sea: %s (looking at %s %s, normal %s, from %s to %s)" % [
+		String(lp.interactor.rmb_rule.get("text", "")), tg.get("type", ""), Blocks.name_of(int(tg.get("id", 0))), tg.get("normal", ""), lp.eye_position(), tg.get("point", "")])
+	await _press("secondary", 2)
+	await _frames_n(6)
+	var rafts := World.entities_of("raft")
+	if not _say(rafts.size() == 1, "right click floated it"):
+		return
+	var eid: int = rafts[0]["id"]
+	var xf: Transform3D = rafts[0]["xf"]
+	# lash on three more beside it, aiming at the water next to it
+	for c in [Vector3(1.5, 0, 0.5), Vector3(0.5, 0, 1.5), Vector3(1.5, 0, 1.5)]:
+		var p: Vector3 = xf * (c as Vector3)
+		aim_at(lp, Vector3(p.x, sea, p.z))
+		await _frames_n(4)
+		await _press("secondary", 2)
+		await _frames_n(6)
+	var cells: Dictionary = World.get_entity(eid)["d"]["cells"]
+	_say(Raft.floor_count(cells) == 4, "lashed three more sections on (%d)" % Raft.floor_count(cells))
+	# climb aboard from the water
+	var deck := xf * Vector3(1.0, Raft.DECK, 1.0)
+	var t := 0.0
+	Input.action_press("move_forward")
+	Input.action_press("jump")
+	while t < 8.0 and lp.riding != eid:
+		var d := deck - lp.global_position
+		lp.yaw = atan2(-d.x, -d.z)
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	Input.action_release("move_forward")
+	Input.action_release("jump")
+	await _frames_n(20)
+	_say(lp.riding == eid and lp.body.on_ground, "swam over and climbed aboard (%.1fs)" % t)
+	# put up a sail on the deck and raise it
+	lp.select_hotbar(1)
+	lp.respawn_at(xf * Vector3(0.5, Raft.DECK, 1.5), lp.yaw)
+	await _frames_n(6)
+	_say(lp.riding == eid, "standing on the deck")
+	aim_at(lp, xf * Vector3(1.5, Raft.DECK, 0.5))
+	await _frames_n(4)
+	_say(String(lp.interactor.rmb_rule.get("kind", "")) == "raft_place", "looking at the deck with a sail: %s" % String(lp.interactor.rmb_rule.get("text", "")))
+	await _press("secondary", 2)
+	await _frames_n(6)
+	cells = World.get_entity(eid)["d"]["cells"]
+	_say(cells.has(Vector3i(1, 1, 0)), "the sail stands on the deck")
+	lp.select_hotbar(4)
+	aim_at(lp, xf * Vector3(1.5, Raft.DECK + 1.2, 0.5))
+	await _frames_n(4)
+	tg = lp.interactor.target
+	_say(String(lp.interactor.rmb_rule.get("kind", "")) == "raft_use", "the sail: %s (looking at %s %s cell %s, holding '%s')" % [String(lp.interactor.rmb_rule.get("text", "")),
+		tg.get("type", ""), Blocks.name_of(int(tg.get("id", 0))), tg.get("cell", ""), lp.held_id()])
+	await _press("secondary", 2)
+	await _frames_n(6)
+	cells = World.get_entity(eid)["d"]["cells"]
+	_say(cells.has(Vector3i(1, 1, 0)) and ((cells[Vector3i(1, 1, 0)] as Vector2i).y & 4) != 0, "raised it")
+	# the wind takes it, and you with it
+	World.env["wind"] = Vector2(-sin(lp.yaw), -cos(lp.yaw)) * 4.0
+	var start := (World.get_entity(eid)["xf"] as Transform3D).origin
+	var local0 := (World.get_entity(eid)["xf"] as Transform3D).affine_inverse() * lp.global_position
+	await _wait_s(4.0)
+	var exf: Transform3D = World.get_entity(eid)["xf"]
+	var local1 := exf.affine_inverse() * lp.global_position
+	_say(exf.origin.distance_to(start) > 2.0, "under sail (%.1f m in 4 s)" % exf.origin.distance_to(start))
+	_say(lp.riding == eid and local0.distance_to(local1) < 0.3, "and you ride along with it (slid %.2f m on deck)" % local0.distance_to(local1))
+	# jump on the moving deck: you come down on it again
+	await _press("jump", 2)
+	await _wait_s(1.2)
+	local1 = (World.get_entity(eid)["xf"] as Transform3D).affine_inverse() * lp.global_position
+	_say(lp.riding == eid and lp.body.on_ground and local0.distance_to(local1) < 0.6, "a jump lands back on the deck (%.2f m)" % local0.distance_to(local1))
+	# furl the sail, paddle instead
+	aim_at(lp, World.get_entity(eid)["xf"] * Vector3(1.5, Raft.DECK + 1.2, 0.5))
+	await _frames_n(3)
+	await _press("secondary", 2)
+	World.env["wind"] = Vector2(0.01, 0.0)
+	World.get_entity(eid)["d"]["v"] = Vector3.ZERO
+	lp.select_hotbar(2)
+	lp.pitch = -0.4
+	await _frames_n(4)
+	_say(String(lp.interactor.rmb_rule.get("kind", "")) == "paddle", "with a paddle: %s" % String(lp.interactor.rmb_rule.get("text", "")))
+	await _hold_for("secondary", 2.0)
+	var v: Vector3 = World.get_entity(eid)["d"]["v"]
+	var look := lp.look_dir()
+	_say(v.dot(Vector3(look.x, 0, look.z)) > 0.3, "holding right click paddles it along (%.2f m/s)" % v.length())
+	# walk off the edge into the sea, and climb back on
+	World.get_entity(eid)["d"]["v"] = Vector3.ZERO
+	World.get_entity(eid)["d"]["w"] = 0.0
+	await _frames_n(10)
+	exf = World.get_entity(eid)["xf"]
+	var off := exf.basis * Vector3(-1, 0, 0)
+	lp.yaw = atan2(-off.x, -off.z)
+	Input.action_press("move_forward")
+	t = 0.0
+	while t < 4.0 and not lp.in_water:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	Input.action_release("move_forward")
+	await _wait_s(0.8)
+	_say(lp.in_water and lp.riding < 0, "walked off the side into the sea")
+	t = 0.0
+	Input.action_press("move_forward")
+	Input.action_press("jump")
+	while t < 8.0 and lp.riding != eid:
+		var d := (World.get_entity(eid)["xf"] as Transform3D) * Vector3(1.0, Raft.DECK, 1.0) - lp.global_position
+		lp.yaw = atan2(-d.x, -d.z)
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	Input.action_release("move_forward")
+	Input.action_release("jump")
+	await _frames_n(10)
+	_say(lp.riding == eid, "and climbed back on (%.1fs)" % t)

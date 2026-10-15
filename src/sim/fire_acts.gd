@@ -25,6 +25,7 @@ const KILN_STICKS := 6
 const KILN_H := 3.0
 const RAIN_OUT_S := 7.0
 const STEW_S := 32.0
+const DESALT_S := 45.0           # boiling a pot of sea water fresh (the salt stays behind)
 const CRACK := [0.45, 0.32, 0.2, 0.08, 0.0]
 
 var a: Actions
@@ -104,10 +105,12 @@ func use_firepit(pid: int, be: Dictionary, slot: int, sneak: bool) -> void:
 		_light_firepit(pid, be)
 	elif id == "pot" and pot.is_empty():
 		inv.take_from(slot, 1)
-		World.update(be["id"], {"pot": {"water": int(s["d"].get("w", 0)), "items": [], "stew": 0, "t": 0.0}})
+		World.update(be["id"], {"pot": {"water": int(s["d"].get("w", 0)), "items": [], "stew": 0, "t": 0.0, "salt": bool(s["d"].get("salt", false))}})
 		World.fx("place", at, {"b": 0})
 	elif id == "bowl" and not pot.is_empty():
 		_bowl_at_pot(pid, be, slot, s)
+	elif id == "waterskin" and not pot.is_empty():
+		_skin_at_pot(pid, be, slot, s)
 	elif String(ItemDB.food(id).get("cook", "")) != "":
 		if not pot.is_empty() and int(pot.get("water", 0)) > 0 and int(pot.get("stew", 0)) == 0:
 			if (pot["items"] as Array).size() >= 4:
@@ -151,12 +154,48 @@ func _bowl_at_pot(pid: int, be: Dictionary, slot: int, s: Dictionary) -> void:
 		World.update(be["id"], {"pot": pot})
 		World.fx("splash", Vector3(d["cell"]) + Vector3(0.5, 0.6, 0.5))
 		a.flag_player(pid, "made_stew")
-	elif content == "water" and int(pot.get("stew", 0)) == 0 and int(pot.get("water", 0)) < 3:
+	elif (content == "water" or content == "sea") and int(pot.get("stew", 0)) == 0 and int(pot.get("water", 0)) < 3:
 		pot["water"] = int(pot["water"]) + 1
+		if content == "sea":
+			pot["salt"] = true
 		inv.set_data(slot, {})
 		World.update(be["id"], {"pot": pot})
 		World.fx("splash", Vector3(d["cell"]) + Vector3(0.5, 0.6, 0.5))
+	elif content == "" and int(pot.get("stew", 0)) == 0 and int(pot.get("water", 0)) > 0 and (pot.get("items", []) as Array).is_empty():
+		# ladle out a bowl of what's in the pot
+		pot["water"] = int(pot["water"]) - 1
+		var what := "sea" if bool(pot.get("salt", false)) else "water"
+		if int(s["n"]) > 1:
+			inv.take_from(slot, 1)
+			a.give(pid, "bowl", 1, {"c": what})
+		else:
+			inv.set_data(slot, {"c": what})
+		World.update(be["id"], {"pot": pot})
+		World.fx("splash", Vector3(d["cell"]) + Vector3(0.5, 0.6, 0.5))
 	World.mark_inventory(pid)
+
+
+func _skin_at_pot(pid: int, be: Dictionary, slot: int, s: Dictionary) -> void:
+	## Fill a waterskin from a pot of boiled (fresh) water.
+	var d: Dictionary = be["d"]
+	var pot: Dictionary = (d["pot"] as Dictionary).duplicate(true)
+	if int(pot.get("water", 0)) <= 0 or int(pot.get("stew", 0)) > 0 or not (pot.get("items", []) as Array).is_empty():
+		return
+	if bool(pot.get("salt", false)):
+		World.notify(pid, "That's still sea water: let it boil first.", "warn")
+		return
+	var have := int(s["d"].get("n", 0)) if String(s["d"].get("c", "")) == "water" else 0
+	var take := mini(WATERSKIN_MAX - have, int(pot["water"]))
+	if take <= 0:
+		return
+	pot["water"] = int(pot["water"]) - take
+	World.inventory_of(pid).set_data(slot, {"c": "water", "n": have + take})
+	World.update(be["id"], {"pot": pot})
+	World.fx("splash", Vector3(d["cell"]) + Vector3(0.5, 0.6, 0.5))
+	World.mark_inventory(pid)
+
+
+const WATERSKIN_MAX := 4
 
 
 func take_from_firepit(pid: int, be: Dictionary) -> void:
@@ -182,7 +221,12 @@ func take_from_firepit(pid: int, be: Dictionary) -> void:
 			World.notify(pid, "Ladle the stew out with a bowl first.")
 			return
 		World.update(be["id"], {"pot": {}})
-		a.give(pid, "pot", 1, {"w": int(pot.get("water", 0))} if int(pot.get("water", 0)) > 0 else {})
+		var pd := {}
+		if int(pot.get("water", 0)) > 0:
+			pd = {"w": int(pot["water"])}
+			if bool(pot.get("salt", false)):
+				pd["salt"] = true
+		a.give(pid, "pot", 1, pd)
 
 
 func firepit_contents(be: Dictionary) -> Array:
@@ -423,8 +467,16 @@ func _burn(e: Dictionary, hours: float, real_dt: float) -> void:
 	if food_changed:
 		changes["food"] = food.duplicate(true)
 		World.fx("sizzle", Vector3(c) + Vector3(0.5, 0.4, 0.5))
-	# stew
+	# stew, or sea water boiling fresh
 	var pot: Dictionary = d.get("pot", {})
+	if not pot.is_empty() and bool(pot.get("salt", false)) and int(pot.get("water", 0)) > 0 and int(pot.get("stew", 0)) == 0 and (pot.get("items", []) as Array).is_empty():
+		pot["t"] = float(pot.get("t", 0.0)) + real_dt * rate
+		if float(pot["t"]) >= DESALT_S:
+			changes["pot"] = {"water": int(pot["water"]), "items": [], "stew": 0, "t": 0.0, "salt": false}
+			World.fx("steam", Vector3(c) + Vector3(0.5, 0.7, 0.5))
+			for pid2 in Net.players:
+				if a.player_pos(pid2).distance_to(Vector3(c)) < 10.0:
+					a.flag_player(pid2, "desalted")
 	if not pot.is_empty() and int(pot.get("water", 0)) > 0 and int(pot.get("stew", 0)) == 0 and not (pot.get("items", []) as Array).is_empty():
 		pot["t"] = float(pot.get("t", 0.0)) + real_dt * rate
 		if float(pot["t"]) >= STEW_S:

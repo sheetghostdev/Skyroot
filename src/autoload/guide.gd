@@ -43,9 +43,11 @@ func _load_data() -> void:
 		var ids: Array = []
 		for p in c.get("pages", []):
 			p["cat"] = c["id"]
+			if c.has("modes") and not p.has("modes"):
+				p["modes"] = c["modes"]
 			pages[p["id"]] = p
 			ids.append(p["id"])
-		categories.append({"id": c["id"], "title": c["title"], "pages": ids})
+		categories.append({"id": c["id"], "title": c["title"], "pages": ids, "modes": c.get("modes", [])})
 	goals = g.get("goals", [])
 	discovery_defs = g.get("discoveries", {})
 	hints = _load_json("res://data/hints.json")
@@ -145,6 +147,8 @@ func search(query: String) -> Array:
 	var out: Array = []
 	for id in pages:
 		var p: Dictionary = pages[id]
+		if not for_this_world(p):
+			continue
 		if q == "" or String(p["title"]).to_lower().contains(q) or String(p.get("body", "")).to_lower().contains(q):
 			out.append(id)
 	for item in ItemDB.items:
@@ -198,8 +202,25 @@ func has_flag(name: String) -> bool:
 	return flags.has(name)
 
 
+static func for_this_world(d: Dictionary) -> bool:
+	## Goals, pages and categories can belong to one kind of world ("sky", "sea").
+	var modes: Array = d.get("modes", [])
+	return modes.is_empty() or modes.has(World.kind)
+
+
+func active_goals() -> Array:
+	return goals.filter(func(g): return for_this_world(g))
+
+
+func hint_for(hint_id: String) -> String:
+	## In an archipelago some hints have their own wording ("thirsty_sea").
+	if World.kind == "sea" and hints.has(hint_id + "_sea"):
+		return hint_id + "_sea"
+	return hint_id
+
+
 func current_goal() -> Dictionary:
-	for g in goals:
+	for g in active_goals():
 		if not done.has(g["id"]):
 			return g
 	return {}
@@ -242,7 +263,7 @@ func _count_any(inv: Inventory, id: String) -> int:
 
 func check_goals() -> void:
 	var changed := false
-	for g in goals:
+	for g in active_goals():
 		if done.has(g["id"]):
 			continue
 		if goal_met(g):

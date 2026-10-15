@@ -29,5 +29,9 @@ echo "== a client crashes and comes straight back"
 OUT="$OUT/crash" tools/mp_crash.sh > "$OUT/crash.log" 2>&1 || status=1
 grep -E "RESULT|FAIL|exit codes" "$OUT/crash.log"
 
+echo "== at sea: a raft, a paddle, a goat on a lead"
+OUT="$OUT/sea" tools/mp_sea.sh > "$OUT/sea.log" 2>&1 || status=1
+grep -E "RESULT|FAIL|exit codes" "$OUT/sea.log"
+
 if [ $status -eq 0 ]; then echo "ALL PASSED"; else echo "SOMETHING FAILED (logs in $OUT)"; fi
 exit $status

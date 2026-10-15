@@ -11,6 +11,7 @@ var recipes: Array = []
 var knapping: Dictionary = {}     # recipe id -> {"label", "mask": PackedByteArray(256)}
 var clayforming: Dictionary = {}  # recipe id -> {"label", "out", "n", "layers": Array[PackedByteArray]}
 var stone_mask := PackedByteArray()
+var animals: Dictionary = {}      # species -> definition (data/animals.json)
 
 
 func _ready() -> void:
@@ -22,6 +23,8 @@ func load_all() -> void:
 	items = _load_json("res://data/items.json")
 	items.erase("_doc")
 	recipes = _load_json("res://data/recipes.json").get("recipes", [])
+	animals = _load_json("res://data/animals.json")
+	animals.erase("_doc")
 	var kn := _load_json("res://data/knapping.json")
 	for k in kn:
 		if String(k).begins_with("_"):
@@ -110,6 +113,10 @@ func label(id: String, d: Dictionary = {}) -> String:
 	elif mat == "stone":
 		base = "Stone " + base.to_lower()
 	var c := String(d.get("c", ""))
+	if id == "pot" and int(d.get("w", 0)) > 0:
+		base += " of %s (%d)" % ["sea water" if bool(d.get("salt", false)) else "water", int(d["w"])]
+	if id == "waterskin" and int(d.get("n", 0)) > 0:
+		return base + " (%d drink%s)" % [int(d["n"]), "" if int(d["n"]) == 1 else "s"]
 	if c == "water":
 		base += " of water"
 	elif c == "sea":
@@ -166,6 +173,8 @@ func item_of_block(block_id: int) -> String:
 func icon_key(id: String, d: Dictionary = {}) -> String:
 	var mat := String(d.get("mat", ""))
 	var c := String(d.get("c", ""))
+	if id == "pot" and int(d.get("w", 0)) > 0:
+		return "pot@water"
 	if mat != "" and Icons.has("%s@%s" % [id, mat]):
 		return "%s@%s" % [id, mat]
 	if c != "" and Icons.has("%s@%s" % [id, c]):

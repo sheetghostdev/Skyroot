@@ -15,5 +15,10 @@
 	"cold": {"text": "You're cold. Get close to a fire, or out of the wind: a roof and walls help. Rain and night make it worse."},
 	"hurt": {"text": "You're hurt. Health comes back slowly while you're fed, watered and warm - faster asleep."},
 	"dusk": {"text": "The sun is going down. Nights are cold here: have a fire burning, with firewood to keep it going, and somewhere sheltered to be."},
-	"rain": {"text": "Rain. It soaks you, chills you and drowns open fires. Shelter under a roof or the overhang of the knoll."}
+	"rain": {"text": "Rain. It soaks you, chills you and drowns open fires. Shelter under a roof or the overhang of the knoll."},
+	"welcome_sea": {"text": "You wake on a small island in a wide sea. Other islands lie all around - each has things this one lacks. Your first goal is in the top right; H opens the handbook."},
+	"thirsty_sea": {"text": "You're thirsty, and the sea is salt. Drink coconuts (break them down from under the palm fronds), or boil sea water in a pot over a fire."},
+	"rain_sea": {"text": "Rain. It soaks you, chills you and drowns open fires. Shelter under a roof - or a sail."},
+	"raft": {"text": "Your raft! Right-click the water beside it to lash on more sections. Make a paddle (firewood above a stick) and hold right click on board to paddle the way you look."},
+	"animal_lead": {"text": "On the lead it follows you - onto your raft and across the sea. Right-click it again to let it go: where you let it go is its new home."}
 }

@@ -1,7 +1,8 @@
 class_name Interactor
 extends Node
 ## Works out what you're looking at (a block, a block entity such as a fire
-## pit or a knapping stone - down to the cell of its grid - or a dropped bag),
+## pit or a knapping stone - down to the cell of its grid - a raft's block, or
+## a dropped bag),
 ## outlines it, and turns the mouse buttons into requests: hold left to break
 ## (with the crack growing), click to chip or shape, right click to use, hold
 ## right to eat, drink or work a bow drill.
@@ -17,7 +18,7 @@ var rmb_rule: Dictionary = {}
 var brush := 0
 var knap_brush := 0
 
-var break_cell := Vector3i(-999, 0, 0)
+var break_key := ""
 var break_t := 0.0
 var break_need := 0.0
 var _swing_t := 0.0
@@ -148,7 +149,7 @@ func _compute_target() -> Dictionary:
 	var r := _ray()
 	var origin: Vector3 = r[0]
 	var dir: Vector3 = r[1]
-	var liquids := player.held_id() in ["", "bowl", "pot"]
+	var liquids := player.held_id() in ["", "bowl", "pot", "raft_floor"]
 	var hit := World.vox.raycast(origin, dir, REACH, be_box, liquids)
 	var best := {}
 	if not hit.is_empty():
@@ -164,6 +165,35 @@ func _compute_target() -> Dictionary:
 		var rr := VoxelData._ray_box(origin, dir, box)
 		if not rr.is_empty() and float(rr["t"]) < REACH and (best.is_empty() or float(rr["t"]) < float(best["dist"])):
 			best = {"type": "satchel", "eid": e["id"], "point": origin + dir * float(rr["t"]), "dist": rr["t"], "cell": VoxelData.cell_of(p), "normal": Vector3i.UP}
+	# rafts, each in its own frame
+	for v in RaftView.all():
+		var rv := v as RaftView
+		var xf := rv.view_xf()
+		if xf.origin.distance_to(origin) > REACH + Raft.MAX_SPAN * 1.5:
+			continue
+		var inv := xf.affine_inverse()
+		var cells := rv.cells()
+		var rh := Raft.raycast(cells, inv * origin, inv.basis * dir, REACH)
+		if rh.is_empty() or (not best.is_empty() and float(rh["dist"]) >= float(best["dist"])):
+			continue
+		var cv: Vector2i = cells[rh["cell"]]
+		best = {"type": "raft", "eid": rv.entity_id, "cell": rh["cell"], "normal": rh["normal"], "point": xf * (rh["point"] as Vector3),
+			"dist": rh["dist"], "id": cv.x, "m": cv.y, "xf": xf}
+	# animals
+	var reach := REACH + (1.2 if ItemDB.tool_kind(player.held_id()) == "spear" else 0.0)
+	for v in AnimalView.all():
+		var av := v as AnimalView
+		var axf := av.view_xf()
+		if axf.origin.distance_to(origin) > reach + 2.0:
+			continue
+		var sz := av.size()
+		var box := AABB(Vector3(-sz.x * 0.5, 0.0, -sz.x * 0.75), Vector3(sz.x, sz.y, sz.x * 1.5))
+		var ainv := axf.affine_inverse()
+		var ah := VoxelData._ray_box(ainv * origin, ainv.basis * dir, box)
+		if ah.is_empty() or float(ah["t"]) > reach or (not best.is_empty() and float(ah["t"]) >= float(best["dist"])):
+			continue
+		best = {"type": "animal", "eid": av.entity_id, "point": origin + dir * float(ah["t"]), "dist": ah["t"],
+			"cell": VoxelData.cell_of(axf.origin), "normal": Vector3i.UP, "xf": axf, "box": box}
 	if best.get("type", "") == "be":
 		best["sub"] = _sub_cell(best, origin, dir)
 	return best
@@ -282,7 +312,7 @@ func _process(delta: float) -> void:
 	_set_target(t)
 	var s := player.held_stack()
 	lmb_rule = UseRules.lmb(target, s)
-	rmb_rule = UseRules.rmb(target, s, Input.is_action_pressed("sneak"))
+	rmb_rule = UseRules.rmb(target, s, Input.is_action_pressed("sneak"), {"raft": player.riding})
 	var key := "%s|%s|%s" % [JSON.stringify(lmb_rule), JSON.stringify(rmb_rule), str(target.get("cell", ""))]
 	if key != _last_key:
 		_last_key = key
@@ -327,20 +357,27 @@ func _set_target(t: Dictionary) -> void:
 	var box: AABB
 	if t["type"] == "be":
 		box = be_box(c)
+	elif t["type"] == "raft":
+		box = Raft.select_box(int(t["id"]), int(t["m"]))
+		_box_lines(AABB(box.position + Vector3(c), box.size).grow(0.004), t["xf"])
+		return
+	elif t["type"] == "animal":
+		_box_lines((t["box"] as AABB).grow(0.02), t["xf"])
+		return
 	else:
 		box = Blocks.select.get(int(t["id"]), AABB(Vector3.ZERO, Vector3.ONE))
 	_box_lines(AABB(box.position + Vector3(c), box.size).grow(0.004))
 
 
-func _box_lines(b: AABB) -> void:
+func _box_lines(b: AABB, xf := Transform3D.IDENTITY) -> void:
 	_outline_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 	var p := b.position
 	var e := b.end
 	var corners := [Vector3(p.x, p.y, p.z), Vector3(e.x, p.y, p.z), Vector3(e.x, p.y, e.z), Vector3(p.x, p.y, e.z),
 		Vector3(p.x, e.y, p.z), Vector3(e.x, e.y, p.z), Vector3(e.x, e.y, e.z), Vector3(p.x, e.y, e.z)]
 	for pair in [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]:
-		_outline_mesh.surface_add_vertex(corners[pair[0]])
-		_outline_mesh.surface_add_vertex(corners[pair[1]])
+		_outline_mesh.surface_add_vertex(xf * (corners[pair[0]] as Vector3))
+		_outline_mesh.surface_add_vertex(xf * (corners[pair[1]] as Vector3))
 	_outline_mesh.surface_end()
 
 
@@ -396,8 +433,9 @@ func _handle_lmb(delta: float) -> void:
 	match kind:
 		"break":
 			var c: Vector3i = target["cell"]
-			if c != break_cell:
-				break_cell = c
+			var bk := "%s|%s|%s" % [target["type"], target.get("eid", -1), c]
+			if bk != break_key:
+				break_key = bk
 				break_t = 0.0
 			break_need = float(lmb_rule.get("time", 1.0))
 			if _cooldown > 0.0:
@@ -409,11 +447,16 @@ func _handle_lmb(delta: float) -> void:
 				player.play_action("swing")
 				_hit_sound()
 			if break_t >= break_need:
-				World.request("break", {"c": c, "slot": player.hotbar})
-				if target["type"] == "block":
+				var at := Vector3(c) + Vector3(0.5, 0.5, 0.5)
+				if target["type"] == "raft":
+					World.request("raft_break", {"eid": int(target["eid"]), "cell": c})
+					at = (target["xf"] as Transform3D) * at
+				else:
+					World.request("break", {"c": c, "slot": player.hotbar})
+				if target["type"] == "block" or target["type"] == "raft":
 					var fxn := get_tree().get_first_node_in_group("fx")
 					if fxn:
-						fxn.play("break", Vector3(c) + Vector3(0.5, 0.5, 0.5), {"b": int(target["id"])})
+						fxn.play("break", at, {"b": int(target["id"])})
 				break_t = 0.0
 				_cooldown = 0.18 if break_need < 0.2 else 0.08
 				_crack.visible = false
@@ -438,6 +481,13 @@ func _handle_lmb(delta: float) -> void:
 					World.request("knap", {"c": target["cell"], "cells": hit})
 					player.play_action("swing")
 					Sfx.play("knap", target["point"], -4.0)
+		"hit":
+			_crack.visible = false
+			_chip_t -= delta
+			if _chip_t <= 0.0:
+				_chip_t = 0.45
+				World.request("hit", {"eid": int(target["eid"]), "slot": player.hotbar})
+				player.play_action("swing")
 		"clay_remove":
 			_crack.visible = false
 			_chip_t -= delta
@@ -455,7 +505,7 @@ func _handle_lmb(delta: float) -> void:
 
 
 func _hit_sound() -> void:
-	if target.get("type", "") != "block":
+	if not target.get("type", "") in ["block", "raft"]:
 		return
 	var snd := String(Blocks.def(int(target["id"])).get("sound", "dirt"))
 	var p: Vector3 = target["point"]
@@ -470,10 +520,14 @@ func _hit_sound() -> void:
 
 func _show_crack(c: Vector3i, f: float) -> void:
 	var box: AABB = Blocks.select.get(World.block(c), AABB(Vector3.ZERO, Vector3.ONE))
+	var xf := Transform3D.IDENTITY
 	if target.get("type", "") == "be":
 		box = be_box(c)
+	elif target.get("type", "") == "raft":
+		box = Raft.select_box(int(target["id"]), int(target["m"]))
+		xf = target["xf"]
 	_crack.visible = true
-	_crack.global_transform = Transform3D(Basis().scaled(box.size + Vector3.ONE * 0.006), Vector3(c) + box.get_center())
+	_crack.global_transform = xf * Transform3D(Basis().scaled(box.size + Vector3.ONE * 0.006), Vector3(c) + box.get_center())
 	_crack_mat.set_shader_parameter("layer", float(BlockTex.layer("crack_%d" % clampi(int(f * 8.0), 0, 7))))
 
 
@@ -512,7 +566,7 @@ func _handle_rmb(delta: float) -> void:
 		_repeat_ok = rmb_rule.has("repeat")
 		_start(rmb_rule)
 	elif held:
-		if kind2 == "use" and rmb_rule.has("repeat") and _repeat_ok:
+		if kind2 in ["use", "raft_place", "paddle"] and rmb_rule.has("repeat") and _repeat_ok:
 			_repeat_t -= delta
 			if _repeat_t <= 0.0:
 				_repeat_t = float(rmb_rule["repeat"])
@@ -552,6 +606,28 @@ func _start(r: Dictionary) -> void:
 			player.play_action("drill" if kind == "ignite" else "eat")
 		"sleep":
 			player.lie_down(target["cell"])
+		"raft_new":
+			World.request("raft_new", {"point": target["point"], "yaw": player.yaw, "slot": player.hotbar})
+			player.play_action("swing")
+		"raft_place":
+			World.request("raft_place", {"eid": int(r["eid"]), "cell": r["cell"], "slot": player.hotbar, "face": r.get("face", Vector3i.UP)})
+			player.play_action("swing")
+		"raft_use":
+			World.request("raft_use", {"eid": int(target["eid"]), "cell": target["cell"]})
+			player.play_action("swing")
+		"animal":
+			World.request("animal_use", {"eid": int(target["eid"]), "slot": player.hotbar})
+			player.play_action("swing")
+		"helm":
+			World.request("raft_use", {"eid": int(target["eid"]), "cell": target["cell"]})
+			player.take_helm(int(target["eid"]))
+		"paddle":
+			var look := player.look_dir()
+			World.request("paddle", {"eid": int(r["eid"]), "slot": player.hotbar, "dir": look})
+			player.play_action("swing")
+			var fxn := get_tree().get_first_node_in_group("fx")
+			if fxn:
+				fxn.play("paddle", player.global_position + Vector3(look.x, 0.0, look.z).normalized() * 0.9, {})
 		"satchel":
 			World.request("satchel", {"eid": int(target["eid"])})
 

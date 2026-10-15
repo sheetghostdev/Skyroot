@@ -109,6 +109,14 @@ func _mark(k: Vector3i) -> void:
 		_queue_stale = true
 
 
+func set_radius(r: int) -> void:
+	## A new view distance: chunks come and go from the next frame.
+	if r == radius:
+		return
+	radius = r
+	_cam_chunk = Vector2i(-99999, -99999)
+
+
 func _update_range(cam: Vector3) -> void:
 	## Mesh what came into range, let go of what is well out of it.
 	var cc := Vector2i(floori(cam.x / CS), floori(cam.z / CS))

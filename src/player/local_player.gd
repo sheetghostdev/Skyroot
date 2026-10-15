@@ -65,6 +65,11 @@ var _dead_falling := false
 var _was_ground := true
 var _edge_t := 0.0
 var _edge_hinted := false
+var riding := -1            # the raft you stand on (it carries you along), or -1
+var _ride_xf := Transform3D.IDENTITY
+var helm := -1              # the raft whose steering oar you hold, or -1
+var _helm_t := 0.0
+var _helm_told := false
 
 
 func _ready() -> void:
@@ -230,10 +235,15 @@ func _physics_process(delta: float) -> void:
 		_pose_tick(delta, Vector3.ZERO)
 		return
 	var vd := World.vox
+	var rafts := _raft_list()
+	_carry(rafts)
+	var col := SolidFrame.new(vd, rafts, riding)
 	var input := Vector2.ZERO
 	var playing := mode == "play"
 	if playing:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	if helm >= 0:
+		input = _steer(delta, input, playing)
 	if sitting:
 		if input.length() > 0.3 or (playing and Input.is_action_just_pressed("jump")) or not body.on_ground:
 			sitting = false
@@ -241,7 +251,7 @@ func _physics_process(delta: float) -> void:
 	var want_sneak := playing and Input.is_action_pressed("sneak") and not sitting and not in_water
 	if want_sneak:
 		sneaking = true
-	elif sneaking and body.fits(vd, global_position, STAND_H):
+	elif sneaking and body.fits(col, col.to_local(global_position), STAND_H):
 		sneaking = false
 	body.height = SNEAK_H if sneaking else STAND_H
 	_eye = lerpf(_eye, EYE_SIT if sitting else (EYE_SNEAK if sneaking else EYE_STAND), 1.0 - exp(-(7.0 if sitting else 12.0) * delta))
@@ -271,10 +281,10 @@ func _physics_process(delta: float) -> void:
 	# swimming against a bank with jump held: haul yourself up and out
 	var climb_out := playing and Input.is_action_pressed("jump") and _hblocked and wish.length() > 0.1 and global_position.y < _water_y + 1.55
 	if in_water:
-		# swimming: you float up to the surface and bob there; Space swims up,
-		# Shift dives
+		# swimming: you float up with your head above the water and bob there;
+		# Space swims up, Shift dives
 		var want := -0.25
-		if head_under:
+		if vd.liquid_at(global_position + Vector3(0, _eye - 0.3, 0)):
 			want = 1.1
 		if playing and Input.is_action_pressed("jump"):
 			want = 3.2
@@ -289,9 +299,11 @@ func _physics_process(delta: float) -> void:
 	if body.on_ground and playing and Input.is_action_just_pressed("jump") and not in_water and _eye > EYE_SIT + 0.2:
 		velocity.y = JUMP_V
 	var was_ground := body.on_ground
-	var res := body.move(vd, global_position, velocity * delta, sneaking and was_ground)
-	var moved: Vector3 = res["motion"]
-	global_position = res["pos"]
+	# on a raft you move in its frame (see SolidFrame)
+	var res := body.move(col, col.to_local(global_position), col.xf.basis.inverse() * (velocity * delta), sneaking and was_ground)
+	var moved: Vector3 = col.xf.basis * (res["motion"] as Vector3)
+	global_position = col.to_world(res["pos"])
+	_update_riding(col)
 	if absf(moved.y - velocity.y * delta) > 1e-5:
 		if velocity.y < 0.0:
 			_on_land()
@@ -314,6 +326,96 @@ func _physics_process(delta: float) -> void:
 	_update_camera(delta, input, hv.length())
 	_update_model(delta, hv)
 	_pose_tick(delta, hv)
+
+
+func _raft_list() -> Array:
+	## The rafts near enough to stand on or bump into, as drawn.
+	var out: Array = []
+	for v in RaftView.all():
+		var rv := v as RaftView
+		var xf := rv.view_xf()
+		if xf.origin.distance_to(global_position) < Raft.MAX_SPAN * 1.5 + 8.0:
+			out.append({"eid": rv.entity_id, "xf": xf, "cells": rv.cells()})
+	return out
+
+
+func _carry(rafts: Array) -> void:
+	## The raft under you moved and turned since last frame: so do you.
+	if riding < 0:
+		return
+	for r in rafts:
+		if int(r["eid"]) == riding:
+			var xf: Transform3D = r["xf"]
+			var d := xf * _ride_xf.affine_inverse()
+			global_position = d * global_position
+			var turn := d.basis.get_euler().y
+			yaw += turn
+			facing_yaw += turn
+			_ride_xf = xf
+			return
+	_leave_raft()
+
+
+func _update_riding(col: SolidFrame) -> void:
+	## Standing on a raft, you ride it; stepping onto land or into the water,
+	## you leave it.  A jump keeps you with it while you're over its deck.
+	var under := -1
+	if body.on_ground:
+		under = col.raft_under(col.to_local(global_position), body.half)
+	if under >= 0:
+		if under != riding:
+			riding = under
+			var v := RaftView.find(under)
+			_ride_xf = v.view_xf() if v else Transform3D.IDENTITY
+			if helm >= 0 and helm != riding:
+				helm = -1
+		return
+	if riding < 0:
+		return
+	if body.on_ground or in_water:
+		_leave_raft()
+		return
+	var rv := RaftView.find(riding)
+	if rv == null:
+		_leave_raft()
+		return
+	var lp := rv.view_xf().affine_inverse() * global_position
+	var b := Raft.bounds(rv.cells()).grow(0.8)
+	if lp.y < Raft.DECK - 0.4 or lp.x < b.position.x or lp.z < b.position.z or lp.x > b.end.x or lp.z > b.end.z:
+		# jumped off (with the raft's way on you)
+		var e := World.get_entity(riding)
+		if not e.is_empty() and not body.on_ground:
+			var rvel: Vector3 = (e["d"] as Dictionary).get("v", Vector3.ZERO)
+			velocity += Vector3(rvel.x, 0.0, rvel.z)
+		_leave_raft()
+
+
+func _leave_raft() -> void:
+	riding = -1
+	helm = -1
+
+
+func take_helm(eid: int) -> void:
+	## Hold the steering oar: A and D turn the raft, and you stay at your post.
+	helm = eid
+	_helm_t = 0.0
+	if not _helm_told:
+		_helm_told = true
+		Events.toast.emit("At the helm: A / D to steer. W, S or Space to let go.", "info")
+
+
+func _steer(delta: float, input: Vector2, playing: bool) -> Vector2:
+	## At the helm, A/D steer instead of walking (sent to the host a few times
+	## a second); walking off or jumping lets go.
+	if not playing or riding != helm or absf(input.y) > 0.5 or Input.is_action_just_pressed("jump"):
+		World.request("helm", {"eid": helm, "amount": 0.0})
+		helm = -1
+		return input
+	_helm_t -= delta
+	if _helm_t <= 0.0:
+		_helm_t = 0.15
+		World.request("helm", {"eid": helm, "amount": -input.x})
+	return Vector2.ZERO
 
 
 func _breathe(delta: float) -> void:
@@ -350,8 +452,27 @@ func _fell_into_abyss() -> void:
 	Events.player_died.emit("abyss")
 
 
+var _land_t := 0.0
+
+
+func _landfall(delta: float) -> void:
+	## Archipelago: setting foot on an island other than the one you woke on.
+	_land_t -= delta
+	if _land_t > 0.0 or World.kind != "sea" or not body.on_ground or riding >= 0 or in_water:
+		return
+	_land_t = 1.0
+	var isl: Array = World.geo.get("islands", [])
+	var p := Vector2(global_position.x, global_position.z)
+	for i in range(1, isl.size()):
+		if p.distance_to(isl[i]["c"]) < float(isl[i]["r"]) + 3.0:
+			Guide.flag("voyage")
+			Guide.flag("landed:" + String(isl[i]["b"]))
+			return
+
+
 func _edge_check(delta: float) -> void:
 	## The first time you come near the edge, a word of warning.
+	_landfall(delta)
 	if _edge_hinted:
 		return
 	_edge_t -= delta
@@ -377,6 +498,7 @@ func respawn_at(pos: Vector3, yaw_v: float) -> void:
 	pitch = 0.0
 	_dead_falling = false
 	_fall_from = pos.y
+	_leave_raft()
 	if mode == "dead" or mode == "sleep":
 		set_mode("play")
 
@@ -433,6 +555,8 @@ func _footsteps(delta: float, hspeed: float) -> void:
 func surface_kind() -> String:
 	if in_water:
 		return "water"
+	if riding >= 0:
+		return "wood"
 	var c := VoxelData.cell_of(global_position - Vector3(0, 0.05, 0))
 	var snd := String(Blocks.def(World.block(c)).get("sound", "dirt"))
 	match snd:
@@ -515,8 +639,14 @@ func _pose_tick(delta: float, hv: Vector3) -> void:
 		return
 	_pose_t = 0.05
 	var held := held_stack()
-	Net.send_pose({
+	var pose := {
 		"p": global_position, "y": yaw, "x": pitch, "f": facing_yaw, "v": Vector3(hv.x, velocity.y, hv.z),
 		"c": sneaking, "a": action_name, "s": action_seq, "h": String(held.get("i", "")), "hd": held.get("d", {}), "st": sitting,
 		"m": mode, "w": in_water, "sp": sprinting, "g": body.on_ground,
-	})
+	}
+	if riding >= 0:
+		# others place you on the raft as they see it, not where it was
+		pose["rv"] = riding
+		pose["rp"] = _ride_xf.affine_inverse() * global_position
+		pose["rf"] = facing_yaw - _ride_xf.basis.get_euler().y
+	Net.send_pose(pose)

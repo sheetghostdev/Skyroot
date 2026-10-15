@@ -3,6 +3,7 @@ extends Node
 ## (see tools/mp_test.sh, mp_crowd.sh, mp_crash.sh):
 ##   host:    --autostart=host --world=MPTest --new --name=Host --mptest=host
 ##   client:  --autostart=join --name=Ana --mptest=client   (then again with --mptest=rejoin)
+##   at sea:  --mptest=sea_host (with --kind=sea) and --mptest=sea_client (tools/mp_sea.sh)
 ## The instances talk through the game's own chat, so everything they check
 ## travels the same network paths as real play.  Lines start with "MPT".
 
@@ -123,6 +124,10 @@ func _run() -> void:
 			await _crash_a()
 		"crash_b":
 			await _crash_b()
+		"sea_host":
+			await _sea_host()
+		"sea_client":
+			await _sea_client()
 	_finish()
 
 
@@ -464,3 +469,118 @@ func _crash_b() -> void:
 	_say("BACK %s %d" % [Net.player_name(Net.my_id()), World.my_inventory.count("stone")])
 	var done := await _wait_msg("DONE", 90.0)
 	check(done != "", "the host is satisfied")
+
+
+# ---------------------------------------------------------------------------
+# At sea: a raft carries a friend, a paddle stroke moves it, an animal on a lead
+# ---------------------------------------------------------------------------
+
+func _sea_host() -> void:
+	_log("hosting an archipelago")
+	var joined := await _wait(func(): return Net.players.size() >= 2, 60.0)
+	check(joined, "a second player joined the archipelago")
+	if not joined:
+		return
+	var cpid := _client_pid("Ana")
+	var ready := await _wait_msg("READY", 60.0)
+	var parts := ready.split(" ")
+	check(parts.size() == 3 and int(parts[1]) == blocks_hash(), "Ana has the same 512 x 512 sea of blocks")
+	check(parts.size() == 3 and int(parts[2]) == World.entities_of("animal").size(), "and the same %d animals" % World.entities_of("animal").size())
+	# a raft off the shore, with a sail
+	var lp := _lp()
+	var w := DebugShot.sea_spot(lp.global_position, 4.0)
+	var sea := int(World.geo["sea"])
+	var cells := {}
+	for z in 3:
+		for x in 3:
+			cells[Vector3i(x, 0, z)] = Vector2i(Blocks.id_of("raft_floor"), 0)
+	cells[Vector3i(1, 1, 0)] = Vector2i(Blocks.id_of("raft_sail"), 0)
+	var rxf := Transform3D(Basis(), Vector3(w.x - 1.5, Raft.origin_y(sea), w.z - 1.5))
+	var rid := World.spawn("raft", rxf, {"cells": cells, "v": Vector3.ZERO, "w": 0.0, "anchor": false})
+	World.inventory_of(cpid).add("paddle", 1, {"dur": 400})
+	World.inventory_of(cpid).add("twine", 1)
+	World.mark_inventory(cpid)
+	_say("RAFT %d" % rid)
+	await _wait_msg("ABOARD", 30.0)
+	await _frames(20)
+	var pose: Dictionary = Net.poses.get(cpid, {})
+	check(int(pose.get("rv", -1)) == rid, "Ana stands on the raft (her pose says so)")
+	# under way: the raft carries her
+	World.get_entity(rid)["d"]["v"] = Vector3(1.5, 0, 0.5)
+	_say("SAILING")
+	await _wait_msg("CARRIED", 40.0)
+	var moved := (World.get_entity(rid)["xf"] as Transform3D).origin.distance_to(rxf.origin)
+	check(moved > 2.0, "the raft moved %.1f m with her on it" % moved)
+	World.get_entity(rid)["d"]["v"] = Vector3.ZERO
+	World.get_entity(rid)["d"]["w"] = 0.0
+	_say("STILL")
+	await _wait_msg("PADDLED", 30.0)
+	var v: Vector3 = World.get_entity(rid)["d"].get("v", Vector3.ZERO)
+	check(v.length() > 0.05, "her paddle stroke moved the raft (%.2f m/s)" % v.length())
+	World.get_entity(rid)["d"]["v"] = Vector3.ZERO
+	# a goat brought to her
+	var goats := World.entities_of("animal").filter(func(e): return String(e["d"]["s"]) == "goat")
+	check(not goats.is_empty(), "there are goats")
+	if goats.is_empty():
+		return
+	var goat: Dictionary = goats[0]
+	var land := DebugShot.land_near(lp.global_position)
+	World.move_entity(goat["id"], Transform3D(Basis(), land), true)
+	World.update(goat["id"], {"home": land})
+	_say("GOAT %d %.2f,%.2f,%.2f" % [goat["id"], land.x, land.y, land.z])
+	await _wait_msg("LEADING", 30.0)
+	await _frames(10)
+	check(int(goat["d"].get("lead", -1)) == cpid, "Ana has the goat on a lead (host)")
+	_say("DONE")
+	await _wait_msg("BYE", 30.0)
+	World.delete_save(World.world_name)
+
+
+func _sea_client() -> void:
+	_log("joined the archipelago as %s" % Settings.player_name)
+	await _frames(30)
+	check(World.kind == "sea" and World.vox.sx == ArchipelagoGen.W, "the archipelago came over the network")
+	_say("READY %d %d %d" % [World.entities.size(), blocks_hash(), World.entities_of("animal").size()])
+	check(AnimalView.all().size() == World.entities_of("animal").size(), "every animal is drawn (%d)" % AnimalView.all().size())
+	var r := await _wait_msg("RAFT", 30.0)
+	var rid := int(r)
+	await _wait(func(): return RaftView.find(rid) != null, 10.0)
+	var rv := RaftView.find(rid)
+	check(rv != null and rv.cells().size() == 10, "I see the raft, sail and all")
+	if rv == null:
+		return
+	var lp := _lp()
+	_go(rv.view_xf() * Vector3(1.5, Raft.DECK + 0.3, 1.5))
+	await _wait(func(): return lp.riding == rid, 10.0)
+	check(lp.riding == rid, "standing on its deck, I ride it")
+	_say("ABOARD")
+	await _wait_msg("SAILING", 30.0)
+	var local0 := rv.view_xf().affine_inverse() * lp.global_position
+	var start := rv.view_xf().origin
+	await _wait(func(): return rv.view_xf().origin.distance_to(start) > 3.0, 20.0)
+	await _frames(10)
+	var local1 := rv.view_xf().affine_inverse() * lp.global_position
+	check(rv.view_xf().origin.distance_to(start) > 3.0, "the raft sails on my screen")
+	check(lp.riding == rid and local0.distance_to(local1) < 0.3, "and carries me (moved %.2f m on its deck)" % local0.distance_to(local1))
+	_say("CARRIED")
+	await _wait_msg("STILL", 30.0)
+	await _frames(10)
+	World.request("paddle", {"eid": rid, "slot": World.my_inventory.find("paddle"), "dir": Vector3(0, 0, -1)})
+	await _frames(10)
+	_say("PADDLED")
+	var g := await _wait_msg("GOAT", 30.0)
+	var gparts := g.split(" ")
+	var gid := int(gparts[0])
+	var gpos := gparts[1].split(",")
+	var gat := Vector3(float(gpos[0]), float(gpos[1]), float(gpos[2]))
+	_go(gat + Vector3(1.2, 0.2, 0))
+	await _frames(30)
+	World.request("animal_use", {"eid": gid, "slot": World.my_inventory.find("twine")})
+	var tied := await _wait(func(): return int(World.get_entity(gid).get("d", {}).get("lead", -1)) == Net.my_id(), 10.0)
+	check(tied, "I tied a lead on the goat")
+	var av := AnimalView.find(gid)
+	check(av != null, "and see it")
+	_say("LEADING")
+	await _wait_msg("DONE", 30.0)
+	_say("BYE")
+	await _frames(10)

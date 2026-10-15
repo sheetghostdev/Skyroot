@@ -5,8 +5,8 @@ extends Node
 ##   godot --headless --path . res://tests/test_main.tscn -- --suite=core,blocks,water,craft,fire,kiln,survival,farm,save,longrun
 ##   (--suite=all runs everything)
 
-const SUITES := ["core", "blocks", "water", "craft", "fire", "kiln", "survival", "farm", "save", "longrun", "sea"]
-const SEA_SUITES := ["sea"]          # these run on an archipelago
+const SUITES := ["core", "blocks", "water", "craft", "fire", "kiln", "survival", "farm", "save", "longrun", "sea", "raft", "animals"]
+const SEA_SUITES := ["sea", "raft", "animals"]  # these run on an archipelago
 
 var passes := 0
 var fails := 0
@@ -65,6 +65,8 @@ func _fresh(kind := "sky") -> void:
 	lp.set_physics_process(false)
 	lp.interactor.set_process(false)
 	Game.game_world.sim.set_process(false)
+	# no surprise showers: it rains in a test only when the test says so
+	Game.game_world.sim.weather.showers = false
 	pid = Net.my_id()
 	clear_inv()
 
@@ -181,6 +183,8 @@ func count_blocks(nm: String) -> int:
 # ---------------------------------------------------------------------------
 
 func suite_core() -> void:
+	var gids: Array = Guide.active_goals().map(func(g): return String(g["id"]))
+	check(gids.has("tinder") and not gids.has("raft"), "the sky island keeps its own goals")
 	check(count_blocks("stone") > 4000, "plenty of rock (%d)" % count_blocks("stone"))
 	check(count_blocks("water") >= 20, "a pond (%d water)" % count_blocks("water"))
 	check(count_blocks("clay") >= 15, "clay in the banks (%d)" % count_blocks("clay"))
@@ -206,7 +210,7 @@ func suite_core() -> void:
 	var body := VoxelBody.new()
 	var p := sp + Vector3(0, 3, 0)
 	for i in 120:
-		var r := body.move(World.vox, p, Vector3(0, -0.2, 0), false)
+		var r := body.move(SolidFrame.new(World.vox), p, Vector3(0, -0.2, 0), false)
 		p = r["pos"]
 	check(absf(p.y - sp.y) < 0.05 and body.on_ground, "a falling body lands on the ground (%.2f vs %.2f)" % [p.y, sp.y])
 	# a wall stops you
@@ -216,21 +220,21 @@ func suite_core() -> void:
 	var start := Vector3(c.x + 0.5, p.y, c.z + 0.5)
 	var q := start
 	for i in 20:
-		q = body.move(World.vox, q, Vector3(0.1, 0, 0), false)["pos"]
+		q = body.move(SolidFrame.new(World.vox), q, Vector3(0.1, 0, 0), false)["pos"]
 	check(q.x <= c.x + 1.0 - 0.299, "walls stop you (%.3f)" % q.x)
 	# a low step (a straw bed) is climbed on its own
 	World.set_block(c + Vector3i(1, 0, 0), Blocks.id_of("straw_bed"))
 	World.set_block(c + Vector3i(1, 1, 0), 0)
 	q = start
 	for i in 20:
-		var r2 := body.move(World.vox, q, Vector3(0.1, -0.05, 0), false)
+		var r2 := body.move(SolidFrame.new(World.vox), q, Vector3(0.1, -0.05, 0), false)
 		q = r2["pos"]
 	check(q.x > c.x + 1.2 and q.y > start.y + 0.25, "steps up onto a low block (%.2f, %.2f)" % [q.x, q.y])
 	# farmland (15/16 high) needs a jump
 	World.set_block(c + Vector3i(1, 0, 0), Blocks.id_of("farmland"))
 	q = start
 	for i in 20:
-		q = body.move(World.vox, q, Vector3(0.1, -0.05, 0), false)["pos"]
+		q = body.move(SolidFrame.new(World.vox), q, Vector3(0.1, -0.05, 0), false)["pos"]
 	check(q.x < c.x + 1.0, "a full-height step needs a jump")
 	# sneaking at the edge, you don't fall
 	var edge := _find_edge()
@@ -239,12 +243,12 @@ func suite_core() -> void:
 		var dir := _edge_dir(edge)
 		var e2 := ep
 		for i in 40:
-			var r3 := body.move(World.vox, e2, Vector3(dir.x, 0, dir.z) * 0.1 + Vector3(0, -0.05, 0), true)
+			var r3 := body.move(SolidFrame.new(World.vox), e2, Vector3(dir.x, 0, dir.z) * 0.1 + Vector3(0, -0.05, 0), true)
 			e2 = r3["pos"]
 		check(e2.y > edge.y + 0.9, "sneaking keeps you on the edge")
 		var e3 := ep
 		for i in 60:
-			var r4 := body.move(World.vox, e3, Vector3(dir.x, 0, dir.z) * 0.1 + Vector3(0, -0.2, 0), false)
+			var r4 := body.move(SolidFrame.new(World.vox), e3, Vector3(dir.x, 0, dir.z) * 0.1 + Vector3(0, -0.2, 0), false)
 			e3 = r4["pos"]
 		check(e3.y < edge.y, "walking normally, you go over")
 
@@ -631,6 +635,58 @@ func suite_sea() -> void:
 		give("bowl", 1)
 		use_on(wcell, 0)
 		check(String(inv().get_slot(0).get("d", {}).get("c", "")) == "sea", "a bowl dipped in the sea holds sea water")
+	# the goals and the handbook are the archipelago's own
+	var gids: Array = Guide.active_goals().map(func(g): return String(g["id"]))
+	check(gids.has("coconut") and gids.has("raft") and gids.has("voyage") and gids.has("boil") and not gids.has("tinder"), "goals for the sea: coconuts, a raft, a voyage, boiling water")
+	check(Guide.hint_for("thirsty") == "thirsty_sea" and Guide.hint_for("dusk") == "dusk", "sea wording for the hints that need it")
+	check(Guide.for_this_world(Guide.pages["rafts"]) and not Guide.for_this_world(Guide.pages["island"]), "the handbook has the sea pages, not the sky island's")
+	clear_inv()
+	give("coconut", 1)
+	World.stats[pid]["thirst"] = 0.5
+	req("eat", {"slot": 0})
+	check(float(World.stats[pid]["thirst"]) > 0.6 and Guide.has_flag("ate:coconut"), "a coconut to drink")
+	# a coconut pressed into the sand grows a palm
+	var sand := _find_beach(home)
+	if check(sand.x >= 0 and Blocks.name_of(World.block(sand)) == "sand", "a sandy beach"):
+		clear_inv()
+		give("coconut", 2)
+		stand_near(sand)
+		use_on(sand, 0, true)
+		check(Blocks.name_of(World.block(sand + Vector3i.UP)) == "sapling_palm" and count("coconut") == 1, "plant a coconut in the sand: a palm sapling")
+	# fresh water at sea: boil sea water in a pot over a fire
+	var fc := flat_spot(int(home["c"].x) + 2, int(home["c"].y) + 2)
+	if shore.x >= 0 and check(fc.x >= 0, "a flat spot for a fire"):
+		var fup := fc + Vector3i.UP
+		_firepit(fc, 6, 2, 3)
+		clear_inv()
+		give("pot", 1, {}, 0)
+		give("firestarter", 1, {"dur": 8}, 1)
+		give("bowl", 1, {}, 2)
+		give("waterskin", 1, {}, 3)
+		stand_near(shore + Vector3i.UP)
+		use_on(shore, 0)
+		var pd: Dictionary = inv().get_slot(0)["d"]
+		check(int(pd.get("w", 0)) == 3 and bool(pd.get("salt", false)), "a pot dipped in the sea holds sea water")
+		use_on(shore, 3)
+		check(int(inv().get_slot(3)["d"].get("n", 0)) == 0, "a waterskin won't take sea water")
+		stand_near(fc)
+		use_on(fup, 0)
+		req("ignite", {"c": fup, "slot": 1})
+		var fpot: Dictionary = World.be(fup)["d"]["pot"]
+		check(bool(World.be(fup)["d"]["lit"]) and bool(fpot.get("salt", false)), "a pot of sea water over a fire")
+		use_on(fup, 3)
+		check(int(inv().get_slot(3)["d"].get("n", 0)) == 0, "not fit for the waterskin yet")
+		real_seconds(FireActs.DESALT_S * 1.4)
+		fpot = World.be(fup)["d"]["pot"]
+		check(not bool(fpot.get("salt", false)) and int(fpot.get("water", 0)) == 3, "boiled, it's fresh water (%s)" % str(fpot))
+		use_on(fup, 2)
+		check(String(inv().get_slot(2)["d"].get("c", "")) == "water", "ladle out a bowl of it")
+		use_on(fup, 3)
+		check(int(inv().get_slot(3)["d"].get("n", 0)) == 2 and int(World.be(fup)["d"]["pot"].get("water", 0)) == 0, "and the rest into the waterskin")
+		var stw: Dictionary = World.stats[pid]
+		stw["thirst"] = 0.3
+		req("eat", {"slot": 3})
+		check(float(stw["thirst"]) > 0.6 and int(inv().get_slot(3)["d"].get("n", 0)) == 1, "a long drink from the waterskin")
 	# dig out a beach block at sea level beside the water: the sea pours in
 	var beach := _find_beach(home)
 	if check(beach.x >= 0, "found a beach cell at sea level"):
@@ -650,6 +706,462 @@ func suite_sea() -> void:
 	var n_isl := isl.size()
 	check(World.load_world("TestIsland") == OK and World.kind == "sea" and World.vox.sx == ArchipelagoGen.W and (World.geo["islands"] as Array).size() == n_isl, "and loads again as the same archipelago")
 	World.on_player_joined(pid, Settings.player_name)
+
+
+func _open_water(it: Dictionary, from_shore: float) -> Vector3:
+	## A point on the sea surface well clear of the island (and of the bottom).
+	var c: Vector2 = it["c"]
+	var sea := int(World.geo["sea"])
+	for k in 32:
+		var dir := Vector2.from_angle(k * TAU / 32.0)
+		var p := c + dir * (float(it["r"]) + from_shore)
+		var ok := true
+		for dz in range(-4, 5):
+			for dx in range(-4, 5):
+				var x := int(p.x) + dx
+				var z := int(p.y) + dz
+				for y in [sea - 1, sea, sea + 1]:
+					if Blocks.is_solid(World.vox.get_id(x, y, z)):
+						ok = false
+		if ok:
+			return Vector3(p.x, sea + 0.875, p.y)
+	return Vector3.INF
+
+
+func _raft_e() -> Dictionary:
+	var rs := World.entities_of("raft")
+	return rs[0] if rs.size() == 1 else {}
+
+
+func _raft_cells() -> Dictionary:
+	var e := _raft_e()
+	return e["d"]["cells"] if not e.is_empty() else {}
+
+
+func _deck_pos(e: Dictionary, c: Vector3i) -> Vector3:
+	## Where someone standing on cell c of the deck has their feet.
+	return (e["xf"] as Transform3D) * (Vector3(c) + Vector3(0.5, Raft.DECK, 0.5))
+
+
+func _sail(seconds: float) -> void:
+	for i in int(seconds * 60.0):
+		a.rafts.step(1.0 / 60.0)
+
+
+func suite_raft() -> void:
+	var sea := int(World.geo["sea"])
+	var home: Dictionary = World.geo["islands"][0]
+	# the pieces are made in the crafting grid
+	clear_inv()
+	inv().set_slot(Inventory.GRID + 0, Inventory.make("palm_log", 1))
+	inv().set_slot(Inventory.GRID + 1, Inventory.make("palm_log", 1))
+	inv().set_slot(Inventory.GRID + 4, Inventory.make("twine", 1))
+	check(String(a.craft_preview(inv()).get("i", "")) == "raft_floor", "two logs and twine lash a raft section")
+	clear_inv()
+	inv().set_slot(Inventory.GRID + 1, Inventory.make("firewood", 1))
+	inv().set_slot(Inventory.GRID + 4, Inventory.make("stick", 1))
+	check(String(a.craft_preview(inv()).get("i", "")) == "paddle", "firewood on a stick makes a paddle")
+	clear_inv()
+	var water := _open_water(home, 10.0)
+	if not check(water != Vector3.INF, "found open water off the home island"):
+		return
+	# a section floats on the sea, not on land
+	var beach := _find_beach(home)
+	give("raft_floor", 8)
+	stand_near(beach)
+	req("raft_new", {"point": Vector3(beach) + Vector3(0.5, 1.0, 0.5), "yaw": 0.0, "slot": 0})
+	check(World.entities_of("raft").is_empty() and count("raft_floor") == 8, "a raft section won't lie on the beach")
+	place_player(water + Vector3(2.0, 0.2, 0.0))
+	req("raft_new", {"point": water, "yaw": 0.0, "slot": 0})
+	var e := _raft_e()
+	if not check(not e.is_empty() and count("raft_floor") == 7, "a raft section floats on open water"):
+		return
+	var eid: int = e["id"]
+	var xf: Transform3D = e["xf"]
+	check(absf(_deck_pos(e, Vector3i.ZERO).y - (sea + 0.875 + Raft.FREEBOARD)) < 0.01, "its deck rides a hand above the water")
+	# build it out: beside the floor only
+	place_player(_deck_pos(e, Vector3i.ZERO))
+	for c in [Vector3i(1, 0, 0), Vector3i(0, 0, 1), Vector3i(1, 0, 1), Vector3i(2, 0, 0)]:
+		req("raft_place", {"eid": eid, "cell": c, "slot": 0})
+	check(Raft.floor_count(_raft_cells()) == 5 and count("raft_floor") == 3, "four more sections lashed on (%d)" % Raft.floor_count(_raft_cells()))
+	req("raft_place", {"eid": eid, "cell": Vector3i(4, 0, 0), "slot": 0})
+	check(Raft.floor_count(_raft_cells()) == 5, "not one that floats loose")
+	# a sail, an anchor and a steering oar on the deck
+	clear_inv()
+	give("sail", 2, {}, 0)
+	give("anchor", 1, {}, 1)
+	give("steering_oar", 1, {}, 2)
+	give("dirt", 1, {}, 3)
+	req("raft_place", {"eid": eid, "cell": Vector3i(1, 1, 0), "slot": 0})
+	req("raft_place", {"eid": eid, "cell": Vector3i(1, 1, 1), "slot": 1})
+	req("raft_place", {"eid": eid, "cell": Vector3i(0, 1, 1), "slot": 2})
+	req("raft_place", {"eid": eid, "cell": Vector3i(1, 2, 0), "slot": 0})
+	var cells := _raft_cells()
+	check(cells.has(Vector3i(1, 1, 0)) and cells.has(Vector3i(1, 1, 1)) and cells.has(Vector3i(0, 1, 1)), "sail, anchor and steering oar stand on the deck")
+	check(not cells.has(Vector3i(1, 2, 0)), "a sail goes on the deck, not on top of another")
+	req("raft_place", {"eid": eid, "cell": Vector3i(2, 1, 0), "slot": 3})
+	check(_raft_cells().has(Vector3i(2, 1, 0)), "ordinary blocks can be built on a raft too")
+	req("raft_place", {"eid": eid, "cell": Vector3i(0, 1, 0), "slot": 3})
+	var c_flat := flat_spot(int(home["c"].x), int(home["c"].y))
+	place_player(Vector3(c_flat) + Vector3(2.5, 1.0, 0.5))
+	req("place", {"c": c_flat + Vector3i.UP, "face": Vector3i.UP, "slot": 0})
+	check(World.block(c_flat + Vector3i.UP) != Blocks.id_of("raft_sail") and count("sail") == 1, "a sail can't be put up on dry land")
+	# the wind fills the raised sail
+	place_player(_deck_pos(e, Vector3i.ZERO))
+	req("raft_use", {"eid": eid, "cell": Vector3i(1, 1, 0)})
+	check((int((_raft_cells()[Vector3i(1, 1, 0)] as Vector2i).y) & 4) != 0, "the sail goes up")
+	World.env["wind"] = Vector2(3.0, 0.0)
+	var start := (_raft_e()["xf"] as Transform3D).origin
+	_sail(10.0)
+	var moved := (_raft_e()["xf"] as Transform3D).origin - start
+	check(moved.x > 4.0 and absf(moved.z) < moved.x * 0.3, "it runs before the wind (%.1f m, %.1f across)" % [moved.x, moved.z])
+	check(absf((_raft_e()["xf"] as Transform3D).origin.y - Raft.origin_y(sea)) < 0.001, "and stays afloat at the same height")
+	# the anchor holds it
+	place_player(_deck_pos(_raft_e(), Vector3i.ZERO))
+	req("raft_use", {"eid": eid, "cell": Vector3i(1, 1, 1)})
+	check(bool(_raft_e()["d"].get("anchor", false)), "the anchor drops")
+	_sail(4.0)
+	var spd := (_raft_e()["d"].get("v", Vector3.ZERO) as Vector3).length()
+	check(spd < 0.6, "and holds it against the wind (%.2f m/s)" % spd)
+	req("raft_use", {"eid": eid, "cell": Vector3i(1, 1, 1)})
+	req("raft_use", {"eid": eid, "cell": Vector3i(1, 1, 0)})
+	check(not bool(_raft_e()["d"].get("anchor", false)) and (int((_raft_cells()[Vector3i(1, 1, 0)] as Vector2i).y) & 4) == 0, "anchor up, sail furled")
+	_raft_e()["d"]["v"] = Vector3.ZERO
+	_raft_e()["d"]["w"] = 0.0
+	# paddling: the way you look, and off-centre strokes turn it
+	clear_inv()
+	give("paddle", 1)
+	var dur0 := int(inv().get_slot(0)["d"]["dur"])
+	e = _raft_e()
+	place_player(_deck_pos(e, Vector3i(1, 0, 0)))
+	req("paddle", {"eid": eid, "slot": 0, "dir": Vector3(0, -0.3, -1)})
+	var v: Vector3 = _raft_e()["d"]["v"]
+	check(v.z < -0.1 and absf(v.y) < 1e-6, "a paddle stroke pushes the raft the way you look (%.2f)" % v.z)
+	check(int(inv().get_slot(0)["d"]["dur"]) < dur0, "and wears the paddle")
+	place_player(_deck_pos(e, Vector3i(2, 0, 0)))
+	_raft_e()["d"]["w"] = 0.0
+	req("paddle", {"eid": eid, "slot": 0, "dir": Vector3(0, 0, -1)})
+	check(absf(float(_raft_e()["d"]["w"])) > 0.01, "a stroke off to one side turns it")
+	# the helm: steer with the oar
+	_raft_e()["d"]["v"] = Vector3.ZERO
+	_raft_e()["d"]["w"] = 0.0
+	var yaw0 := (_raft_e()["xf"] as Transform3D).basis.get_euler().y
+	req("raft_use", {"eid": eid, "cell": Vector3i(0, 1, 1)})
+	for i in 20:
+		req("helm", {"eid": eid, "amount": 1.0})
+		_sail(0.1)
+	var turned := (_raft_e()["xf"] as Transform3D).basis.get_euler().y - yaw0
+	check(turned > 0.2, "the steering oar turns the raft (%.2f rad)" % turned)
+	# it runs aground rather than sailing up the beach
+	e = _raft_e()
+	var to_home := Vector3(home["c"].x, 0, home["c"].y) - (e["xf"] as Transform3D).origin
+	to_home.y = 0.0
+	e["d"]["v"] = to_home.normalized() * 3.0
+	e["d"]["w"] = 0.0
+	_helm_clear()
+	for i in 40 * 60:
+		e = _raft_e()
+		if (e["d"]["v"] as Vector3).dot(to_home) <= 0.0:
+			break
+		e["d"]["v"] = to_home.normalized() * 3.0
+		a.rafts.step(1.0 / 60.0)
+	e = _raft_e()
+	var dist := Vector2((e["xf"] as Transform3D).origin.x - home["c"].x, (e["xf"] as Transform3D).origin.z - home["c"].y).length()
+	check(not a.rafts._hits_land(e["xf"], e["d"]["cells"]) and dist < float(home["r"]) + 12.0, "it comes to the shore and grounds there, not on it (%.0f m out)" % (dist - float(home["r"])))
+	# standing on it: the deck holds you up and carries you
+	e = _raft_e()
+	var rafts := [{"eid": eid, "xf": e["xf"], "cells": e["d"]["cells"]}]
+	var col := SolidFrame.new(World.vox, rafts, -1)
+	var body := VoxelBody.new()
+	var feet := _deck_pos(e, Vector3i(1, 0, 0)) + Vector3(0, 0.6, 0)
+	var res := body.move(col, feet, Vector3(0, -1.5, 0), false)
+	check(body.on_ground and absf((res["pos"] as Vector3).y - _deck_pos(e, Vector3i(1, 0, 0)).y) < 0.01, "you can stand on the deck (from the world)")
+	check(col.raft_under(res["pos"], body.half) == eid, "and know it's this raft under you")
+	var colr := SolidFrame.new(World.vox, rafts, eid)
+	var lpos := colr.to_local(feet)
+	res = body.move(colr, lpos, Vector3(0, -1.5, 0), false)
+	check(body.on_ground and absf((res["pos"] as Vector3).y - Raft.DECK) < 0.01, "and in the raft's own frame")
+	res = body.move(colr, Vector3(0.5, Raft.DECK, 0.5), Vector3(0, 0, 0.9), false)
+	check((res["pos"] as Vector3).z < 1.1, "the steering oar's post is in your way on deck (%.2f)" % (res["pos"] as Vector3).z)
+	lp.riding = eid
+	lp._ride_xf = e["xf"]
+	lp.global_position = _deck_pos(e, Vector3i(1, 0, 0))
+	var before := lp.global_position
+	var oxf: Transform3D = e["xf"]
+	var nxf := Transform3D(Basis(Vector3.UP, 0.3) * oxf.basis, oxf.origin + Vector3(2, 0, 1))
+	World.move_entity(eid, nxf, true)
+	lp._carry(lp._raft_list())
+	var want := nxf * (oxf.affine_inverse() * before)
+	check(lp.global_position.distance_to(want) < 0.01, "the raft carries you as it moves and turns")
+	lp.riding = -1
+	# taking it apart: never so it splits, and what stands on a section first
+	e = _raft_e()
+	place_player(_deck_pos(e, Vector3i(1, 0, 0)))
+	clear_inv()
+	req("raft_break", {"eid": eid, "cell": Vector3i(1, 0, 0)})
+	check(_raft_cells().has(Vector3i(1, 0, 0)), "not the section under the sail")
+	req("raft_break", {"eid": eid, "cell": Vector3i(1, 1, 0)})
+	check(not _raft_cells().has(Vector3i(1, 1, 0)) and count("sail") == 1, "the sail comes down and back to you")
+	req("raft_break", {"eid": eid, "cell": Vector3i(2, 1, 0)})
+	req("raft_break", {"eid": eid, "cell": Vector3i(1, 0, 0)})
+	check(_raft_cells().has(Vector3i(1, 0, 0)), "not a section that would set another adrift")
+	# saved and loaded, the raft is where it was
+	var xf_saved: Transform3D = _raft_e()["xf"]
+	var n_cells := _raft_cells().size()
+	check(Game.save() == OK and World.load_world("TestIsland") == OK, "saves and loads with a raft")
+	World.on_player_joined(pid, Settings.player_name)
+	e = _raft_e()
+	check(not e.is_empty() and _raft_cells().size() == n_cells and (e["xf"] as Transform3D).origin.distance_to(xf_saved.origin) < 0.001, "the raft is still there, as built")
+	a = World.actions
+	a.no_rate = true
+	# take it all apart: the last section and the raft is gone
+	if not e.is_empty():
+		eid = e["id"]
+		place_player(_deck_pos(e, Vector3i.ZERO))
+		clear_inv()
+		for k in 3:
+			for c in (_raft_cells() as Dictionary).keys():
+				if (c as Vector3i).y > 0:
+					req("raft_break", {"eid": eid, "cell": c})
+			for c in [Vector3i(2, 0, 0), Vector3i(1, 0, 1), Vector3i(1, 0, 0), Vector3i(0, 0, 1), Vector3i.ZERO]:
+				if World.entities.has(eid):
+					req("raft_break", {"eid": eid, "cell": c})
+		check(World.entities_of("raft").is_empty() and count("raft_floor") == 5, "taken apart, the sections come back (%d, %d left)" % [count("raft_floor"), _raft_cells().size()])
+
+
+func _animals_of(sp: String) -> Array:
+	var out: Array = []
+	for e in World.entities_of("animal"):
+		if String(e["d"]["s"]) == sp:
+			out.append(e)
+	return out
+
+
+func _apos(e: Dictionary) -> Vector3:
+	return (e["xf"] as Transform3D).origin
+
+
+func _run_animals(secs: float) -> void:
+	for i in int(secs / AnimalSim.TICK):
+		a.animals.step(AnimalSim.TICK)
+
+
+func suite_animals() -> void:
+	var sea := int(World.geo["sea"])
+	var all := World.entities_of("animal")
+	check(all.size() >= 15, "the islands have animals (%d)" % all.size())
+	var crabs := _animals_of("crab")
+	var fowl := _animals_of("fowl")
+	var goats := _animals_of("goat")
+	check(crabs.size() >= 4 and fowl.size() >= 3 and goats.size() >= 2, "crabs, junglefowl and goats (%d, %d, %d)" % [crabs.size(), fowl.size(), goats.size()])
+	var on_sand := 0
+	for c in crabs:
+		var under := World.block(VoxelData.cell_of(_apos(c) - Vector3(0, 0.3, 0)))
+		if Blocks.name_of(under) == "sand":
+			on_sand += 1
+	check(on_sand == crabs.size(), "crabs on the beaches (%d of %d)" % [on_sand, crabs.size()])
+	var right_isles := true
+	for g in goats:
+		var b := String(World.geo["islands"][int(g["d"]["isl"])]["b"])
+		if not b in ["rocky", "meadow"]:
+			right_isles = false
+	check(right_isles, "goats live on the rocky and meadow isles")
+	# far from everyone they rest; near, they wander about home
+	var goat: Dictionary = goats[0]
+	var gp := _apos(goat)
+	place_player(gp + Vector3(80, 0, 0))
+	_run_animals(5.0)
+	check(_apos(goat).distance_to(gp) < 0.01, "an animal nobody is near stands still")
+	place_player(gp + Vector3(20, 0, 0))
+	var moved := 0.0
+	var far := 0.0
+	for i in 30:
+		_run_animals(1.0)
+		moved = maxf(moved, _apos(goat).distance_to(gp))
+		far = maxf(far, Vector2(_apos(goat).x, _apos(goat).z).distance_to(Vector2(goat["d"]["home"].x, goat["d"]["home"].z)))
+	check(moved > 0.5, "with someone about, it wanders (%.1f m)" % moved)
+	check(far < AnimalSim.WANDER + 4.5, "but stays near home (%.1f m)" % far)
+	var gy := _apos(goat).y
+	check(absf(gy - World.vox.rest_height(_apos(goat) + Vector3(0, 0.5, 0))) < 0.05, "on the ground, not in it or above it")
+	# come too close and it runs
+	gp = _apos(goat)
+	place_player(gp + Vector3(2.0, 0, 0))
+	_run_animals(1.5)
+	check(_apos(goat).distance_to(gp + Vector3(2.0, 0, 0)) > 2.6, "come close and it runs off (%.1f m)" % _apos(goat).distance_to(gp + Vector3(2.0, 0, 0)))
+	# hunting: a crab to one spear thrust, a goat to a few knife cuts
+	var crab: Dictionary = crabs[0]
+	var cp := _apos(crab)
+	place_player(cp + Vector3(1.0, 0, 0))
+	clear_inv()
+	give("spear", 1, {"mat": "flint"})
+	req("hit", {"eid": crab["id"], "slot": 0})
+	check(not World.entities.has(crab["id"]), "one spear thrust takes a crab")
+	check(items_near(cp, 3.0, "crab_raw") == 1, "and leaves a crab to roast")
+	check(int(inv().get_slot(0)["d"]["dur"]) < ItemDB.max_durability("spear", {"mat": "flint"}), "the spear wears")
+	goat = goats[1] if goats.size() > 1 else goats[0]
+	gp = _apos(goat)
+	clear_inv()
+	give("knife", 1, {"mat": "stone"})
+	place_player(gp + Vector3(1.2, 0, 0))
+	req("hit", {"eid": goat["id"], "slot": 0})
+	check(World.entities.has(goat["id"]) and float(goat["d"]["hp"]) < 1.0, "a knife cut hurts a goat (%.2f)" % float(goat["d"]["hp"]))
+	check(String(a.animals.mind(goat["id"])["st"]) == "flee", "and it bolts")
+	for k in 5:
+		if World.entities.has(goat["id"]):
+			place_player(_apos(goat) + Vector3(1.2, 0, 0))
+			req("hit", {"eid": goat["id"], "slot": 0})
+	check(not World.entities.has(goat["id"]), "a few more and it's down")
+	var meat := 0
+	var hides := 0
+	for e in World.entities_near(_apos(goat) if World.entities.has(goat["id"]) else gp, 12.0, "item"):
+		if String(e["d"]["i"]) == "meat_raw":
+			meat += int(e["d"]["n"])
+		elif String(e["d"]["i"]) == "hide":
+			hides += int(e["d"]["n"])
+	check(meat >= 2 and hides == 1, "meat and a hide (%d, %d)" % [meat, hides])
+	# a lead of twine
+	var bird: Dictionary = fowl[0]
+	var bp := _apos(bird)
+	clear_inv()
+	give("twine", 2)
+	place_player(bp + Vector3(1.0, 0, 0))
+	req("animal_use", {"eid": bird["id"], "slot": 0})
+	check(int(bird["d"]["lead"]) == pid and count("twine") == 1, "tie a lead of twine on a junglefowl")
+	var dest := bp + Vector3(5.0, 0, 0)
+	dest.y = World.vox.rest_height(dest + Vector3(0, 3, 0))
+	place_player(dest)
+	_run_animals(6.0)
+	var gap := Vector2(_apos(bird).x - dest.x, _apos(bird).z - dest.z).length()
+	check(gap < 3.0, "it follows on the lead (%.1f m behind)" % gap)
+	# take it across the sea on a raft
+	var water := _open_water(World.geo["islands"][int(bird["d"]["isl"])], 6.0)
+	if check(water != Vector3.INF, "open water off its island"):
+		var cells := {}
+		for z in 2:
+			for x in 2:
+				cells[Vector3i(x, 0, z)] = Vector2i(Blocks.id_of("raft_floor"), 0)
+		var rxf := Transform3D(Basis(), Vector3(water.x - 1.0, Raft.origin_y(sea), water.z - 1.0))
+		var rid := World.spawn("raft", rxf, {"cells": cells, "v": Vector3.ZERO, "w": 0.0, "anchor": false})
+		# you stand on the raft; the bird swims up beside it and hops aboard
+		var deck := rxf * Vector3(0.5, Raft.DECK, 0.5)
+		place_player(deck)
+		Net.poses[pid]["rv"] = rid
+		World.move_entity(bird["id"], Transform3D(Basis(), rxf * Vector3(2.8, 0.5, 1.0)), true)
+		_run_animals(0.5)
+		check(int(bird["d"]["raft"]) == rid, "a led animal hops aboard your raft")
+		# the raft sails away; the bird goes with it
+		var far_isl := -1
+		for i in (World.geo["islands"] as Array).size():
+			if i != int(bird["d"]["isl"]) and String(World.geo["islands"][i]["b"]) != "home":
+				far_isl = i
+				break
+		var beach := _find_beach(World.geo["islands"][far_isl])
+		if check(beach.x >= 0, "a beach on another island"):
+			var land := Vector3(beach) + Vector3(0.5, 1.0, 0.5)
+			var seaward := Vector3.ZERO
+			for dv in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				if World.block(beach + dv) == Blocks.sea:
+					seaward = Vector3(dv)
+			var rp: Vector3 = bird["d"]["rp"]
+			var at := land + seaward * 1.6
+			var nxf := Transform3D(Basis(), Vector3(at.x - rp.x, Raft.origin_y(sea), at.z - rp.z))
+			World.move_entity(rid, nxf, true)
+			place_player(nxf * Vector3(0.5, Raft.DECK, 0.5))
+			Net.poses[pid]["rv"] = rid
+			_run_animals(0.2)
+			check(_apos(bird).distance_to(nxf * rp) < 0.3, "it rides the raft across the sea")
+			# you step ashore: it jumps down after you
+			place_player(land + Vector3(-seaward.x, 0, -seaward.z) * 1.0)
+			Net.poses[pid]["rv"] = -1
+			_run_animals(0.5)
+			check(int(bird["d"]["raft"]) == -1 and not World.vox.liquid_at(_apos(bird) + Vector3(0, 0.2, 0)) and _apos(bird).y > sea + 0.5, "and jumps ashore after you")
+			req("animal_use", {"eid": bird["id"], "slot": 1})
+			check(int(bird["d"]["lead"]) == -1 and count("twine") == 2, "let go, you get your twine back")
+			check(int(bird["d"]["isl"]) == far_isl, "and this island is its home now")
+		# take the raft apart under it: it swims for home
+		World.move_entity(rid, rxf, true)
+		World.update(bird["id"], {"raft": rid, "rp": Vector3(0.5, Raft.DECK, 0.5), "ry": 0.0})
+		World.move_entity(bird["id"], Transform3D(Basis(), rxf * Vector3(0.5, Raft.DECK, 0.5)), true)
+		place_player(_apos(bird) + Vector3(0, 0, 20))
+		World.despawn(rid)
+		_run_animals(0.3)
+		var home_v: Vector3 = bird["d"]["home"]
+		var d0 := Vector2(_apos(bird).x, _apos(bird).z).distance_to(Vector2(home_v.x, home_v.z))
+		check(int(bird["d"]["raft"]) == -1 and World.vox.liquid_at(_apos(bird) + Vector3(0, 0.15, 0)), "with the raft gone from under it, it's in the water")
+		_run_animals(4.0)
+		var d1 := Vector2(_apos(bird).x, _apos(bird).z).distance_to(Vector2(home_v.x, home_v.z))
+		check(d1 < d0 - 1.0, "and swims for home (%.1f -> %.1f m)" % [d0, d1])
+	# the lead slips if you go too far
+	var bird2: Dictionary = fowl[1] if fowl.size() > 1 else fowl[0]
+	place_player(_apos(bird2) + Vector3(1.0, 0, 0))
+	clear_inv()
+	give("twine", 1)
+	req("animal_use", {"eid": bird2["id"], "slot": 0})
+	place_player(_apos(bird2) + Vector3(30.0, 0, 0))
+	_run_animals(0.3)
+	check(int(bird2["d"]["lead"]) == -1, "go too far and the lead slips")
+	# fed by hand two at a time, they have young
+	var pair: Array = []
+	for f in _animals_of("fowl"):
+		if AnimalSim.grown(f["d"]) >= 1.0 and a.animals.on_raft(f) < 0:
+			pair.append(f)
+		if pair.size() == 2:
+			break
+	if check(pair.size() == 2, "two grown junglefowl"):
+		var p0 := _apos(pair[0])
+		World.move_entity(pair[1]["id"], Transform3D(Basis(), p0 + Vector3(1.0, 0, 0)), true)
+		var n0 := _animals_of("fowl").size()
+		clear_inv()
+		give("berries", 4)
+		place_player(p0 + Vector3(0, 0, 1.5))
+		req("animal_use", {"eid": pair[0]["id"], "slot": 0})
+		check(_animals_of("fowl").size() == n0 and count("berries") == 3, "it eats from your hand")
+		req("animal_use", {"eid": pair[1]["id"], "slot": 0})
+		var after := _animals_of("fowl")
+		check(after.size() == n0 + 1, "feed a second one beside it: a chick (%d -> %d)" % [n0, after.size()])
+		var chick: Dictionary = {}
+		for f in after:
+			if AnimalSim.grown(f["d"]) < 1.0:
+				chick = f
+		check(not chick.is_empty() and AnimalSim.grown(chick["d"]) < 0.1, "a young one, that grows up")
+		req("animal_use", {"eid": pair[0]["id"], "slot": 0})
+		req("animal_use", {"eid": pair[1]["id"], "slot": 0})
+		check(_animals_of("fowl").size() == n0 + 1, "but not again straight away")
+	# junglefowl lay eggs
+	var eggs_before := 0
+	for e in World.entities_of("item"):
+		if String(e["d"]["i"]) == "egg":
+			eggs_before += 1
+	a.animals.tick(20.0)
+	var eggs := 0
+	for e in World.entities_of("item"):
+		if String(e["d"]["i"]) == "egg":
+			eggs += 1
+	check(eggs > eggs_before, "junglefowl lay eggs (%d)" % (eggs - eggs_before))
+	# a hunted-out beach fills again, while nobody is there
+	var home_i := 0
+	for e in _animals_of("crab"):
+		if int(e["d"]["isl"]) == home_i:
+			World.despawn(e["id"])
+	place_player(Vector3(5, 40, 5))
+	for k in 30:
+		a.animals.tick(4.0)
+	var back := 0
+	for e in _animals_of("crab"):
+		if int(e["d"]["isl"]) == home_i:
+			back += 1
+	check(back >= 3, "crabs come back to a hunted-out beach (%d)" % back)
+	# saved and loaded: the same animals, and no second lot
+	var n_animals := World.entities_of("animal").size()
+	check(Game.save() == OK and World.load_world("TestIsland") == OK, "saves and loads with animals")
+	World.on_player_joined(pid, Settings.player_name)
+	check(World.entities_of("animal").size() == n_animals and bool(World.geo.get("fauna", false)), "the same animals (%d)" % World.entities_of("animal").size())
+	a.animals.populate()
+	check(World.entities_of("animal").size() == n_animals, "the islands aren't stocked twice")
+
+
+func _helm_clear() -> void:
+	a.rafts._helm.clear()
 
 
 func _find_shore(it: Dictionary) -> Vector3i:

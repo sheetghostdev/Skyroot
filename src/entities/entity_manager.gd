@@ -11,6 +11,8 @@ const VIEWS := {
 	"clay": preload("res://src/entities/clay_view.gd"),
 	"ground": preload("res://src/entities/ground_view.gd"),
 	"jar": preload("res://src/entities/jar_view.gd"),
+	"raft": preload("res://src/entities/raft_view.gd"),
+	"animal": preload("res://src/entities/animal_view.gd"),
 }
 
 var views: Dictionary = {}

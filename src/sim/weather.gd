@@ -3,6 +3,9 @@ extends RefCounted
 ## Showers come and go; wind wanders; calm mornings bring mist.  Rain puts out
 ## open fires and pit kilns, soaks you, and waters crops.
 
+var showers := true      # false: it only rains when something sets the rain (tests)
+
+
 func light_factor() -> float:
 	var h := World.hour_of_day()
 	var dt := (h - 6.0) / 14.0
@@ -20,7 +23,7 @@ func tick(hours: float) -> void:
 	# the first day stays dry: there is enough to learn without rain
 	var first_day := World.hours() < 24.0 + 20.0
 	if target <= 0.0:
-		if not first_day and randf() < hours * 0.045:
+		if showers and not first_day and randf() < hours * 0.045:
 			target = randf_range(0.35, 0.9)
 	elif randf() < hours * 0.3:
 		target = 0.0

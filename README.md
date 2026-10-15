@@ -1,14 +1,22 @@
 # Skyroot
 
-A co-op survival and crafting game for 1–4 players, set on a small floating island
-above the clouds.  It's a block world, heavily inspired by Vintage Story: you knap
-stone tools cell by cell on a grid, build fire pits stick by stick, shape clay pottery
-layer by layer, and fire it in a pit kiln you dig and cover yourself.
+A co-op survival and crafting game for 1–4 players.  It's a block world, heavily
+inspired by Vintage Story: you knap stone tools cell by cell on a grid, build fire
+pits stick by stick, shape clay pottery layer by layer, and fire it in a pit kiln you
+dig and cover yourself.
 
-Everything you need is already on the island: loose stones and flint, fallen sticks
-under the trees, tall grass, cattails at the pond, blue clay in its banks, wild
-turnips and flax, berry bushes and mushrooms.  Trees, berries, grass and mushrooms
-grow back; stone does not.
+There are two kinds of world:
+
+* **Archipelago** (the default) — you wake on a small island in a wide sea, with a
+  dozen and a half others around it, none of them big and each a different kind:
+  palm-fringed atolls, wooded isles with fresh ponds and clay, rocky knolls with
+  flint, marshes, meadows.  No island has everything.  Build a raft, paddle and sail
+  from one to the next, and bring back what you need — animals included.  Your base
+  can be on land or on the raft itself.
+* **Sky island** — the original: one small floating island above the clouds with
+  everything you need on it (and a long fall off the edge).
+
+Trees, berries, grass and mushrooms grow back; stone does not.
 
 Built with **Godot 4.7** (GDScript, Forward+ renderer).
 
@@ -16,7 +24,8 @@ Built with **Godot 4.7** (GDScript, Forward+ renderer).
 
 1. Open the project folder in Godot 4.7 (`project.godot`) and press **Play**, or run
    `godot --path .` from this folder.
-2. **Play** starts or continues an island; leave *Open to friends* ticked to host
+2. **Play** starts or continues a world (choose *Archipelago* or *Sky island* for a new
+   one); leave *Open to friends* ticked to host
    co-op over LAN or direct IP (port 7777 by default) — or open a solo island later
    from the pause menu (**Open to friends now**).  Friends use **Join a friend** with
    the host's address, which the pause menu shows.
@@ -30,7 +39,8 @@ says so); that version is still in the git history at commit `5133eb4`.
 | | |
 |---|---|
 | W A S D, mouse | move, look |
-| Space, Ctrl, Shift | jump, sprint, sneak (sneaking, you can't walk off an edge) |
+| Space, Ctrl, Shift | jump, sprint, sneak (sneaking, you can't walk off an edge); in water Space swims up and Shift dives |
+| A / D at the helm | steer a raft (W, S or Space lets go of the steering oar) |
 | Left mouse (hold) | break what you look at; chip a knapping stone; remove clay |
 | Right mouse | use or place what you hold; hold it to eat, drink or work a bow drill (keep holding to eat one after another, or lay stick after stick) |
 | Shift + right mouse | set things down on the ground: a stone to knap, clay to shape, a stick or dry grass to start a fire pit, anything else to leave there |
@@ -87,6 +97,29 @@ steps.
   wake.
 * **Farming** — till soil with a hoe, sow turnip or flax seeds from the wild plants.
   Farmland near water grows faster.
+* **The archipelago** — each island kind has its own things: the home island has
+  palms, coconuts and a few stones and sticks; wooded isles have oak and birch, berries,
+  mushrooms and a fresh pond with clay; rocky isles have stone and flint; marshes clay,
+  cattails and flax; meadows turnips and flax.  Far islands show on the horizon.
+* **Rafts** — two logs and twine lash into a raft section.  Right-click the sea to float
+  it, the water beside it to lash on more (up to 25 × 25).  Stand on it and it carries
+  you; build on its deck like on the ground.  Hold right click with a paddle to paddle
+  the way you look; raise a sail and the wind takes you; take the helm at a steering
+  oar and A / D steer (you can hold a course across the wind, never into it); drop an
+  anchor to stay put.  Rafts ground in the shallows.
+* **Swimming** — you float with your head up; Space swims up, Shift dives; under water
+  you hold your breath (the air bar).  Swim against a bank or a raft holding Space to
+  climb out.  Things dropped in the sea float.
+* **Water at sea** — the sea is salt and makes you thirstier.  Drink coconuts, find a
+  fresh pond, or boil sea water in a pot over a fire until it's fresh; drink from the
+  pot, ladle it into bowls or fill a waterskin (a goat hide and twine) for the voyage.
+  A coconut pressed into the sand grows a palm.
+* **Animals** — crabs on the beaches, junglefowl on the wooded isles and meadows (they
+  lay eggs), wild goats on the rocks.  They run if you come too close.  Hunt them (a
+  spear — a knapped spear point on two sticks — hits hardest and reaches furthest) for
+  meat, crab and hides.  Tie twine on a junglefowl or goat to lead it: it follows you
+  onto your raft, across the sea and off again; let it go and that's its new home.
+  Feed two by hand and they have a young one.  Hunted-out islands slowly fill again.
 * **Co-op** — up to four players; the host's game holds the island and checks every
   action, so nothing can be duplicated.  When someone leaves, their things go with them
   and come back when they return.
@@ -96,12 +129,12 @@ steps.
 ```
 data/        blocks, items, crafting recipes, knapping and clay patterns, handbook, hints
 src/voxel/   block registry, block storage, chunk mesher (with skylight), renderer
-src/world/   island generator, game scene, sky, effects
-src/sim/     host rules: blocks, fire and kilns, crafting, farming, survival, weather
+src/world/   island and archipelago generators, game scene, sky, ocean, effects
+src/sim/     host rules: blocks, fire and kilns, crafting, farming, rafts, animals, survival, weather
 src/player/  movement (box physics on the block grid), cameras, interaction, models
-src/entities views of block entities (fire pits, kilns, knapping, clay, items...)
+src/entities views of entities (fire pits, kilns, knapping, clay, items, rafts, animals...)
 src/ui/      HUD, inventory, handbook, menus
-tools/art/   texture and icon generators (Python + Pillow)
+tools/art/   texture and icon generators (Python + Pillow);  tools/audio/  animal sounds
 tests/       headless test suites;  tools/*.sh  multiplayer tests
 ```
 
@@ -115,6 +148,7 @@ godot --headless --path . res://tests/test_main.tscn -- --suite=all
 tools/mp_test.sh      # host + client, leave and rejoin
 tools/mp_crowd.sh     # four players grabbing the same things; a fifth is turned away
 tools/mp_crash.sh     # a client crashes and comes straight back
+tools/mp_sea.sh       # at sea: a friend rides your raft, paddles it, leads a goat
 tools/run_tests.sh    # all of the above
 ```
 
@@ -122,4 +156,7 @@ The suites drive the real game through the same requests a client sends: breakin
 placing blocks, felling trees, knapping, the crafting grid, clay forming, building and
 lighting fires, cooking, stew, pit kilns (in a pit and in the open, in the rain),
 hunger and cold, death and the bag you leave, farming and regrowth, saving and loading,
-and ten days on the island.
+and ten days on the island; at sea, the islands and what's on them, salt water and
+boiling it fresh, floating, building, sailing, steering, anchoring, grounding and
+riding rafts, and the animals (wandering, running, hunting, leading across the sea,
+breeding, eggs, coming back to hunted-out islands).

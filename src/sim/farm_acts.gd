@@ -47,6 +47,19 @@ func use_block(pid: int, c: Vector3i, target: int, slot: int, s: Dictionary, fac
 			World.mark_inventory(pid)
 			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
 			return true
+		if id == "waterskin":
+			if salt:
+				World.notify(pid, "Not sea water: it would only make you thirstier. Boil it in a pot first.", "warn")
+				return true
+			var have := int(s["d"].get("n", 0)) if String(s["d"].get("c", "")) == "water" else 0
+			var got2 := a.water.take(c, FireActs.WATERSKIN_MAX - have)
+			if got2 < 1:
+				return true
+			inv.set_data(slot, {"c": "water", "n": have + got2})
+			World.mark_inventory(pid)
+			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
+			a.flag_player(pid, "filled_waterskin")
+			return true
 		if id == "pot" and int(s["d"].get("w", 0)) < 3:
 			if salt and int(s["d"].get("w", 0)) > 0 and not bool(s["d"].get("salt", false)):
 				World.notify(pid, "There's fresh water in the pot already.")
@@ -62,6 +75,17 @@ func use_block(pid: int, c: Vector3i, target: int, slot: int, s: Dictionary, fac
 			World.fx("splash", Vector3(c) + Vector3(0.5, 0.85, 0.5))
 			return true
 		return id == ""
+	if id == "coconut" and sneak and face == Vector3i.UP and nm in ["sand", "grass", "dirt"]:
+		# a coconut pressed into the sand sprouts into a palm
+		var above := c + Vector3i.UP
+		if not World.cell_free(above) or World.block(above) != 0:
+			return false
+		inv.take_from(slot, 1)
+		World.mark_inventory(pid)
+		World.set_block(above, Blocks.id_of("sapling_palm"))
+		World.fx("place", Vector3(above) + Vector3(0.5, 0.2, 0.5), {"b": Blocks.id_of("sapling_palm")})
+		a.flag_player(pid, "planted_palm")
+		return true
 	if ItemDB.tool_kind(id) == "hoe" and face == Vector3i.UP and nm in ["grass", "dirt"]:
 		var up := c + Vector3i.UP
 		var uid := World.block(up)

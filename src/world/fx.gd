@@ -73,6 +73,14 @@ func _snd(b: int, which: int) -> String:
 	return BLOCK_SOUNDS.get(s, BLOCK_SOUNDS["dirt"])[which]
 
 
+static func _animal_snd(sp: String, what: String) -> String:
+	match sp:
+		"goat": return "goat_bleat" if what == "call" else "goat_hurt"
+		"fowl": return "fowl_cluck" if what == "call" else "fowl_squawk"
+		"crab": return "crab_click"
+	return "rustle"
+
+
 func play(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 	var b := int(params.get("b", 0))
 	match kind:
@@ -114,6 +122,40 @@ func play(kind: String, pos: Vector3, params: Dictionary = {}) -> void:
 		"splash":
 			burst(pos, Color(0.7, 0.82, 0.92), 14, 0.04, 2.0, 9.0, 0.6, 0.2)
 			Sfx.play("water_fill", pos, -4.0)
+		"animal_hit":
+			var sp := String(params.get("s", ""))
+			burst(pos, Color(0.85, 0.8, 0.7) if sp == "fowl" else Color(0.55, 0.42, 0.3), 8, 0.04, 1.6, 8.0, 0.5, 0.15)
+			Sfx.play(_animal_snd(sp, "hurt"), pos, -4.0)
+		"animal_die":
+			burst(pos, Color(0.7, 0.65, 0.58), 16, 0.06, 1.4, 4.0, 0.9, 0.25)
+			Sfx.play(_animal_snd(String(params.get("s", "")), "hurt"), pos, -2.0, 0.85)
+		"animal_eat":
+			burst(pos, Color(0.75, 0.68, 0.4), 6, 0.025, 1.0, 9.0, 0.5, 0.1)
+			Sfx.play(_animal_snd(String(params.get("s", "")), "call"), pos, -8.0)
+		"animal_born":
+			burst(pos, Color(1.0, 0.92, 0.7), 14, 0.03, 1.2, -0.8, 1.2, 0.3)
+			Sfx.play("discovery", pos, -12.0)
+		"animal_hop":
+			Sfx.play("step_wood", pos, -8.0)
+		"animal_call":
+			Sfx.play(_animal_snd(String(params.get("s", "")), "call"), pos, -10.0)
+		"lead":
+			Sfx.play("rope_tighten", pos, -6.0)
+			Sfx.play(_animal_snd(String(params.get("s", "")), "call"), pos, -10.0)
+		"paddle":
+			var sea := float(World.geo.get("sea", 30)) + 0.85
+			var pp := Vector3(pos.x, sea, pos.z)
+			burst(pp, Color(0.75, 0.86, 0.94), 8, 0.035, 1.6, 9.0, 0.5, 0.25)
+			Sfx.play("water_splash", pp, -12.0, 1.15, 0.15)
+		"sail":
+			Sfx.play("rustle", pos, -4.0, 0.8)
+			Sfx.play("rope_tighten", pos, -10.0)
+		"bump":
+			Sfx.play("wood_drop", pos, -2.0, 0.7)
+			Sfx.play("creak_warn", pos, -10.0)
+		"steam":
+			burst(pos, Color(0.94, 0.95, 0.97), 12, 0.09, 0.5, -0.7, 2.0, 0.12)
+			Sfx.play("sizzle", pos, -10.0)
 		"spill":
 			burst(pos, Color(0.7, 0.82, 0.92), 10, 0.04, 1.2, 9.0, 0.9, 0.3)
 			Sfx.play("water_splash", pos, -14.0, 1.0, 0.15)

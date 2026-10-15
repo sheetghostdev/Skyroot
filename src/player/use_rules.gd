@@ -16,6 +16,13 @@ static func lmb(t: Dictionary, s: Dictionary) -> Dictionary:
 	if kind == "satchel":
 		return {}
 	var tool_kind := ItemDB.tool_kind(String(s.get("i", "")))
+	if kind == "animal":
+		return {"text": "Hunt" if tool_kind in ["spear", "knife", "axe"] else "Hit", "kind": "hit"}
+	if kind == "raft":
+		var rt := BlockActs.break_time(int(t["id"]), int(t["m"]), tool_kind)
+		if Blocks.has_flag(int(t["id"]), "raft_only") and rt >= 0.0:
+			return {"text": "Take apart" if Blocks.name_of(int(t["id"])) == "raft_floor" else "Take down", "kind": "break", "time": rt}
+		return {"text": "Pick up" if rt >= 0.0 else "Too hard to break", "kind": "break" if rt >= 0.0 else "none", "time": rt}
 	if kind == "be":
 		var be: Dictionary = t["be"]
 		match String(be["t"]):
@@ -51,7 +58,8 @@ static func lmb(t: Dictionary, s: Dictionary) -> Dictionary:
 	return {"text": verb, "kind": "break", "time": bt}
 
 
-static func rmb(t: Dictionary, s: Dictionary, sneak: bool) -> Dictionary:
+static func rmb(t: Dictionary, s: Dictionary, sneak: bool, ctx: Dictionary = {}) -> Dictionary:
+	## ctx: {"raft": the raft you stand on, or -1}
 	var id := String(s.get("i", ""))
 	var d: Dictionary = s.get("d", {})
 	var kind := String(t.get("type", ""))
@@ -67,6 +75,21 @@ static func rmb(t: Dictionary, s: Dictionary, sneak: bool) -> Dictionary:
 		r = _block(t, id, d, sneak, s)
 		if not r.is_empty():
 			return r
+	elif kind == "raft":
+		r = _raft(t, id)
+		if not r.is_empty():
+			return r
+	elif kind == "animal":
+		r = _animal(t, id)
+		if not r.is_empty():
+			return r
+	# paddling the raft you stand on (or the one you look at)
+	if ItemDB.tool_kind(id) == "paddle":
+		var eid := int(ctx.get("raft", -1))
+		if eid < 0 and kind == "raft":
+			eid = int(t["eid"])
+		if eid >= 0:
+			return {"text": "Paddle (it goes the way you look)", "kind": "paddle", "eid": eid, "repeat": 0.45}
 	# your own hands
 	if not food.is_empty():
 		return {"text": "Eat", "kind": "eat", "hold": EAT_S}
@@ -74,6 +97,10 @@ static func rmb(t: Dictionary, s: Dictionary, sneak: bool) -> Dictionary:
 		return {"text": "Drink", "kind": "eat", "hold": DRINK_S}
 	if id == "bowl" and String(d.get("c", "")) == "sea":
 		return {"text": "Drink the sea water (salty!)", "kind": "eat", "hold": DRINK_S}
+	if id == "pot" and int(d.get("w", 0)) > 0:
+		return {"text": "Drink the sea water (salty!)" if bool(d.get("salt", false)) else "Drink from the pot", "kind": "eat", "hold": DRINK_S}
+	if id == "waterskin" and int(d.get("n", 0)) > 0:
+		return {"text": "Drink", "kind": "eat", "hold": DRINK_S}
 	if id == "bowl" and String(d.get("c", "")) == "stew":
 		return {"text": "Eat the stew", "kind": "eat", "hold": EAT_S}
 	return {}
@@ -128,8 +155,14 @@ static func _be(be: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dicti
 			if id == "bowl" and not pot.is_empty():
 				if String(d.get("c", "")) == "" and int(pot.get("stew", 0)) > 0:
 					return {"text": "Ladle out stew", "kind": "use"}
-				if String(d.get("c", "")) == "water" and int(pot.get("stew", 0)) == 0:
-					return {"text": "Pour water into the pot " + _count(int(pot.get("water", 0)), 3), "kind": "use"}
+				if String(d.get("c", "")) in ["water", "sea"] and int(pot.get("stew", 0)) == 0 and int(pot.get("water", 0)) < 3:
+					return {"text": "Pour it into the pot " + _count(int(pot.get("water", 0)), 3), "kind": "use"}
+				if String(d.get("c", "")) == "" and int(pot.get("water", 0)) > 0 and (pot.get("items", []) as Array).is_empty():
+					return {"text": "Ladle out sea water (let it boil!)" if bool(pot.get("salt", false)) else "Ladle out fresh water", "kind": "use"}
+			if id == "waterskin" and not pot.is_empty() and int(pot.get("water", 0)) > 0 and int(pot.get("stew", 0)) == 0 and (pot.get("items", []) as Array).is_empty():
+				if bool(pot.get("salt", false)):
+					return {"text": "Still sea water: let it boil", "kind": "none"}
+				return {"text": "Fill the waterskin from the pot", "kind": "use"}
 			if String(ItemDB.food(id).get("cook", "")) != "":
 				if not pot.is_empty() and int(pot.get("water", 0)) > 0:
 					return {"text": "Put it in the pot", "kind": "use"}
@@ -190,6 +223,12 @@ static func _block(t: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dic
 	if nm == "berry_bush" and not sneak:
 		if World.block_meta(c) == 1:
 			return {"text": "Pick berries", "kind": "use"}
+	if (b == Blocks.sea or (Blocks.waterlog[b] == 1 and World.kind == "sea")) and id == "raft_floor" and World.block(c + Vector3i.UP) == 0:
+		# the top of the sea (from a swimmer's eye level, its side will do)
+		var ext := _raft_beside(t["point"])
+		if not ext.is_empty():
+			return {"text": "Lash it to the raft", "kind": "raft_place", "eid": ext["eid"], "cell": ext["cell"], "repeat": 0.3}
+		return {"text": "Float a raft section on the sea", "kind": "raft_new"}
 	if Blocks.is_water(b):
 		var salt := b != Blocks.id_of("water")
 		if id == "":
@@ -198,12 +237,19 @@ static func _block(t: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dic
 			return {"text": "Fill the bowl with sea water" if salt else "Fill the bowl", "kind": "use"}
 		if id == "pot" and int(d.get("w", 0)) < 3:
 			return {"text": "Fill the pot with sea water" if salt else "Fill the pot", "kind": "use"}
+		if id == "waterskin":
+			if salt:
+				return {"text": "Not with sea water: boil it in a pot first", "kind": "none"}
+			if int(d.get("n", 0)) < FireActs.WATERSKIN_MAX:
+				return {"text": "Fill the waterskin", "kind": "use"}
 	if Blocks.has_flag(b, "bed") and id == "":
 		return {"text": "Sleep", "kind": "sleep"}
 	if ItemDB.tool_kind(id) == "hoe" and face == Vector3i.UP and nm in ["grass", "dirt"]:
 		return {"text": "Till the soil", "kind": "use"}
 	if ItemDB.def(id).has("crop") and nm == "farmland":
 		return {"text": "Sow", "kind": "use"}
+	if id == "coconut" and sneak and face == Vector3i.UP and nm in ["sand", "grass", "dirt"] and World.block(c + Vector3i.UP) == 0 and World.cell_free(c + Vector3i.UP):
+		return {"text": "Plant the coconut", "kind": "use"}
 	if face == Vector3i.UP and Blocks.is_solid(b) and World.cell_free(c + Vector3i.UP):
 		if id == "jar":
 			return {"text": "Set the jar down", "kind": "use"}
@@ -220,6 +266,71 @@ static func _block(t: Dictionary, id: String, d: Dictionary, sneak: bool, s: Dic
 	var place := ItemDB.block_of(id)
 	if place >= 0:
 		return {"text": "Place %s" % Blocks.label(place).to_lower(), "kind": "use", "repeat": 0.22}
+	return {}
+
+
+static func _raft(t: Dictionary, id: String) -> Dictionary:
+	## Right-click on a raft: build on it, raise a sail, drop the anchor, steer.
+	var b: int = t["id"]
+	var c: Vector3i = t["cell"]
+	var face: Vector3i = t["normal"]
+	var eid := int(t["eid"])
+	var e := World.get_entity(eid)
+	if e.is_empty():
+		return {}
+	var cells: Dictionary = e["d"].get("cells", {})
+	if id == "raft_floor":
+		var nc := c + face
+		if face.y == 0 and Raft.floor_ok(cells, nc):
+			return {"text": "Lash it to the raft", "kind": "raft_place", "eid": eid, "cell": nc, "repeat": 0.3}
+		return {"text": "New sections go beside the raft, on the water", "kind": "none"}
+	if Blocks.has_flag(b, "sail") and id == "":
+		var up := (int(t["m"]) & 4) != 0
+		return {"text": "Furl the sail" if up else "Raise the sail", "kind": "raft_use"}
+	if Blocks.has_flag(b, "anchor") and id == "":
+		return {"text": "Weigh anchor" if bool(e["d"].get("anchor", false)) else "Drop the anchor", "kind": "raft_use"}
+	if Blocks.has_flag(b, "helm") and id == "":
+		return {"text": "Take the helm", "kind": "helm"}
+	var place := ItemDB.block_of(id)
+	if place >= 0:
+		var at := c + face
+		if at.y < 1 or cells.has(at) or not Raft.supported(cells, at):
+			return {}
+		if Blocks.has_flag(place, "raft_only") and at.y != 1:
+			return {"text": "That goes on the deck", "kind": "none"}
+		return {"text": "Place %s" % Blocks.label(place).to_lower(), "kind": "raft_place", "eid": eid, "cell": at, "face": face, "repeat": 0.22}
+	return {}
+
+
+static func _animal(t: Dictionary, id: String) -> Dictionary:
+	## Right-click on an animal: lead it on twine, let it go, feed it.
+	var e := World.get_entity(int(t["eid"]))
+	if e.is_empty():
+		return {}
+	var d: Dictionary = e["d"]
+	var sp: Dictionary = ItemDB.animals.get(String(d.get("s", "")), {})
+	var nm := String(sp.get("label", "animal")).to_lower()
+	var lead := int(d.get("lead", -1))
+	if id in (sp.get("eats", []) as Array):
+		return {"text": "Feed the %s" % nm, "kind": "animal"}
+	if lead >= 0 and lead == Net.my_id():
+		return {"text": "Let the %s go" % nm, "kind": "animal"}
+	if lead >= 0:
+		return {"text": "Led by %s" % Net.player_name(lead), "kind": "none"}
+	if bool(sp.get("lead", false)) and id == "twine":
+		return {"text": "Tie a lead on the %s" % nm, "kind": "animal"}
+	return {}
+
+
+static func _raft_beside(p: Vector3) -> Dictionary:
+	## The raft (and its new floor cell) that a section laid on the sea at p
+	## would join: {"eid", "cell"} or {}.
+	for v in RaftView.all():
+		var rv := v as RaftView
+		var lp := rv.view_xf().affine_inverse() * p
+		var c := Vector3i(floori(lp.x), 0, floori(lp.z))
+		if Raft.floor_ok(rv.cells(), c):
+			return {"eid": rv.entity_id, "cell": c}
 	return {}
 
 
@@ -240,4 +351,6 @@ static func sneak_hint(t: Dictionary, s: Dictionary) -> String:
 		return "Sneak + right-click: start a fire pit"
 	if ItemDB.is_raw_pottery(id):
 		return "Sneak + right-click: set it down (for a pit kiln)"
+	if id == "coconut" and Blocks.name_of(b) in ["sand", "grass", "dirt"]:
+		return "Sneak + right-click: plant it (a palm grows)"
 	return ""

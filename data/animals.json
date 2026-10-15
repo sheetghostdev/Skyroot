@@ -1,0 +1,14 @@
+{
+	"_doc": "Animals of the archipelago. hp: how hard they are to bring down (a stone knife hit takes 0.3, a spear 0.6). speed / run: m/s wandering and fleeing. size: [width, height] of the body (for hits and leading). shy: how close you can come before they run. shore: keeps to the sand at the water's edge. lead: can be led on twine (and so taken across the sea on a raft). eats: what they take from your hand; two fed animals together make a young one. isles: island kinds they live on, with how many [min, max] per island. drops: as for blocks.",
+	"crab": {"label": "Crab", "hp": 0.3, "speed": 0.7, "run": 2.2, "size": [0.5, 0.25], "shy": 2.5, "shore": true,
+		"isles": {"home": [3, 5], "atoll": [4, 6], "rocky": [2, 3]},
+		"drops": [{"item": "crab_raw", "n": [1, 1]}]},
+	"fowl": {"label": "Junglefowl", "hp": 0.5, "speed": 0.9, "run": 3.4, "size": [0.4, 0.55], "shy": 3.5, "lead": true,
+		"eats": ["seeds_turnip", "seeds_flax", "berries"], "eggs": true,
+		"isles": {"grove": [3, 5], "meadow": [3, 5]},
+		"drops": [{"item": "meat_raw", "n": [1, 1]}]},
+	"goat": {"label": "Wild goat", "hp": 1.2, "speed": 1.0, "run": 4.0, "size": [0.6, 1.0], "shy": 5.5, "lead": true,
+		"eats": ["dry_grass", "palm_frond", "seaweed", "turnip"],
+		"isles": {"rocky": [2, 4], "meadow": [2, 3]},
+		"drops": [{"item": "meat_raw", "n": [2, 3]}, {"item": "hide", "n": [1, 1]}]}
+}
