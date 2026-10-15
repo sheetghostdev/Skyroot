@@ -5,7 +5,8 @@ world heavily inspired by **Vintage Story**: knapping on a 16x16 grid, fire pits
 built stick by stick (each stick crosses the last; tinder tucked underneath),
 clay formed layer by layer, pottery fired in a pit kiln you dig and cover.
 Read `README.md` (player-facing) and `docs/ARCHITECTURE.md` (how it fits together)
-before changing anything.
+before changing anything.  `docs/ROADMAP.md` has the resource audit and the
+long-game ideas being discussed with the owner.
 
 ## Working with the owner
 
@@ -29,8 +30,9 @@ python3 tools/art/gen_blocks.py preview.png ; python3 tools/art/gen_items.py pre
 ```
 
 `--setup=` scenes are in `src/util/debug_shot.gd` (firepit, firepit_lit, firepit_cook,
-firepit_x, knap, clay, kiln, kiln_lit, ground, items, fell (+ `--after=secs`), water,
-torches, inventory, handbook, chooser).  `--sit` sits the player down, `--tp` third person.
+firepit_x, firepit_pot, knap, clay, kiln, kiln_lit, ground, ground2, items, fell
+(+ `--after=secs`), water, torches, bed, inventory, handbook, chooser).  `--sit` sits
+the player down, `--tp` third person.  `--play=` also has `swim` (climb out of the pond).
 
 ## Where things are
 
@@ -47,6 +49,10 @@ torches, inventory, handbook, chooser).  `--sit` sits the player down, `--tp` th
   (placed torches are "fixtures": the mesher skips them and `VoxelView` adds a model
   + light per torch; wall torches use meta 1-4, see `Blocks.WALL_DIRS`).
 - Blocks: `src/voxel/` (registry, storage, threaded mesher with skylight, view).
+  Blocks with `"facing": true` turn their boxes by `meta & 3` (beds: foot id 36,
+  head id 38, see `BlockActs.bed_partner`).
+- Item models: `src/entities/item_models.gd` (box-built items at real size, piles
+  for stacks; anything without a model falls back to `Icons.mesh`).
 - Client: `src/player/interactor.gd` + `use_rules.gd` (what the buttons do and the
   prompt text), `src/ui/hud.gd` and panels, `src/entities/*_view.gd`.
 - Everything that changes the world goes through `World.request(...)` and is
