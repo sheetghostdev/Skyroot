@@ -41,7 +41,14 @@ func _build() -> void:
 	_drop_in()
 
 
+func _on_raft() -> RaftView:
+	var rid := int(data().get("raft", -1))
+	return RaftView.find(rid) if rid >= 0 else null
+
+
 func _drop_in() -> void:
+	if int(data().get("raft", -1)) >= 0:
+		return     # placed on the deck every frame instead
 	var from = data().get("from", null)
 	if from is Vector3 and (from as Vector3).distance_to(position) > 0.05:
 		_fall_from(from)
@@ -56,6 +63,8 @@ func _fall_from(from: Vector3) -> void:
 
 
 func _moved(xf: Transform3D) -> void:
+	if int(data().get("raft", -1)) >= 0:
+		return
 	var from := position
 	transform = xf
 	_fall_from(from)
@@ -70,3 +79,7 @@ func _process(delta: float) -> void:
 			_drop_in()
 	pivot.rotation.y = _t * 0.8
 	pivot.position.y = sin(_t * 2.0) * 0.03 + 0.03
+	# lying on a raft's deck: where this machine draws the raft
+	var raft := _on_raft()
+	if raft:
+		global_transform = raft.view_xf() * Transform3D(Basis(), data().get("rp", Vector3.ZERO))

@@ -477,6 +477,9 @@ func _crash_b() -> void:
 
 func _sea_host() -> void:
 	_log("hosting an archipelago")
+	# no time passes in this test: random ticks (grass, saplings) would change
+	# blocks between Ana's snapshot and the comparison
+	Game.game_world.sim.set_process(false)
 	var joined := await _wait(func(): return Net.players.size() >= 2, 60.0)
 	check(joined, "a second player joined the archipelago")
 	if not joined:

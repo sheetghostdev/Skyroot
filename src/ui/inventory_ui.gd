@@ -94,8 +94,14 @@ func _ready() -> void:
 	cursor.draw.connect(_draw_cursor)
 	add_child(cursor)
 	Events.inventory_changed.connect(_refresh)
-	Events.entity_changed.connect(func(_id, _k): _refresh())
+	# only the open jar matters here (rafts and animals change every moment)
+	Events.entity_changed.connect(func(id, _k): if _is_jar(id): _refresh())
+	Events.entity_removed.connect(func(id): if _is_jar(id) or (jar_cell != null and World.be(jar_cell).is_empty()): _refresh())
 	_refresh()
+
+
+func _is_jar(id: int) -> bool:
+	return jar_cell != null and int(World.be(jar_cell).get("id", -1)) == id
 
 
 func _slot(i: int) -> SlotView:

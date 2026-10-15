@@ -894,6 +894,25 @@ func suite_raft() -> void:
 	var want := nxf * (oxf.affine_inverse() * before)
 	check(lp.global_position.distance_to(want) < 0.01, "the raft carries you as it moves and turns")
 	lp.riding = -1
+	# things set down on the deck stay there, and travel with the raft
+	e = _raft_e()
+	place_player(_deck_pos(e, Vector3i(1, 0, 1)))
+	clear_inv()
+	give("stick", 3)
+	var dropped := a.drop_item("stick", 2, {}, _deck_pos(e, Vector3i.ZERO) + Vector3(0, 0.8, 0))
+	var de: Dictionary = World.entities.get(dropped, {})
+	check(not de.is_empty() and int(de["d"].get("raft", -1)) == eid and absf((de["xf"] as Transform3D).origin.y - _deck_pos(e, Vector3i.ZERO).y) < 0.01, "a stack let go over the deck lies on the deck")
+	var rel0 := (e["xf"] as Transform3D).affine_inverse() * (de["xf"] as Transform3D).origin
+	e["d"]["v"] = Vector3(2.0, 0, 0)
+	e["d"]["anchor"] = false
+	_helm_clear()
+	place_player(Vector3(0, 0, 0))
+	_sail(1.0)
+	var rel1 := (_raft_e()["xf"] as Transform3D).affine_inverse() * (de["xf"] as Transform3D).origin
+	check(rel0.distance_to(rel1) < 0.01 and (_raft_e()["xf"] as Transform3D).origin.distance_to((e["xf"] as Transform3D).origin) < 0.001, "and sails with it")
+	_raft_e()["d"]["v"] = Vector3.ZERO
+	a.resettle_items(VoxelData.cell_of((de["xf"] as Transform3D).origin))
+	check(World.entities.has(dropped) and int(de["d"].get("raft", -1)) == eid, "the sea below doesn't pull it off the deck")
 	# taking it apart: never so it splits, and what stands on a section first
 	e = _raft_e()
 	place_player(_deck_pos(e, Vector3i(1, 0, 0)))

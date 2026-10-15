@@ -141,9 +141,11 @@ func take(pid: int, args: Dictionary) -> void:
 		a.give(pid, item, 1, {}, at + Vector3(0, 0.6, 0))
 	World.fx("break", at, {"b": v.x})
 	if Raft.floor_count(cells) == 0:
+		_spill(e, {})
 		World.despawn(e["id"])
 		return
 	World.update(e["id"], {"cells": cells})
+	_spill(e, cells)
 
 
 # ---------------------------------------------------------------------------
@@ -284,8 +286,61 @@ func step(delta: float) -> void:
 		d["v"] = v
 		d["w"] = w
 		World.move_entity(e["id"], nxf, send)
+		_carry_items(e["id"], nxf)
 		if send:
 			World.update(e["id"], {"v": v, "w": w})
+
+
+# ---------------------------------------------------------------------------
+# Things lying on the deck
+# ---------------------------------------------------------------------------
+
+func deck_under(p: Vector3) -> Dictionary:
+	## Something let go at p over a raft lands on its deck: {"eid", "rp" (on the
+	## deck, raft-local), "world"}, or {} if there's no raft deck under p.
+	for e in rafts():
+		var xf: Transform3D = e["xf"]
+		var lp := xf.affine_inverse() * p
+		if lp.y < Raft.DECK - 0.4:
+			continue
+		var cells: Dictionary = e["d"]["cells"]
+		var c := Vector3i(floori(lp.x), 0, floori(lp.z))
+		if not cells.has(c):
+			continue
+		var rp := Vector3(lp.x, Raft.DECK, lp.z)
+		# on top of a block standing there, if it's solid
+		var above = cells.get(c + Vector3i.UP)
+		if above != null and Blocks.solid[(above as Vector2i).x] == 1:
+			var top := 0.0
+			for b in Raft.cell_boxes((above as Vector2i).x, (above as Vector2i).y):
+				top = maxf(top, (b as AABB).end.y)
+			rp.y = Raft.DECK + top
+		return {"eid": e["id"], "rp": rp, "world": xf * rp}
+	return {}
+
+
+func _carry_items(rid: int, nxf: Transform3D) -> void:
+	## The raft moved: what lies on its deck moves with it (others place it from
+	## the raft as they see it, so this isn't sent).
+	for it in World.entities_of("item"):
+		if int(it["d"].get("raft", -1)) != rid:
+			continue
+		var rp: Vector3 = it["d"].get("rp", Vector3.ZERO)
+		World.move_entity(it["id"], Transform3D((it["xf"] as Transform3D).basis, nxf * rp), false)
+
+
+func _spill(e: Dictionary, cells: Dictionary) -> void:
+	## Sections taken away: what lay on them falls into the sea.
+	for it in World.entities_of("item"):
+		var d: Dictionary = it["d"]
+		if int(d.get("raft", -1)) != int(e["id"]):
+			continue
+		var rp: Vector3 = d.get("rp", Vector3.ZERO)
+		if cells.has(Vector3i(floori(rp.x), 0, floori(rp.z))):
+			continue
+		var p: Vector3 = (it["xf"] as Transform3D).origin
+		World.despawn(it["id"])
+		a.drop_item(String(d["i"]), int(d["n"]), d.get("d", {}), p + Vector3(0, 0.3, 0))
 
 
 # ---------------------------------------------------------------------------

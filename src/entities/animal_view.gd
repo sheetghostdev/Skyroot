@@ -23,6 +23,7 @@ var _peck := 0.0
 var _hurt := 0.0
 var _rope: Array[MeshInstance3D] = []
 var _mat: ShaderMaterial
+var _surfs: Dictionary = {}      # model part -> the boxes merged into its mesh
 var _neck := Vector3(0, 0.5, -0.3)
 
 
@@ -43,6 +44,7 @@ func _build() -> void:
 			_fowl(tint)
 		"goat":
 			_goat(tint)
+	_finish_meshes()
 	_scale()
 
 
@@ -213,20 +215,41 @@ func _draw_rope(lead: int) -> void:
 # Models (block units, origin at the feet, facing -Z)
 # ---------------------------------------------------------------------------
 
-func _box(parent: Node3D, center: Vector3, sz: Vector3, tile: String, tint: Color, rot := Vector3.ZERO) -> MeshInstance3D:
-	var s := ChunkMesher.Surf.new()
+func _box(parent: Node3D, center: Vector3, sz: Vector3, tile: String, tint: Color, rot := Vector3.ZERO) -> void:
+	## One box of the model, merged into its part's mesh (one draw per moving
+	## part, not one per box).
+	var tmp := ChunkMesher.Surf.new()
 	var lin := tint.srgb_to_linear()
 	var tex := BlockTex.layer(tile)
-	ChunkMesher.box_faces(s, -sz * 0.5, sz * 0.5, 0.0, Vector3.ZERO, tex, tex, Color(lin.r, lin.g, lin.b, 1.0))
-	var m := ArrayMesh.new()
-	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, s.arrays())
-	m.surface_set_material(0, _mat)
-	var mi := MeshInstance3D.new()
-	mi.mesh = m
-	mi.position = center
-	mi.rotation = rot
-	parent.add_child(mi)
-	return mi
+	ChunkMesher.box_faces(tmp, -sz * 0.5, sz * 0.5, 0.0, Vector3.ZERO, tex, tex, Color(lin.r, lin.g, lin.b, 1.0))
+	var xf := Transform3D(Basis.from_euler(rot), center)
+	if not _surfs.has(parent):
+		_surfs[parent] = ChunkMesher.Surf.new()
+	var s: ChunkMesher.Surf = _surfs[parent]
+	var base := s.v.size()
+	for k in tmp.v.size():
+		s.v.append(xf * tmp.v[k])
+		s.n.append(xf.basis * tmp.n[k])
+	s.c.append_array(tmp.c)
+	s.uv.append_array(tmp.uv)
+	s.uv2.append_array(tmp.uv2)
+	for idx in tmp.i:
+		s.i.append(base + idx)
+
+
+func _finish_meshes() -> void:
+	for parent in _surfs:
+		var arr := (_surfs[parent] as ChunkMesher.Surf).arrays()
+		if arr.is_empty():
+			continue
+		var m := ArrayMesh.new()
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		m.surface_set_material(0, _mat)
+		var mi := MeshInstance3D.new()
+		mi.mesh = m
+		mi.visibility_range_end = 72.0      # too small to see further off
+		(parent as Node3D).add_child(mi)
+	_surfs.clear()
 
 
 func _pivot(parent: Node3D, at: Vector3) -> Node3D:

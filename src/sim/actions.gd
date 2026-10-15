@@ -200,6 +200,12 @@ func drop_item(id: String, n: int, d: Dictionary, p: Vector3, vel := Vector3.ZER
 		return -1
 	var land := p + Vector3(vel.x, 0, vel.z) * 0.35
 	var y := World.vox.rest_height(land)
+	# on a raft's deck it stays on the deck (and goes where the raft goes)
+	var deck: Dictionary = rafts.deck_under(land) if rafts else {}
+	if not deck.is_empty() and float((deck["world"] as Vector3).y) > y:
+		var t0 := Time.get_ticks_msec()
+		return World.spawn("item", Transform3D(Basis(Vector3.UP, randf() * TAU), deck["world"]),
+			{"i": id, "n": n, "d": d, "t": t0 + wait_ms, "by": by, "raft": deck["eid"], "rp": deck["rp"]})
 	if y == -INF:
 		World.fx("lost", land, {"i": id})
 		return -1
@@ -228,7 +234,7 @@ func resettle_items(c: Vector3i) -> void:
 	## A block went away: whatever lay on it (in this column) falls.
 	for e in World.entities_of("item"):
 		var p: Vector3 = (e["xf"] as Transform3D).origin
-		if floori(p.x) != c.x or floori(p.z) != c.z or p.y < c.y:
+		if floori(p.x) != c.x or floori(p.z) != c.z or p.y < c.y or int(e["d"].get("raft", -1)) >= 0:
 			continue
 		var y := World.vox.rest_height(p + Vector3(0, 0.05, 0))
 		if y == -INF:
